@@ -1,0 +1,182 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{C5FEA7F2-1A6F-4EB6-B570-854DFB276277}</ProjectGuid>
+    <RootNamespace>DeepVoid</RootNamespace>
+    <Keyword>MFCProj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSdkDir)include;$(FrameworkSDKDir)\include;$(ProjectDir);</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <IncludePath>$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSdkDir)include;$(FrameworkSDKDir)\include;$(ProjectDir);</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\include;C:\Program Files\Visual Leak Detector\include</AdditionalIncludeDirectories>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(ProjectDir)\levmar and sba;$(OPENCV_DIR)\lib;C:\Program Files\Visual Leak Detector\lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core248d.lib;opencv_calib3d248d.lib;opencv_highgui248d.lib;opencv_imgproc248d.lib;opencv_features2d248d.lib;opencv_nonfree248d.lib;opencv_flann248d.lib;clapack.lib;levmar.lib;sba.lib;vld.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <ValidateAllParameters>true</ValidateAllParameters>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\include;C:\Program Files\Visual Leak Detector\include</AdditionalIncludeDirectories>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)\levmar and sba;$(OPENCV_DIR)\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core248.lib;opencv_calib3d248.lib;opencv_highgui248.lib;opencv_imgproc248.lib;opencv_features2d248.lib;opencv_nonfree248.lib;opencv_flann248.lib;clapack.lib;levmar.lib;sba.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Midl>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <ValidateAllParameters>true</ValidateAllParameters>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <None Include="ReadMe.txt" />
+    <None Include="res\DeepVoid.ico" />
+    <None Include="res\DeepVoid.rc2" />
+    <None Include="res\DeepVoidDoc.ico" />
+    <None Include="res\Toolbar.bmp" />
+    <None Include="res\Toolbar256.bmp" />
+    <None Include="UserImages.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ChildFrm.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_Calib3D.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_DataType.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_Derivatives.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_StereoVision.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_Universe.h" />
+    <ClInclude Include="DeepVoid.h" />
+    <ClInclude Include="DeepVoidDoc.h" />
+    <ClInclude Include="DeepVoidView.h" />
+    <ClInclude Include="DlgSGMSettings.h" />
+    <ClInclude Include="DlgSGMZZKSettings.h" />
+    <ClInclude Include="DlgStereoFiles.h" />
+    <ClInclude Include="DlgStereoMethods.h" />
+    <ClInclude Include="DlgZhuMethodSettings.h" />
+    <ClInclude Include="ImageDoc.h" />
+    <ClInclude Include="ImageListCtrl.h" />
+    <ClInclude Include="ImageView.h" />
+    <ClInclude Include="ImgThumbnailPane.h" />
+    <ClInclude Include="MainFrm.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="ShowInfoListCtrl.h" />
+    <ClInclude Include="ShowInfoPane.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ChildFrm.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_Calib3D.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_DataType.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_Derivatives.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.cpp" />
+    <ClCompile Include="DeepVoid Codes\DeepVoid_StereoVision.cpp" />
+    <ClCompile Include="DeepVoid.cpp" />
+    <ClCompile Include="DeepVoidDoc.cpp" />
+    <ClCompile Include="DeepVoidView.cpp" />
+    <ClCompile Include="DlgSGMSettings.cpp" />
+    <ClCompile Include="DlgSGMZZKSettings.cpp" />
+    <ClCompile Include="DlgStereoFiles.cpp" />
+    <ClCompile Include="DlgStereoMethods.cpp" />
+    <ClCompile Include="DlgZhuMethodSettings.cpp" />
+    <ClCompile Include="ImageDoc.cpp" />
+    <ClCompile Include="ImageListCtrl.cpp" />
+    <ClCompile Include="ImageView.cpp" />
+    <ClCompile Include="ImgThumbnailPane.cpp" />
+    <ClCompile Include="MainFrm.cpp" />
+    <ClCompile Include="ShowInfoListCtrl.cpp" />
+    <ClCompile Include="ShowInfoPane.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="DeepVoid.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties RESOURCE_FILE="DeepVoid.rc" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>
