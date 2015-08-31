@@ -6865,6 +6865,14 @@ void CDeepVoidApp::OnStereo()
 		m_minDisparity = dlgFiles.m_minDisparity;
 		m_maxDisparity = dlgFiles.m_maxDisparity;
 
+		bool bGivenParams = true;
+
+		if (m_pathStereoParam0 == "" || m_pathStereoParam1 == "")
+		{
+			// 说明没有输入参数，有时候输入的图像直接就是矫正完了的，可以直接进行后续的stereo密集匹配，这时就不用输入图像参数
+			bGivenParams = false; 
+		}
+
 		double color_factor = 255.0/(m_maxDisparity-m_minDisparity);
 
 		// read in stereo images //////////////////////////////////////////////////////////////////////////
@@ -6877,6 +6885,79 @@ void CDeepVoidApp::OnStereo()
 		if (!(img1 = imread(m_pathStereoImg1.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED)).data)
 		{
 			AfxMessageBox("fail to read in image1");
+			return;
+		}
+
+		// 没有给定图像对的参数，这时输入的图像就是极线矫正完了的图像
+		// 直接进行密集匹配得到视差图，但不反投影生成点云
+		if (!bGivenParams)
+		{
+			// original gray image
+			Mat img0_gray, img1_gray;
+			cvtColor(img0, img0_gray, CV_RGB2GRAY);
+			cvtColor(img1, img1_gray, CV_RGB2GRAY);
+
+			imwrite("D:\\stereo\\img0.jpg", img0);
+			imwrite("D:\\stereo\\img1.jpg", img1);
+
+			// choose different stereo methods //////////////////////////////////////////////////////////////////////////
+			CDlgStereoMethods dlgMethods;
+			dlgMethods.m_idxStereoMethod = m_idxStereoMethod;
+
+			if (IDOK==dlgMethods.DoModal())
+			{
+				m_idxStereoMethod = dlgMethods.m_idxStereoMethod;
+
+				if (0==m_idxStereoMethod) // SGM Zhaokun Zhu's version
+				{
+					CDlgSGMZZKSettings dlgSettings;
+					dlgSettings.m_idxDSItype = m_idxDSItype;
+					dlgSettings.m_idxPaths = m_idxPaths_ZZKSGM;
+					dlgSettings.m_idxSubpixel = m_idxSubpixel_ZZKSGM;
+					dlgSettings.m_P1 = m_P1_ZZKSGM;
+					dlgSettings.m_P2 = m_P2_ZZKSGM;
+					dlgSettings.m_threshConstCheck = m_threshConstCheck_ZZKSGM;
+
+					if (IDOK==dlgSettings.DoModal())
+					{
+						m_idxDSItype = dlgSettings.m_idxDSItype;
+						m_idxPaths_ZZKSGM = dlgSettings.m_idxPaths;
+						m_idxSubpixel_ZZKSGM = dlgSettings.m_idxSubpixel;
+						m_P1_ZZKSGM = dlgSettings.m_P1;
+						m_P2_ZZKSGM = dlgSettings.m_P2;
+						m_threshConstCheck_ZZKSGM = dlgSettings.m_threshConstCheck;
+
+						SGM_PATHS paths;
+						if (0==m_idxPaths_ZZKSGM)
+						{
+							paths = SGM_PATHS_8;
+						} 
+						else
+						{
+							paths = SGM_PATHS_16;
+						}
+
+						bool bSubPixRefine = true;
+						if (m_idxSubpixel_ZZKSGM!=0)
+						{
+							bSubPixRefine = false;
+						}
+
+						Mat mDI;
+						SemiGlobalMatching(img0_gray,img1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
+							false,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
+					}
+				}
+				else if (1==m_idxStereoMethod) // SGM OpenCV version
+				{
+
+				} 
+				else
+				{
+
+				}
+			}
+
 			return;
 		}
 
@@ -6961,7 +7042,7 @@ void CDeepVoidApp::OnStereo()
 		{
 			alpha_stereoRectify = -1;
 		}
-		
+
 		Matx33d mR0_new, mR1_new;
 		Matx34d mP0_new, mP1_new;
 		Matx44d mQ;
@@ -7027,15 +7108,8 @@ void CDeepVoidApp::OnStereo()
 		W_1 = 1.0/XYZW(3);
 		pt3d_n.m_pt.x = XYZW(0)*W_1; pt3d_n.m_pt.y = XYZW(1)*W_1; pt3d_n.m_pt.z = XYZW(2)*W_1;
 
-// 		imwrite("C:\\Users\\DeepVoid\\Desktop\\rimg0.jpg", rimg0);
-// 		imwrite("C:\\Users\\DeepVoid\\Desktop\\rimg1.jpg", rimg1);
-// 		imwrite("C:\\Users\\DeepVoid\\Desktop\\rimg0_gray.jpg", rimg0_gray);
-// 		imwrite("C:\\Users\\DeepVoid\\Desktop\\rimg1_gray.jpg", rimg1_gray);
-
 		imwrite("D:\\stereo\\rimg0.jpg", rimg0);
 		imwrite("D:\\stereo\\rimg1.jpg", rimg1);
-// 		imwrite("D:\\stereo\\rimg0_gray.jpg", rimg0_gray);
-// 		imwrite("D:\\stereo\\rimg1_gray.jpg", rimg1_gray);
 
 		// choose different stereo methods //////////////////////////////////////////////////////////////////////////
 		CDlgStereoMethods dlgMethods;

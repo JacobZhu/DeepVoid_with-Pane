@@ -60,7 +60,7 @@ END_MESSAGE_MAP()
 void CDlgStereoFiles::OnBnClickedButton1()
 {
 	// TODO: Add your control notification handler code here
-	CString filt = "Image(BMP;IMG;JPG;PCX;GIF;TIF;TGA;PGM;PBM;PNG)|*.BMP;*.IMG;*.JPG;*.PCX;*.GIF;*.TIF;*.TGA;*.PGM;*.PBM;*.PNG|(*.BMP)|*.BMP|(*.IMG)|*.IMG|(*.JPG)|*.JPG|(*.PCX)|*.PCX|(*.GIF)|*.GIF|(*.TIF)|*.TIF|(*.TGA)|*.TGA|(*.PGM)|*.PGM|(*.PBM)|*.PBM|(*.PNG)|*.PNG||";
+	CString filt = "Image(BMP;IMG;JPG;PCX;GIF;TIF;TGA;PGM;PBM;PNG;PPM)|*.BMP;*.IMG;*.JPG;*.PCX;*.GIF;*.TIF;*.TGA;*.PGM;*.PBM;*.PNG;*.PPM|(*.BMP)|*.BMP|(*.IMG)|*.IMG|(*.JPG)|*.JPG|(*.PCX)|*.PCX|(*.GIF)|*.GIF|(*.TIF)|*.TIF|(*.TGA)|*.TGA|(*.PGM)|*.PGM|(*.PBM)|*.PBM|(*.PNG)|*.PNG|(*.PPM)|*.PPM||";
 	CFileDialog  dlgFile(TRUE,"*.BMP","", OFN_HIDEREADONLY, filt, NULL);
 	dlgFile.m_ofn.Flags|=OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT;
 
@@ -75,7 +75,7 @@ void CDlgStereoFiles::OnBnClickedButton1()
 void CDlgStereoFiles::OnBnClickedButton2()
 {
 	// TODO: Add your control notification handler code here
-	CString filt = "Image(BMP;IMG;JPG;PCX;GIF;TIF;TGA;PGM;PBM;PNG)|*.BMP;*.IMG;*.JPG;*.PCX;*.GIF;*.TIF;*.TGA;*.PGM;*.PBM;*.PNG|(*.BMP)|*.BMP|(*.IMG)|*.IMG|(*.JPG)|*.JPG|(*.PCX)|*.PCX|(*.GIF)|*.GIF|(*.TIF)|*.TIF|(*.TGA)|*.TGA|(*.PGM)|*.PGM|(*.PBM)|*.PBM|(*.PNG)|*.PNG||";
+	CString filt = "Image(BMP;IMG;JPG;PCX;GIF;TIF;TGA;PGM;PBM;PNG;PPM)|*.BMP;*.IMG;*.JPG;*.PCX;*.GIF;*.TIF;*.TGA;*.PGM;*.PBM;*.PNG;*.PPM|(*.BMP)|*.BMP|(*.IMG)|*.IMG|(*.JPG)|*.JPG|(*.PCX)|*.PCX|(*.GIF)|*.GIF|(*.TIF)|*.TIF|(*.TGA)|*.TGA|(*.PGM)|*.PGM|(*.PBM)|*.PBM|(*.PNG)|*.PNG|(*.PPM)|*.PPM||";
 	CFileDialog  dlgFile(TRUE,"*.BMP","", OFN_HIDEREADONLY, filt, NULL);
 	dlgFile.m_ofn.Flags|=OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT;
 
