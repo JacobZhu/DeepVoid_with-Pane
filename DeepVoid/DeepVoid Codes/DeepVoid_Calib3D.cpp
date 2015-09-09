@@ -35159,6 +35159,42 @@ void DeepVoid::SaveMat2File_double(CString path, const Mat & mat, WriteMode mode
 	fclose(pFile);
 }
 
+void DeepVoid::SaveMat2File_float(CString path, const Mat & mat, WriteMode mode/* = WRITEMODE_LF*/)
+{
+	FILE * pFile = fopen(path, "a");
+
+	int rows = mat.rows;
+	int cols = mat.cols;
+
+	int i,j;
+
+	fprintf(pFile, "(%d, %d)\n\n", rows, cols);
+
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < cols; j++)
+		{
+			switch (mode)
+			{
+			case WRITEMODE_E:
+				fprintf(pFile, "%.12e	", mat.at<float>(i,j));
+				break;
+
+			case WRITEMODE_LF:
+				fprintf(pFile, "%lf	", mat.at<float>(i,j));
+				break;
+
+			default:
+				break;
+			}
+		}
+		fprintf(pFile, "\n");
+	}
+	fprintf(pFile, "\n\n");
+
+	fclose(pFile);
+}
+
 // 计算两向量间夹角的余弦 [-1, 1]
 double DeepVoid::ComputeCosa(const Matx31d & vec1, const Matx31d & vec2)
 {

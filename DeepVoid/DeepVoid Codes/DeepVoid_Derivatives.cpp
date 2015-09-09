@@ -7979,6 +7979,81 @@ Matx33d calib::converse_quaternion_R(double a, double b, double c, double d)
 	return R;
 }
 
+// given the rotational radian by axis-X, compute the rotation matrix
+Matx33d calib::converse_radX_R(double rad)
+{
+	Matx33d R;
+
+	double sa = sin(rad);
+	double ca = cos(rad);
+
+	R(0,0) = 1;
+	R(1,1) = ca;
+	R(1,2) = -sa;
+	R(2,1) = sa;
+	R(2,2) = ca;
+
+	return R;
+}
+
+// given the rotational angle by axis-X, compute the rotation matrix
+Matx33d calib::converse_angX_R(double ang)
+{
+	double rad = ang*D2R;
+
+	return converse_radX_R(rad);
+}
+
+// given the rotational radian by axis-Y, compute the rotation matrix
+Matx33d calib::converse_radY_R(double rad)
+{
+	Matx33d R;
+
+	double sa = sin(rad);
+	double ca = cos(rad);
+
+	R(1,1) = 1;
+	R(0,0) = ca;
+	R(0,2) = sa;
+	R(2,0) = -sa;
+	R(2,2) = ca;
+
+	return R;
+}
+
+// given the rotational angle by axis-Y, compute the rotation matrix
+Matx33d calib::converse_angY_R(double ang)
+{
+	double rad = ang*D2R;
+
+	return converse_radY_R(rad);
+}
+
+// given the rotational radian by axis-Z, compute the rotation matrix
+Matx33d calib::converse_radZ_R(double rad)
+{
+	Matx33d R;
+
+	double sa = sin(rad);
+	double ca = cos(rad);
+
+	R(2,2) = 1;
+	R(0,0) = ca;
+	R(0,1) = -sa;
+	R(1,0) = sa;
+	R(1,1) = ca;
+
+	return R;
+}
+
+// given the rotational angle by axis-Z, compute the rotation matrix
+Matx33d calib::converse_angZ_R(double ang)
+{
+	double rad = ang*D2R;
+
+	return converse_radZ_R(rad);
+}
+
 // 根据输入的旋转矩阵，返回一个 3 维的向量，其为 θ|v|，其中 v 为旋转轴的单位向量，θ 为旋转弧度
 Matx31d calib::converse_R_rotvec(const Matx33d & mR)
 {

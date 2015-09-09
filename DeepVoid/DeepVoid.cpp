@@ -53,6 +53,7 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_XUDATA, &CDeepVoidApp::OnXudata)
 	ON_COMMAND(ID_STEREO, &CDeepVoidApp::OnStereo)
 	ON_COMMAND(ID_CALIBSIMU, &CDeepVoidApp::OnCalibsimu)
+	ON_COMMAND(ID_DSBASIMU, &CDeepVoidApp::OnDsbasimu)
 END_MESSAGE_MAP()
 
 
@@ -6946,6 +6947,8 @@ void CDeepVoidApp::OnStereo()
 						Mat mDI;
 						SemiGlobalMatching(img0_gray,img1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
 							false,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
+
+						SaveMat2File_float("D:\\stereo\\disparity by SGM (ZZK).txt",mDI);
 					}
 				}
 				else if (1==m_idxStereoMethod) // SGM OpenCV version
@@ -7803,4 +7806,372 @@ void CDeepVoidApp::OnCalibsimu()
 // 	dR44 = vRis3[3]*R4.t();
 // 	dw44 = calib::converse_R_rotvec(dR44);
 // 	double dr443 = norm(dw44);
+}
+
+
+void CDeepVoidApp::OnDsbasimu()
+{
+	// TODO: Add your command handler code here
+
+	RNG rng(0xffffffff);			// Initializes a random number generator state
+//	RNG rng((unsigned)time(NULL));	// Initializes a random number generator state
+
+	// parameters setting /////////////////////////////////////////////////////////////////////////////
+	int nObj = 100;				// number of object points
+	int nImg = 7;				// number of images
+	int nImgperPt = 3;			// each object point is observed by this many images
+	double range = 1;			// the spread of object points
+	double distance = 10;		// distance between camera and object points center
+	double interval_ang = 15;	// the angular interval between neighboring images (in degree)
+	double img_noise_std = 0.2;	// standard deviation of image point error
+	double t_noise_std = 0.1;	// standard deviation of the initial translation vector
+	double rad_noise_std = 0.5*calib::D2R;			// standard deviation of the initial rotation, in radian
+	double rv_noise_std = rad_noise_std/sqrt(3.0);	// standard deviation of the initial rotation vector element
+	int nSimu = 100;			// the times of simulation in order to do the statistics
+
+	double f = 1500;			// equivalent focal length
+	double w = 1280;			// image width
+	double h = 720;				// image height
+	double cx = 0.5*(w-1);		// principal point
+	double cy = 0.5*(h-1);		// principal point
+	double s = 0;				// screw factor
+
+	double f_e = f + 0;			// equivalent focal length with error
+	double cx_e = cx + 0;		// principal point with error
+	double cy_e = cy + 0;		// principal point with error
+	double s_e = s + 0;			// screw factor with error
+
+	double k1 = 0.01;			// 2nd order radial distortion coefficient
+	double k2 = -0.02;			// 4th order radial distortion coefficient
+	double k3 = 0.003;			// one tangential distortion coefficient
+	double k4 = 0.002;			// the other tangential distortion coefficient
+	double k5 = -0.001;			// 6th order radial distortion coefficient
+
+	double k1_e = k1 + 0;		// 2nd order radial distortion coefficient with error
+	double k2_e = k2 + 0;		// 4th order radial distortion coefficient with error
+	double k3_e = k3 + 0;		// one tangential distortion coefficient with error 
+	double k4_e = k4 + 0;		// the other tangential distortion coefficient with error
+	double k5_e = k5 + 0;		// 6th order radial distortion coefficient with error
+
+	// simulate object points //////////////////////////////////////////////////////////////////////////
+	vector<Point3d> vObjPts;
+	for (int i=0;i<nObj;++i)
+	{
+		Point3d objPt;
+
+		objPt.x = rng.uniform(-range*0.5, range*0.5);
+		objPt.y = rng.uniform(-range*0.5, range*0.5);
+		objPt.z = rng.uniform(-range*0.5, range*0.5);
+
+		vObjPts.push_back(objPt);
+	}
+
+	// simulate images /////////////////////////////////////////////////////////////////////////////////
+	vector<Matx33d> Ks,K_es;
+	vector<Matx33d> Rs,R_es;
+	vector<Matx31d> ts,t_es;
+	vector<Matx<double,5,1>> dists,dist_es;
+	vector<int> distTypes;
+
+	vector<uchar> j_fixed(nImg);		// indicates which images' parameters are fixed
+	vector<uchar> i_fixed(nObj);		// indicates which object points' are fixed
+	j_fixed[0] = 1;						// the 1st image's parameters are fixed
+
+	Matx33d mK;
+	mK(0,0) = mK(1,1) = f;
+	mK(0,2) = cx; mK(1,2) = cy;
+	mK(0,1) = s;  mK(2,2) = 1;
+	Ks.push_back(mK);
+
+	Matx33d mK_e;
+	mK_e(0,0) = mK_e(1,1) = f_e;
+	mK_e(0,2) = cx_e; mK_e(1,2) = cy_e;
+	mK_e(0,1) = s_e;  mK_e(2,2) = 1;
+	K_es.push_back(mK_e);
+
+	Matx33d mR;
+	mR(0,0)=mR(1,1)=mR(2,2)=1;
+	Rs.push_back(mR);
+	R_es.push_back(mR);
+
+	Matx31d mt;
+	mt(2) = distance;
+	ts.push_back(mt);
+	t_es.push_back(mt);
+
+	Matx<double,5,1> dist;
+	dist(0) = k1;	dist(1) = k2;	dist(2) = k3;	dist(3) = k4;	dist(4) = k5;
+	dists.push_back(dist);
+
+	Matx<double,5,1> dist_e;
+	dist_e(0) = k1_e;	dist_e(1) = k2_e;	dist_e(2) = k3_e;	dist_e(3) = k4_e;	dist_e(4) = k5_e;
+	dist_es.push_back(dist_e);
+
+	distTypes.push_back(1);
+
+	for (int j=1;j<nImg;++j)
+	{
+		// real parameters
+		Ks.push_back(mK);
+		ts.push_back(mt);
+		dists.push_back(dist);
+
+		double ang_Y = j*interval_ang;
+
+		Matx33d dR = calib::converse_angY_R(ang_Y);
+		Rs.push_back(dR*mR);
+
+		// parameters with error, ie given estimates of image parameters
+		K_es.push_back(mK_e);
+		dist_es.push_back(dist_e);
+		
+		double drvx = rng.gaussian(rv_noise_std);
+		double drvy = rng.gaussian(rv_noise_std);
+		double drvz = rng.gaussian(rv_noise_std);
+
+		dR = calib::converse_rotvec_R(drvx,drvy,drvz);
+		R_es.push_back(dR*Rs[j]);
+
+		double dtx = rng.gaussian(t_noise_std);
+		double dty = rng.gaussian(t_noise_std);
+		double dtz = rng.gaussian(t_noise_std);
+
+		Matx31d mdt;
+		mdt(0) = dtx;
+		mdt(1) = dty;
+		mdt(2) = dtz;
+
+		t_es.push_back(mdt+ts[j]);
+
+		distTypes.push_back(1);
+	}
+
+	// choose randomly the given number of images for each object point in which the object point is observed
+	// and further choose randomly one reference image from this observing image set ////////////////////////
+	vector<vector<int>> idxVisiImg;
+	vector<int> idxRefVisiImg;
+	for (int i=0;i<nObj;++i)
+	{
+		vector<int> idxVisi;
+
+		while (idxVisi.size()<nImgperPt)
+		{
+			int k = rng.next()%nImg;
+
+			if (find(idxVisi.begin(),idxVisi.end(),k) != idxVisi.end()) // found, already exist
+			{
+				continue;
+			}
+
+			idxVisi.push_back(k);
+		}
+
+		int k = rng.next()%nImgperPt;
+
+		idxVisiImg.push_back(idxVisi);
+		idxRefVisiImg.push_back(idxVisi[k]);
+	}
+
+	// generate the visibility matrix /////////////////////////////////////////////////////////////////
+	// and real observations without random noise /////////////////////////////////////////////////////
+	int sizes[] = {nObj, nImg};
+	SparseMat ptrMat(2,sizes,CV_32SC1);
+
+	vector<Point2d> vImgPts_nonDist; // non-distorted image points
+	vector<Point2d> vImgPts_dist;	 // distorted image points
+	vector<Matx22d> covInvs;		 // inverses of all the covariance matrix of image points
+
+	Matx22d I22;
+	I22(0,0) = I22(1,1) = 1;
+
+	for (int i=0;i<nObj;++i)
+	{
+		Point3d pt3d = vObjPts[i];
+
+		Matx31d XYZ;
+		XYZ(0) = pt3d.x;
+		XYZ(1) = pt3d.y;
+		XYZ(2) = pt3d.z;
+
+		vector<int> idxVisi = idxVisiImg[i];
+		int idxRef = idxRefVisiImg[i];
+
+		sort(idxVisi.begin(), idxVisi.end());
+		
+		for (int k=0;k<idxVisi.size();++k)
+		{
+			int j = idxVisi[k];
+
+			Matx33d K = Ks[j];	Matx33d K_e = K_es[j];
+			Matx33d R = Rs[j];
+			Matx31d t = ts[j];
+			Matx<double,5,1> dist = dists[j];	Matx<double,5,1> dist_e = dist_es[j];
+
+			Matx31d uv = R*XYZ+t;
+			Matx31d xy = K*uv;
+
+			double u = uv(0)/uv(2);
+			double v = uv(1)/uv(2);
+
+			double x = xy(0)/xy(2);
+			double y = xy(1)/xy(2);
+
+			double dx,dy;
+
+			distortions::dxdy_brown(K(0,0),K(1,1),K(0,1),u,v,dist(0),dist(1),dist(2),dist(3),dist(4),dx,dy);
+
+			double x_d = x+dx;
+			double y_d = y+dy;
+
+			double e_x = rng.gaussian(img_noise_std);
+			double e_y = rng.gaussian(img_noise_std);
+
+			double x_d_e = x_d + e_x;
+			double y_d_e = y_d + e_y;
+
+			Point2d imgPt;
+			imgPt.x = x;
+			imgPt.y = y;
+			vImgPts_nonDist.push_back(imgPt);
+
+			imgPt.x = x_d;
+			imgPt.y = y_d;
+			vImgPts_dist.push_back(imgPt);
+
+			ptrMat.ref<int>(i,j) = vImgPts_nonDist.size()-1;
+
+			covInvs.push_back(I22);
+		}
+	}
+
+	vector<vector<double>> SBA(nImg),DSBA(nImg);
+
+	// run multiple times, add observation noises, and do statistics /////////////////////////////////
+	for (int kk=0;kk<nSimu;++kk)
+	{
+		vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+		vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+
+		for (int i=0;i<nObj;++i)
+		{
+			vector<int> idxVisi = idxVisiImg[i];
+			int idxRef = idxRefVisiImg[i];
+
+			sort(idxVisi.begin(), idxVisi.end());
+
+			for (int k=0;k<idxVisi.size();++k)
+			{
+				int j = idxVisi[k];
+
+				const int * ptr = ptrMat.find<int>(i,j);
+
+				if (NULL==ptr)
+				{
+					continue;
+				}
+
+				Matx33d K_e = K_es[j];
+				Matx<double,5,1> dist_e = dist_es[j];
+
+				int idx_ij = (*ptr);
+
+				Point2d pt2d = vImgPts_dist[idx_ij];
+
+				double x_d = pt2d.x;
+				double y_d = pt2d.y;
+
+				double e_x = rng.gaussian(img_noise_std);
+				double e_y = rng.gaussian(img_noise_std);
+
+				double x_d_e = x_d + e_x;
+				double y_d_e = y_d + e_y;
+
+				if (j==idxRef)
+				{
+					// reference image point has random noise
+// 					pt2d.x = x_d_e;
+// 					pt2d.y = y_d_e;
+
+					// reference image point has no random noise
+					vImgPts_dist_err.push_back(pt2d);
+
+					// remove distortion using given estimates of interior orientations
+					double ideal_x,ideal_y;
+					distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+						dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+
+					Matx31d nxy;
+					nxy(0) = ideal_x;
+					nxy(1) = ideal_y;
+					nxy(2) = 1;
+
+					// compute the normalized image point using given estimates of interior orientations
+					nxys.push_back(calib::invK(K_e)*nxy);
+				} 
+				else
+				{
+					// non-reference image point has random noise
+					pt2d.x = x_d_e;
+					pt2d.y = y_d_e;
+					vImgPts_dist_err.push_back(pt2d);
+				}
+			}
+		}
+
+
+		double info[5];
+
+		// run SBA first //////////////////////////////////////////////////////////////////////////
+		vector<Point3d> objPts_SBA = vObjPts;
+		vector<Matx33d> Rs_SBA = R_es;
+		vector<Matx31d> ts_SBA = t_es;
+
+		SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+			j_fixed,i_fixed,ptrMat,info);
+
+		vector<double> drads_SBA,drads_DSBA;
+		for (int j=0;j<nImg;++j)
+		{
+			Matx33d dR = Rs_SBA[j].t()*Rs[j];
+			Matx31d rov = calib::converse_R_rotvec(dR);
+			double drad = norm(rov);
+			drads_SBA.push_back(drad*calib::R2D);
+
+			SBA[j].push_back(drad*calib::R2D);
+		}
+
+		// then run DSBA //////////////////////////////////////////////////////////////////////////
+		vector<Point3d> objPts_DSBA = vObjPts;
+		vector<Matx33d> Rs_DSBA = R_es;
+		vector<Matx31d> ts_DSBA = t_es;
+
+		SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+			nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+
+		for (int j=0;j<nImg;++j)
+		{
+			Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+			Matx31d rov = calib::converse_R_rotvec(dR);
+			double drad = norm(rov);
+			drads_DSBA.push_back(drad*calib::R2D);
+
+			DSBA[j].push_back(drad*calib::R2D);
+		}
+	}
+
+	vector<vector<double>> dSBA_DSBA(nImg);
+	vector<double> davg_SBA_DSBA;
+	for (int j=0;j<nImg;++j)
+	{
+		double sum = 0;
+
+		for (int k=0;k<SBA[j].size();++k)
+		{
+			sum += SBA[j][k]-DSBA[j][k];
+
+			dSBA_DSBA[j].push_back(SBA[j][k]-DSBA[j][k]);
+		}
+
+		davg_SBA_DSBA.push_back(sum/SBA[j].size());
+	}
 }

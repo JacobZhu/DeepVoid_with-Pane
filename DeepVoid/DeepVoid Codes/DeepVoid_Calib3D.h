@@ -2638,6 +2638,7 @@ void PrintMatrix2Screen_uchar(const Mat & mat,
 							  );
 
 void SaveMat2File_double(CString path, const Mat & mat, WriteMode mode = WRITEMODE_LF);
+void SaveMat2File_float(CString path, const Mat & mat, WriteMode mode = WRITEMODE_LF);
 
 // 计算两向量间夹角的余弦
 double ComputeCosa(const Matx31d & vec1, const Matx31d & vec2);

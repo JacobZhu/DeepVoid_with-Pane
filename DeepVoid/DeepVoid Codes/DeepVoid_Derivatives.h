@@ -917,6 +917,9 @@ void remove_brown(double fx, double fy, double cx, double cy, double s,
 namespace calib
 {
 
+const double R2D = 180.0/CV_PI;
+const double D2R = CV_PI/180.0;
+
 // 方法基于《Matrix Computations 3rd Edition》一书P.216中的Algorithm 5.1.3 (Computes Givens c and s)
 // 根据输入的[a; b]'计算使得[c s; -s c]' * [a; b]' = [r; 0]'成立的cos和sin
 void Givens(double a, double b, double & c, double & s);
@@ -938,6 +941,21 @@ Matx33d converse_rotvec_R(const Matx13d & v);
 
 // 给定四元数，生成旋转矩阵
 Matx33d converse_quaternion_R(double a, double b, double c, double d);
+
+// given the rotational radian by axis-X, compute the rotation matrix
+Matx33d converse_radX_R(double rad);
+// given the rotational angle by axis-X, compute the rotation matrix
+Matx33d converse_angX_R(double ang);
+
+// given the rotational radian by axis-Y, compute the rotation matrix
+Matx33d converse_radY_R(double rad);
+// given the rotational angle by axis-Y, compute the rotation matrix
+Matx33d converse_angY_R(double ang);
+
+// given the rotational radian by axis-Z, compute the rotation matrix
+Matx33d converse_radZ_R(double rad);
+// given the rotational angle by axis-Z, compute the rotation matrix
+Matx33d converse_angZ_R(double ang);
 
 // zhaokunz, 20150107, <multiple view geometry in computer vision 2nd edition> p.107
 // Normalizing transformations based on isotropic scaling

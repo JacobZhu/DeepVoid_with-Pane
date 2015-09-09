@@ -96,6 +96,7 @@ public:
 	afx_msg void OnXudata();
 	afx_msg void OnStereo();
 	afx_msg void OnCalibsimu();
+	afx_msg void OnDsbasimu();
 };
 
 extern CDeepVoidApp theApp;
