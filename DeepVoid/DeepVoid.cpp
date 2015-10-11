@@ -793,6 +793,8 @@ UINT SfM(LPVOID param)
 	vector<vector<DMatch>> allMatches;
 	vector<DMatch> matches;
 
+	SfM_ZZK::PairWiseMatches map_pairwise_matches; // 20150920, <(i,j), <DMatch>>
+
 	FILE * fileMatches = fopen("D:\\matches number.txt", "w");
 
 	for (i=0;i<nCam;i++)
@@ -854,6 +856,8 @@ UINT SfM(LPVOID param)
 			{
 				allMatches.push_back(matches);
 				fprintf(fileMatches, "%d	", matches.size());
+
+				map_pairwise_matches.insert(make_pair(make_pair(i,j), matches));
 			}
 		}
 		fprintf(fileMatches, "\n");
@@ -862,7 +866,21 @@ UINT SfM(LPVOID param)
 
 	vector<vector<Point2i>> allTracks;
 	/*FindAllMatchingTracks_with121mappingcheck(pApp->m_vCams, allMatches, allTracks);*/
+
+	SfM_ZZK::MultiTracks map_tracks;
+	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks);
+	std::map<int,int> hist;
+	SfM_ZZK::BuildTrackLengthHistogram(map_tracks, hist);
+
+	SfM_ZZK::MultiTracks map_tracks1;
+	SfM_ZZK::FindAllTracks_Olsson_Original(map_pairwise_matches, map_tracks1);
+	std::map<int,int> hist2;
+	SfM_ZZK::BuildTrackLengthHistogram(map_tracks1, hist2);
+
 	FindAllMatchingTracks(pApp->m_vCams, allMatches, allTracks);
+
+	std::map<int,int> hist1;
+	SfM_ZZK::BuildTrackLengthHistogram(allTracks, hist1);
 
 // 	FILE * file = fopen("D:\\good tracks.txt", "w");
 // 

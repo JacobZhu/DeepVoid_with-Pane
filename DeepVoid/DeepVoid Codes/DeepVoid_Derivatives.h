@@ -1220,6 +1220,41 @@ void optim_lm_fcxcy_w_t_k1k2(const vector<Point3d> & vWrdPts,	// ÊäÈë£º		¿ØÖÆµã×
 
 namespace SfM_ZZK
 {
+
+// 2015.09.20, a map container contains all the pairwise matches between each image pair: {<image i,image j>, matches}, named after openMVG convention.
+typedef std::map<std::pair<int,int>, std::vector<DMatch>> PairWiseMatches;
+
+// 2015.10.08, a map container to store a track: collection of {ImageId,FeatureId}
+// The corresponding image points with their imageId and FeatureId.
+// the reason why map instead of set is used here is that one track is supposed to contain only one feature for one image
+// setting ImageId the first input of map can make it unique, whereas (0,1) and (0,2) are two different keys to set
+typedef std::map<int,int> OneTrack;
+
+// 2015.10.08, a map container to store all tracks: collection of {trackId, onetrack}
+typedef std::map<int,OneTrack> MultiTracks;
+
+// 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
+// global minimum weight version
+void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+						  MultiTracks & map_tracks				// output:	all the found tracks
+						  );
+
+// 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
+// original version ie local minimum weight version with random starting image
+void FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								   MultiTracks & map_tracks				// output:	all the found tracks
+								   );
+
+// 2015.10.08, build the track length histogram
+void BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
+							   std::map<int,int> & hist			// output:	the histogram
+							   );
+
+// 2015.10.08, build the track length histogram
+void BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
+							   std::map<int,int> & hist						// output:	the histogram
+							   );
+
 // optimize Ri based on Rotation Averaging using Newton-Raphson method
 // ÏêÏ¸²Î¿¼ Govindu 04 <Lie-algebraic averaging for globally consistent motion estimation> ÖÐµÄ Algorithm A2
 void optim_nr_Ri_Govindu04(const vector<Matx33d> & vRijs,	// ÊäÈë£º		ËùÓÐ¹Û²âµÄÏà¶ÔÐý×ª¾ØÕó
