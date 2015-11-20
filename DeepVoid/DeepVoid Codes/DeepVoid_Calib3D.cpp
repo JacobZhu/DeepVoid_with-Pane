@@ -3,6 +3,32 @@
 #include "DeepVoid.h"
 #include "MainFrm.h"
 
+
+// 2015.10.22, 苏昂提供的计时程序，封装了OpenCV的 getTickCount()
+vector<double> dtimevec;
+void DeepVoid::tic()
+{
+	double dtime = static_cast<double>(cv::getTickCount());
+	dtimevec.push_back(dtime);
+}
+double DeepVoid::toc()
+{
+	double dtime(0);
+	if (dtimevec.size() > 0)
+	{
+		dtime = static_cast<double>(cv::getTickCount()) - dtimevec[dtimevec.size() - 1];
+		dtimevec.pop_back();
+		dtime /= cv::getTickFrequency();
+		return dtime;
+	}
+	else
+	{
+		printf_s("--please use toc after tic...");
+		return dtime;
+	}
+}
+//////////////////////////////////////////////////////////////////////////
+
 // 根据提供的绕X轴顺时针旋转的角度（角度表示非弧度）得到4×4的旋转矩阵Rx
 CMatrix DeepVoid::GenRX(double angle)
 {
@@ -1302,6 +1328,135 @@ void DeepVoid::Get_F_Matches(const Features & feats0,		// input:	n1 features ext
 	EnsureOne2OneMatches(matches_aug, matches);
 }
 
+// 20151017, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// input the pair images so that matches can be drawn from inside the function
+void DeepVoid::Get_F_Matches(const Mat & img0,				// input:	the 1st image
+						     const Mat & img1,				// input:	the 2nd image
+						     const Features & feats0,		// input:	n1 features extracted from the 1st image
+						     const Features & feats1,		// input:	n2 features extracted from the 2nd image
+						     Matx33d & mF,					// output:	the estimated fundamental matrix
+						     vector<DMatch> & matches,		// output:	matches obtained after feature matching and RANSAC
+						     double thresh_p2l /*= 3.*/,	// input:	the distance threshold between point and epiline, used in RANSAC stage
+						     double thresh_conf /*= 0.99*/,	// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+						     int maxIter /*= 10*/,			// input:	the maximum number of iterations
+						     double xEps /*= 1.0E-8*/,		// input:	threshold
+						     double fEps /*= 1.0E-6*/		// input:	threshold
+						     )
+{
+	int i;
+
+	int nFeat0 = feats0.key_points.size();
+	int nFeat1 = feats1.key_points.size();
+
+	// do flann matching
+	FlannBasedMatcher matcher_flann;
+
+	vector<DMatch> matches_raw;
+//	vector<vector<DMatch>> matches_kNN;
+
+	// ensure that the first i.e. the reference image has less features than the second i.e. matching image does
+	if (nFeat0<=nFeat1)
+	{
+		matcher_flann.match(feats0.descriptors, feats1.descriptors, matches_raw);
+	} 
+	else
+	{
+		matcher_flann.match(feats1.descriptors, feats0.descriptors, matches_raw);
+
+		for (i=0;i<matches_raw.size();i++)
+		{
+			// zhaokunz, 20150106, reverse the index
+			int tmp = matches_raw[i].queryIdx;
+			matches_raw[i].queryIdx = matches_raw[i].trainIdx;
+			matches_raw[i].trainIdx = tmp;
+		}
+	}
+
+//	matcher_flann.knnMatch(des0, des1, matches_kNN, 3);
+
+	// use the image point index, especially for SIFT features
+	vector<DMatch> matches_raw_idxImgPt;
+
+	for (i=0;i<matches_raw.size();i++)
+	{
+		// zhaokunz, 20140324, use the unique image point index
+		DMatch match_idxImgPt = matches_raw[i];
+		match_idxImgPt.queryIdx = feats0.idx_pt[matches_raw[i].queryIdx];
+		match_idxImgPt.trainIdx = feats1.idx_pt[matches_raw[i].trainIdx];
+
+		matches_raw_idxImgPt.push_back(match_idxImgPt);
+	}
+
+	// then detect and delete those identical matches
+	vector<DMatch> matches_noIdentical;
+	DeleteIdenticalMatches(matches_raw_idxImgPt, matches_noIdentical);
+
+	// enforce one-to-one constraint
+	vector<DMatch> matches_one2one;
+	EnsureOne2OneMatches(matches_noIdentical, matches_one2one);
+
+	Mat disp_matches;
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_one2one, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	imwrite("E:\\matches\\matches_one2one.bmp", disp_matches);
+
+	// RANSAC //////////////////////////////////////////////////////////////////////////
+	vector<Point2f> points0(matches_one2one.size());
+	vector<Point2f> points1(matches_one2one.size());
+
+	// initialize the points here ... */
+	for(i=0;i<matches_one2one.size();i++)
+	{
+		points0[i] = feats0.key_points[matches_one2one[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_one2one[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	Matx33d fundamental_matrix;
+
+	fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+
+	vector<DMatch> matches_RANSAC;
+	vector<Point2d> vImgPts0, vImgPts1;
+
+	for (i=0;i<matches_one2one.size();i++)
+	{
+		if (status[i])
+		{
+			matches_RANSAC.push_back(matches_one2one[i]);
+
+			Point2d pt0,pt1;
+			pt0.x = points0[i].x; pt0.y = points0[i].y;
+			pt1.x = points1[i].x; pt1.y = points1[i].y;
+			vImgPts0.push_back(pt0);
+			vImgPts1.push_back(pt1);
+		}
+	}
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_RANSAC, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	imwrite("E:\\matches\\matches_RANSAC.bmp", disp_matches);
+
+	// optimize the fundamental matrix using only the inliers
+	bool bSuc = optim_gn_F(vImgPts0,vImgPts1,fundamental_matrix,mF,maxIter,xEps,fEps);
+	
+	// augment matches given the optimized fundamental matrix
+	vector<DMatch> matches_aug;
+	int nInliers = GetInliers(feats0.key_points,feats1.key_points,mF,matches_noIdentical,matches_aug,thresh_p2l);
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_aug, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	imwrite("E:\\matches\\matches_aug.bmp", disp_matches);
+
+	// once again ensure one-to-one matches to get the final matches
+	EnsureOne2OneMatches(matches_aug, matches);
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	imwrite("E:\\matches\\matches_final.bmp", disp_matches);
+}
+
 // 20150128, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get initial fundamental matrix using RANSAC
@@ -1609,6 +1764,430 @@ bool DeepVoid::Get_F_Matches_knn(const Features & feats0,				// input:	n1 featur
 
 	matches = matches_RANSAC;
 	matches.insert(matches.end(), matches_aug_passSymTest.begin(), matches_aug_passSymTest.end());
+	//////////////////////////////////////////////////////////////////////////
+
+	return true;
+}
+
+// 20151016, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// input the pair images so that matches can be drawn from inside the function
+bool DeepVoid::Get_F_Matches_knn(const Mat & img0,						// input:	the 1st image
+								 const Mat & img1,						// input:	the 2nd image
+								 const Features & feats0,				// input:	n1 features extracted from the 1st image
+							     const Features & feats1,				// input:	n2 features extracted from the 2nd image
+							     Matx33d & mF,							// output:	the estimated fundamental matrix
+							     vector<DMatch> & matches,				// output:	matches obtained after feature matching and RANSAC
+								 bool bOptim /*= true*/,				// input:	whether optimize F using Golden Standard algorithm or not
+								 double thresh_ratioTest /*= 0.3*/,		// input:	the ratio threshold for ratio test
+								 double thresh_minInlierRatio /*= 0.5*/,// input:	the allowed minimum ratio of inliers
+							     double thresh_p2l /*= 3.*/,			// input:	the distance threshold between point and epiline, used in RANSAC stage
+							     double thresh_conf /*= 0.99*/,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+							     int maxIter /*= 10*/,					// input:	the maximum number of iterations
+							     double xEps /*= 1.0E-8*/,				// input:	threshold
+							     double fEps /*= 1.0E-6*/				// input:	threshold
+							     )
+{
+	int i,j;
+
+	matches.clear();
+
+	int K = 2; // the number of nearest neighbors
+
+	int nFeat0 = feats0.key_points.size();
+	int nFeat1 = feats1.key_points.size();
+
+//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+
+	CString str;
+	Mat disp_matches;
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches01_knn, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches01_knn %d.bmp", matches01_knn.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	drawMatches(img1, feats1.key_points, img0, feats0.key_points, matches10_knn, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches10_knn %d.bmp", matches10_knn.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	//////////////////////////////////////////////////////////////////////////
+
+	// 2. using the unique image point index, useful for SIFT, since for one image point
+	// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 3. reorganize all matches, again only neccesary for SIFT
+	// (0,25) (0,16)
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
+	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
+
+	auto iter01_begin = matches01_knn.begin();
+	auto iter10_begin = matches10_knn.begin();
+
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		i = iter-iter01_begin;
+
+		if (status01[i])
+		{
+			continue;
+		}
+
+		matches01_knn_idximgpt.push_back(*iter);
+
+		status01[i] = 1;
+
+		auto iter_end = matches01_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches01_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+			
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status01[iter_k-iter01_begin] = 1;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		i = iter-iter10_begin;
+
+		if (status10[i])
+		{
+			continue;
+		}
+
+		matches10_knn_idximgpt.push_back(*iter);
+
+		status10[i] = 1;
+
+		auto iter_end = matches10_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches10_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status10[iter_k-iter10_begin] = 1;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 4. select best 2 different matches for each image point
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
+	// after this step, they will be like (2,14) only, since they are all basically the same matches
+	for (auto iter=matches01_knn_idximgpt.begin();iter!=matches01_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+
+	for (auto iter=matches10_knn_idximgpt.begin();iter!=matches10_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn_idximgpt, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn_idximgpt, matches10_passRatioTest, thresh_ratioTest);
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches01_passRatioTest, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches01_passRatioTest %d.bmp", matches01_passRatioTest.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	drawMatches(img1, feats1.key_points, img0, feats0.key_points, matches10_passRatioTest, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches10_passRatioTest %d.bmp", matches10_passRatioTest.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches_passSymTest;
+	// 6. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_passSymTest, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches_passSymTest %d.bmp", matches_passSymTest.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size()<8)
+	{
+		return false;
+	}
+
+	// 7. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for(i=0;i<matches_passSymTest.size();i++)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	Matx33d fundamental_matrix;
+
+	fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+
+	vector<DMatch> matches_inliers;
+	vector<Point2d> vImgPts0, vImgPts1;
+
+	for (i=0;i<matches_passSymTest.size();i++)
+	{
+		if (status[i])
+		{
+			matches_inliers.push_back(matches_passSymTest[i]);
+
+			Point2d pt0,pt1;
+			pt0.x = points0[i].x; pt0.y = points0[i].y;
+			pt1.x = points1[i].x; pt1.y = points1[i].y;
+			vImgPts0.push_back(pt0);
+			vImgPts1.push_back(pt1);
+		}
+	}
+
+	double ratioInliers = (double)matches_inliers.size()/matches_passSymTest.size();
+
+	if (matches_inliers.size()<8 || ratioInliers<thresh_minInlierRatio)
+	{
+		// number of inliers must be bigger than 8
+		// and the ratio of inliers should be more than certain threshold
+		return false;
+	}
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_inliers, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches_inliers %d.bmp", matches_inliers.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	//////////////////////////////////////////////////////////////////////////
+
+	// 20151018，repeat last 3 steps ///////////////////////////////////////////////////////////////////////////
+// 	int nInliers_old = 0;
+// 
+// 	while (matches_inliers.size() != nInliers_old)
+// 	{
+// 		nInliers_old = matches_inliers.size();
+// 		matches_inliers.clear();
+// 
+// 		// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
+// 		// because of the usage of normalization, this DLT algorithm is quite robust
+// 		mF = findFundamentalMat(vImgPts0, vImgPts1, FM_8POINT);
+// 		//////////////////////////////////////////////////////////////////////////
+// 
+// 		// 9. optimize the fundamental matrix using only the inliers, optional step
+// 		if (bOptim)
+// 		{
+// 			Matx33d mF_optim;
+// 
+// 			if (vImgPts0.size()>=12)
+// 			{
+// 				// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+// 				// accept the optimized F only if the optimization succeeds
+// 				optim_lm_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,1.0E-6,maxIter,1.0E-8,1.0E-10);
+// 				mF = mF_optim;
+// 			}
+// 		}
+// 		//////////////////////////////////////////////////////////////////////////
+// 
+// 		// 10. augment matching set by checking which match satisfys the determined epipolar geometry, pls refer to Christos's 2014 paper for more details
+// 		vector<DMatch> matches01_aug,matches10_aug;
+// 		GetInliers_knn(feats0.key_points,feats1.key_points,mF,    matches01_knn_idximgpt,matches01_aug,thresh_p2l);
+// 		GetInliers_knn(feats1.key_points,feats0.key_points,mF.t(),matches10_knn_idximgpt,matches10_aug,thresh_p2l);
+// 
+// 		// do symmetry test one more time
+// 		symmetryTest(matches01_aug, matches10_aug, matches_inliers);
+// 
+// 		// update the image point vectors
+// 		vImgPts0.clear();
+// 		vImgPts1.clear();
+// 
+// 		for(i=0;i<matches_inliers.size();i++)
+// 		{
+// 			Point2f pt0f = feats0.key_points[matches_inliers[i].queryIdx].pt;
+// 			Point2f pt1f = feats1.key_points[matches_inliers[i].trainIdx].pt;
+// 
+// 			Point2d pt0d, pt1d;
+// 			pt0d.x=pt0f.x;
+// 			pt0d.y=pt0f.y;
+// 
+// 			pt1d.x=pt1f.x;
+// 			pt1d.y=pt1f.y;
+// 
+// 			vImgPts0.push_back(pt0d);
+// 			vImgPts1.push_back(pt1d);
+// 		}
+// 		
+// 		CString str;
+// 		drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_inliers, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+// 		str.Format("E:\\matches\\matches_final %d.bmp", matches_inliers.size());
+// 		imwrite(str.GetBuffer(), disp_matches);
+// 		//////////////////////////////////////////////////////////////////////////
+// 	}
+// 
+// 	matches = matches_inliers;
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
+	// because of the usage of normalization, this DLT algorithm is quite robust
+	mF = findFundamentalMat(vImgPts0, vImgPts1, FM_8POINT);
+	//////////////////////////////////////////////////////////////////////////
+
+	// 9. optimize the fundamental matrix using only the inliers, optional step
+	if (bOptim)
+	{
+		Matx33d mF_optim;
+
+		if (vImgPts0.size()>=12)
+		{
+			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+			// accept the optimized F only if the optimization succeeds
+			optim_lm_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,1.0E-6,maxIter,1.0E-8,1.0E-10);
+			mF = mF_optim;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 10. augment matching set by checking which match satisfys the determined epipolar geometry, pls refer to Christos's 2014 paper for more details
+	// first delete all inliers from the candidate set to avoid replicates
+	vector<DMatch> matches01_inliers, matches10_inliers;
+
+	for (auto iter=matches_inliers.begin();iter!=matches_inliers.end();++iter)
+	{
+		auto iter01_found = find_if(matches01_knn_idximgpt.begin(),matches01_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a){return (a[0].queryIdx==iter->queryIdx&&a[0].trainIdx==iter->trainIdx);});
+
+		auto iter10_found = find_if(matches10_knn_idximgpt.begin(),matches10_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a){return (a[0].queryIdx==iter->trainIdx&&a[0].trainIdx==iter->queryIdx);});
+
+		// reserve
+ 		matches01_inliers.push_back((*iter01_found)[0]);
+ 		matches10_inliers.push_back((*iter10_found)[0]);
+
+		// delete
+		matches01_knn_idximgpt.erase(iter01_found);
+		matches10_knn_idximgpt.erase(iter10_found);
+	}
+
+	vector<DMatch> matches01_aug,matches10_aug;
+	GetInliers_knn(feats0.key_points,feats1.key_points,mF,    matches01_knn_idximgpt,matches01_aug,thresh_p2l);
+	GetInliers_knn(feats1.key_points,feats0.key_points,mF.t(),matches10_knn_idximgpt,matches10_aug,thresh_p2l);
+
+ 	matches01_inliers.insert(matches01_inliers.end(), matches01_aug.begin(), matches01_aug.end());
+ 	matches10_inliers.insert(matches10_inliers.end(), matches10_aug.begin(), matches10_aug.end());
+ 
+ 	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches01_inliers, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches01_inliers_aug %d.bmp", matches01_inliers.size());
+ 	imwrite(str.GetBuffer(), disp_matches);
+ 	drawMatches(img1, feats1.key_points, img0, feats0.key_points, matches10_inliers, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches10_inliers_aug %d.bmp", matches10_inliers.size());
+ 	imwrite(str.GetBuffer(), disp_matches);
+
+	// do symmetry test one more time
+	vector<DMatch> matches_aug_passSymTest;
+	symmetryTest(matches01_aug, matches10_aug, matches_aug_passSymTest);
+
+ 	vector<DMatch> matches_aug_passSymTest_new;
+ 	symmetryTest(matches01_inliers, matches10_inliers, matches_aug_passSymTest_new);
+
+	matches = matches_inliers;
+	matches.insert(matches.end(), matches_aug_passSymTest.begin(), matches_aug_passSymTest.end());
+
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches_final %d.bmp", matches.size());
+	imwrite(str.GetBuffer(), disp_matches);
+	drawMatches(img0, feats0.key_points, img1, feats1.key_points, matches_aug_passSymTest_new, disp_matches, Scalar(0,255,0), Scalar(0,0,255));
+	str.Format("E:\\matches\\matches_final_new %d.bmp", matches_aug_passSymTest_new.size());
+	imwrite(str.GetBuffer(), disp_matches);
 	//////////////////////////////////////////////////////////////////////////
 
 	return true;
@@ -4857,7 +5436,9 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 
 	int n = matches.size();
 	// 20140831, make sure there are at least 3 matches
-	if (n<3)
+//	if (n<3)
+	// 20151103, make sure there are at least 5 matches to RO
+	if (n<5)
 	{
 		return false;
 	}
@@ -4952,6 +5533,95 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 				cldpt.m_vImgInfos.push_back(cldpt_info);
 
 				clouds.push_back(cldpt);
+			}
+		}
+
+		return true;
+	}
+}
+
+// 20151105, zhaokunz, this PIRO func conduct ro with given matches
+// and the feature points in both cam_data are supposed to be distortion free
+// 采用std::map表示的点云
+bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & cam1,				// input:	all the information about the image 1
+															  const cam_data & cam2,				// input:	all the information about the image 2
+															  int idx_cam1,							// input:	the index of the first camera
+															  int idx_cam2,							// input:	the index of the second camera
+															  const vector<DMatch> & matches,		// input:	the given matches
+															  Matx33d & mR,							// output:	the relative rotation matrix
+															  Matx31d & mt,							// output:	the relative translation vector
+															  SfM_ZZK::PointCloud & map_pointcloud,	// output:	the reconstructed point cloud in reference camera frame, which is the first image
+															  double thresh_reprojErr /*= 1*/		// input:	the threshold of the reprojection error in pixels
+															  )
+{
+	int nFeat1 = cam1.m_feats.key_points.size();
+	int nFeat2 = cam2.m_feats.key_points.size();
+
+	// the feature points in both cam_data are supposed to be distortion free 
+	const Features & feat1_rectified = cam1.m_feats;
+	const Features & feat2_rectified = cam2.m_feats;
+
+	int n = matches.size();
+	
+	if (n<5)
+	{
+		return false;
+	}
+
+	vector<Point2d> imgpts0,imgpts1;
+	for (int i=0;i<n;i++)
+	{
+		Point2d imgpt0, imgpt1;
+		imgpt0.x=feat1_rectified.key_points[matches[i].queryIdx].pt.x;
+		imgpt0.y=feat1_rectified.key_points[matches[i].queryIdx].pt.y;
+		imgpt1.x=feat2_rectified.key_points[matches[i].trainIdx].pt.x;
+		imgpt1.y=feat2_rectified.key_points[matches[i].trainIdx].pt.y;
+
+		imgpts0.push_back(imgpt0);
+		imgpts1.push_back(imgpt1);
+	}
+
+	vector<Point3d> vwrdpts;
+	double err_rpj = PIRO_GN(imgpts0,imgpts1,cam1.m_K,cam2.m_K,mR,mt,vwrdpts);
+
+	// record which points' Z coordinates are negative or 0
+	vector<bool> status_neg(n);
+	for (int i=0;i<n;i++)
+	{
+		if (vwrdpts[i].z<=0)
+		{
+			status_neg[i]=true;
+		}
+	}
+
+	if (err_rpj>=thresh_reprojErr)
+	{
+		return false;
+	}
+	else
+	{
+		for (int i=0;i<n;i++)
+		{
+			if (!status_neg[i])
+			{
+				if (cam1.m_feats.tracks[matches[i].queryIdx] == -1 || cam2.m_feats.tracks[matches[i].trainIdx] == -1 ||
+					cam1.m_feats.tracks[matches[i].queryIdx] != cam2.m_feats.tracks[matches[i].trainIdx])
+				{
+					// if the matched features do not belong to the same track
+					// the reconstructed object coordinates will not be accepted
+					continue;
+				}
+
+				Point3d pt = vwrdpts[i];
+
+				CloudPoint cldpt;
+				cldpt.m_pt.x = pt.x;
+				cldpt.m_pt.y = pt.y;
+				cldpt.m_pt.z = pt.z;
+
+				cldpt.m_idx = cam1.m_feats.tracks[matches[i].queryIdx];
+
+				map_pointcloud.insert(make_pair(cldpt.m_idx, cldpt));
 			}
 		}
 
@@ -6485,6 +7155,104 @@ void DeepVoid::GetReconstructedTrackNum(const vector<cam_data> & allCams,	// inp
 	sort(pairs.begin(), pairs.end(), [](const Point2i & a, const Point2i & b){return a.y>b.y;});
 }
 
+// 20151103, zhaokunz, find images good for EO
+// rank all images according to the number of reconstructed tracks they observed
+void DeepVoid::RankImages_NumObjPts(const vector<cam_data> & allCams,	// input:	all images
+									const vector<CloudPoint> & clouds,	// input:	all reconstructed tracks
+									const vector<int> & status,			// input:	status[i]=1 means that image i is not considered
+									vector<SfM_ZZK::pair_ij> & imgRank	// output:	the maximum number of tracks observed by single image 
+									)
+{
+	imgRank.clear();
+
+	int nTracks = clouds.size();
+	int nImgs = allCams.size();
+
+	// initial hash_set
+	hash_set<int> allTracks;
+	for (int i=0;i<nTracks;i++)
+	{
+		allTracks.insert(clouds[i].m_idx);
+	}
+
+	for (int i=0;i<nImgs;i++)
+	{
+		if (status[i])
+		{
+			continue;
+		}
+
+		vector<int> tracks = allCams[i].m_feats.tracks;
+		int n_feats = tracks.size();
+
+		int nPts_oneImg = 0;
+		for (int j=0;j<n_feats;j++)
+		{
+			if (tracks[j]==-1)
+			{
+				continue;
+			}
+
+			if (allTracks.find(tracks[j]) != allTracks.end()) // found
+			{
+				nPts_oneImg++;
+			}
+		}
+
+		imgRank.push_back(make_pair(i,nPts_oneImg));
+	}
+
+	sort(imgRank.begin(), imgRank.end(), [](const std::pair<int,int> & a, const std::pair<int,int> & b){return a.second>b.second;});
+}
+
+// 20151105, zhaokunz, find images good for EO
+// rank all images according to the number of reconstructed tracks they observed
+// 使用std::map表示的点云结构
+void DeepVoid::RankImages_NumObjPts(const vector<cam_data> & allCams,			// input:	all images
+								    const SfM_ZZK::PointCloud & map_pointcloud,	// input:	all reconstructed tracks
+								    vector<SfM_ZZK::pair_ij> & imgRank			// output:	the maximum number of tracks observed by single image 
+								    )
+{
+	imgRank.clear();
+
+	for (int i=0;i<allCams.size();++i)
+	{
+		const cam_data & cam = allCams[i];
+
+		if (cam.m_bOriented)
+		{
+			// 如果已经定向完了就不需要再考虑了
+			continue;
+		}
+
+		int nPts_oneImg = 0;
+
+		const vector<int> & tracks = cam.m_feats.tracks;
+
+		for (int j=0;j<tracks.size();++j)
+		{
+			const int & trackID = tracks[j];
+
+			if (trackID==-1)
+			{
+				// 该特征点不属于任何的特征轨迹
+				continue;
+			}
+
+			auto iter_found = map_pointcloud.find(trackID);
+
+			if (iter_found != map_pointcloud.end())
+			{
+				++nPts_oneImg;
+			}
+		}
+
+		imgRank.push_back(make_pair(i,nPts_oneImg));
+	}
+
+	sort(imgRank.begin(), imgRank.end(), [](const std::pair<int,int> & a, const std::pair<int,int> & b){return a.second>b.second;});
+}
+
 // 20150127, zhaokunz, find image pair good for RO
 void DeepVoid::FindPairObservingMostCommonTracks(const vector<cam_data> & allCams,			// input:	all images
 											     const vector<vector<Point2i>> & allTracks,	// input:	all feature tracks
@@ -7778,6 +8546,597 @@ bool DeepVoid::EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all 
 		clouds.push_back(cldpt);
 	}
 
+	return true;
+}
+
+// 20151105, zhaokunz, feature points in all images are supposed to be distortion free
+// 点云和特征轨迹都改用std::map容器
+bool DeepVoid::EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all the images
+							 int idx_refimg,							// input:	the reference image, whose R=I and t = [0,0,0]'
+						     int idx_cam,								// input:	the index of the image to be oriented
+							 SfM_ZZK::PointCloud & map_pointcloud,		// input&output:	the reconstructed cloud points in reference camera frame, which is the first image
+							 const SfM_ZZK::MultiTracks & map_tracks,	// input:	all the tracks
+							 double thresh_rpj_inlier /*= 1*/,			// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
+							 double thresh_ratio_inlier /*= 0.5*/		// input:	the allowed minimum ratio of inliers within all reconstructed matches
+							 )
+{
+	cam_data & cam = vCams[idx_cam]; // 当前待定向的图像
+	const vector<int> & tracks = cam.m_feats.tracks;
+
+	int nImg = vCams.size(); // 总图像数目
+
+	int n_allCldPts = map_pointcloud.size(); // 已重建出来的物点个数
+
+	int nFeat = tracks.size(); // 当前图像中的特征点总个数
+
+	const Matx33d & mK = cam.m_K;
+
+	// check how many tracks have already been reconstructed
+	vector<Point3f> objectPoints;
+	vector<Point2f> imagePoints;
+
+	// the idx of image points in image that has already been reconstructed
+	vector<Point3i> vIdxTrack_exist;
+
+	vector<int> vIdxTrack_nonExist;
+
+	for (int i=0;i<nFeat;i++)
+	{
+		const int & trackID = tracks[i];
+
+		if (trackID == -1)
+		{
+			continue;
+		}
+
+		auto iter_found = map_pointcloud.find(trackID);
+
+		if (iter_found==map_pointcloud.end())
+		{
+			// 当前特征点还未被重建出来
+			vIdxTrack_nonExist.push_back(i);
+			continue;
+		}
+		
+		// 重建出来的物点坐标
+		Point3f pt3d;
+		pt3d.x = iter_found->second.m_pt.x;
+		pt3d.y = iter_found->second.m_pt.y;
+		pt3d.z = iter_found->second.m_pt.z;
+		objectPoints.push_back(pt3d);
+
+		// 重建出来的物点对应的像点坐标
+		Point2f pt2d;
+		pt2d.x = cam.m_feats.key_points[i].pt.x;
+		pt2d.y = cam.m_feats.key_points[i].pt.y;
+		imagePoints.push_back(pt2d);
+	}
+
+	int n_exist = objectPoints.size();			// the number of observed tracks already been reconstructed
+	int n_nonExist = vIdxTrack_nonExist.size(); // the number of observed tracks haven't been reconstructed yet
+
+	if (n_exist < 6)
+	{
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("no more than 6 exist points");
+
+		return false;
+	}
+
+	Mat distCoeffs;
+	Matx31d rvec, mt;
+	vector<int> vInliers;
+
+	try
+	{
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str;
+		str = e.msg.c_str();
+		AfxMessageBox(str);
+	}
+
+	int n_inliers = vInliers.size();
+
+	double ratio_inliers = n_inliers/(double)n_exist;
+
+	// if the ratio of inliers is not big enough then this eo is considered failure
+	if (ratio_inliers < thresh_ratio_inlier || n_inliers < 6)
+	{
+		CString strInfo;
+		strInfo.Format("ratio_inliers: %lf, n_inliers: %d", ratio_inliers, n_inliers);
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+		return false;
+	}
+
+	// update the EO //////////////////////////////////////////////////////////////////////////
+	Matx33d mR;
+
+	Rodrigues(rvec, mR);
+	
+	for (int i=0;i<3;i++)
+	{
+		for (int j=0;j<3;j++)
+		{
+			cam.m_R(i,j) = cam.R[i*3+j] = mR(i,j);
+		}
+		cam.m_t(i) = cam.t[i] = mt(i);
+	}
+	cam.m_bOriented = true;
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+// 	vector<uchar> vbools(n_exist);
+// 	for (i=0;i<n_inliers;i++)
+// 	{
+// 		vbools[vInliers[i]] = 1;
+// 	}
+// 
+// 	for (i=0;i<n_exist;i++)
+// 	{
+// 		int idx_obj = vIdxTrack_exist[i].x;
+// 		int idx_img = vIdxTrack_exist[i].y;
+// 
+// 		CloudPoint_ImgInfo imgInfo;
+// 		imgInfo.m_idxImg = idx_cam;
+// 		imgInfo.m_idxImgPt = idx_img;
+// 
+// 		vector<CloudPoint_ImgInfo>::iterator iter = find(clouds[idx_obj].m_vImgInfos.begin(),clouds[idx_obj].m_vImgInfos.end(),imgInfo);
+// 
+// 		if (vbools[i]) // inlier
+// 		{
+// 			if (iter == clouds[idx_obj].m_vImgInfos.end())
+// 			{
+// 				// the inlier image point is not associated with a object point yet
+// 				// then associate them
+// 				clouds[idx_obj].m_vImgInfos.push_back(imgInfo);
+// 			}
+// 		} 
+// 		else // outlier
+// 		{
+// 			if (iter != clouds[idx_obj].m_vImgInfos.end())
+// 			{
+// 				// if the outlier image point already exist, then erase it
+// 				clouds[idx_obj].m_vImgInfos.erase(iter);
+// 			}
+// 		}
+// 	}
+// 
+// 	// using current inliers to do sba
+// 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA in EO starts"));
+// 	double opts[5];
+// 	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+// 	opts[1] = 1.0E-8;	// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+// 	opts[2] = 1.0E-8;	// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+// 	opts[3] = 1.0E-12;	// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+// 	opts[4] = 0;		// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+// 
+// 	double info[10];
+// 
+// // 	int nnn = optim_sba_levmar_XYZ_ext_rotvec(clouds, vCams, idx_refimg, 1024, opts, info);
+// // 	double rrr = sqrt(info[1]/nnn);
+// // 	CString strInfo;
+// // 	strInfo.Format("SBA in EO ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[5], info[6]);
+// 
+// 	int nnn = optim_sba_levmar_XYZ_ext_rotvec_own(clouds, vCams, idx_refimg, 1024, opts, info);
+// 	double rrr = info[1];
+// 	CString strInfo;
+// 	strInfo.Format("SBA in EO ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[3], info[4]);
+// 
+// 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+// 
+// 	// check if the inliers change after sba
+// 	for (i=0;i<3;i++)
+// 	{
+// 		for (j=0;j<3;j++)
+// 		{
+// 			mR(i,j) = vCams[idx_cam].R[i*3+j];
+// 		}
+// 	}
+// 	mt(0) = vCams[idx_cam].t[0];
+// 	mt(1) = vCams[idx_cam].t[1];
+// 	mt(2) = vCams[idx_cam].t[2];
+// 
+// 	Matx33d mKR = mK*mR;
+// 	Matx31d mKt = mK*mt;
+// 
+// 	vector<uchar> vbools_new(n_exist);
+// 
+// 	for (i=0;i<n_exist;i++)
+// 	{
+// 		int idx_obj = vIdxTrack_exist[i].x;
+// 
+// 		Matx31d XYZ;
+// 		XYZ(0) = clouds[idx_obj].m_pt.x;
+// 		XYZ(1) = clouds[idx_obj].m_pt.y;
+// 		XYZ(2) = clouds[idx_obj].m_pt.z;
+// 
+// 		Matx31d xyw = mKR*XYZ+mKt;
+// 
+// 		double dx = xyw(0)/xyw(2)-imagePoints[i].x;
+// 		double dy = xyw(1)/xyw(2)-imagePoints[i].y;
+// 
+// 		double d = sqrt(dx*dx+dy*dy);
+// 
+// 		if (d<thresh_rpj_inlier)
+// 		{
+// 			vbools_new[i] = 1;
+// 		} 
+// 	}
+// 
+// //	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("001");
+// 
+// 	// update the inliers, maybe there are more inliers after sba
+// 	for (i=0;i<n_exist;i++)
+// 	{
+// 		int idx_obj = vIdxTrack_exist[i].x;
+// 		int idx_img = vIdxTrack_exist[i].y;
+// 
+// 		CloudPoint_ImgInfo imgInfo;
+// 		imgInfo.m_idxImg = idx_cam;
+// 		imgInfo.m_idxImgPt = idx_img;
+// 
+// //		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("004");
+// 
+// 		vector<CloudPoint_ImgInfo>::iterator iter = find(clouds[idx_obj].m_vImgInfos.begin(),clouds[idx_obj].m_vImgInfos.end(),imgInfo);
+// 
+// //		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("005");
+// 
+// 		if (vbools_new[i]) // inlier
+// 		{
+// 			if (iter == clouds[idx_obj].m_vImgInfos.end())
+// 			{
+// //				theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("006");
+// 
+// 				// the inlier image point is not associated with a object point yet
+// 				// then associate them
+// 				clouds[idx_obj].m_vImgInfos.push_back(imgInfo);
+// 			}
+// 		} 
+// 		else // outlier
+// 		{
+// 			if (iter != clouds[idx_obj].m_vImgInfos.end())
+// 			{
+// // 				strInfo.Format("007 idx_obj: %d", idx_obj);
+// // 				theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+// 
+// 				// if the outlier image point already exist, then erase it
+// 				clouds[idx_obj].m_vImgInfos.erase(iter);
+// 			}
+// 		}
+// 	}
+// 	
+// //	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("002");
+// 
+// 	// finally, we have to triangulate 
+// 	// first, identify which images have already been oriented
+// 	vector<int> vIdxOrientedImg;
+// 	for (i=0;i<nImg;i++)
+// 	{
+// 		if (vCams[i].R[0]<-90 || i == idx_cam)
+// 		{
+// 			continue;
+// 		}
+// 		vIdxOrientedImg.push_back(i);
+// 	}
+// 
+// 	vector<Matx33d> vKs_oriented;
+// 	vector<Matx33d> vRs_oriented;
+// 	vector<Matx31d> vts_oriented;
+// 
+// 	vector<vector<Point3d>> wrdpts_new(n_nonExist);
+// 
+// 	// tiangulate points with each oriented image
+// 	for (k=0;k<vIdxOrientedImg.size();k++)
+// 	{
+// 		int idx = vIdxOrientedImg[k];
+// 
+// 		Matx33d mK_other, mR_other;
+// 		Matx31d mt_other;
+// 
+// 		cam_data cam_other = vCams[idx];
+// 		
+// 		mK_other(0,0) = cam_other.fx;
+// 		mK_other(1,1) = cam_other.fy;
+// 		mK_other(0,1) = cam_other.s;
+// 		mK_other(0,2) = cam_other.cx;
+// 		mK_other(1,2) = cam_other.cy;
+// 		mK_other(2,2) = 1;
+// 
+// 		for (i=0;i<3;i++)
+// 		{
+// 			for (j=0;j<3;j++)
+// 			{
+// 				mR_other(i,j) = cam_other.R[i*3+j];
+// 			}
+// 		}
+// 
+// 		mt_other(0) = cam_other.t[0];
+// 		mt_other(1) = cam_other.t[1];
+// 		mt_other(2) = cam_other.t[2];
+// 
+// 		vKs_oriented.push_back(mK_other);
+// 		vRs_oriented.push_back(mR_other);
+// 		vts_oriented.push_back(mt_other);
+// 
+// 		vector<int> idxFeat_k;
+// 
+// 		vector<Point2d> imgpts, imgpts_other;
+// 		for (i=0;i<n_nonExist;i++)
+// 		{
+// 			int idxTrack = tracks[vIdxTrack_nonExist[i]];
+// 			vector<Point2i> track = allTracks[idxTrack];
+// 
+// 			auto iter = find_if(track.begin(), track.end(), [idx](const Point2i & pt){return pt.x == idx;}); // Lambda Expressions in C++
+// 
+// 			if (iter!=track.end()) // found one
+// 			{
+// 				Point2d pt_other;
+// 				pt_other.x = cam_other.m_feats.key_points[iter->y].pt.x;
+// 				pt_other.y = cam_other.m_feats.key_points[iter->y].pt.y;
+// 				imgpts_other.push_back(pt_other);
+// 
+// 				iter = find_if(track.begin(), track.end(), [idx_cam](const Point2i & pt){return pt.x == idx_cam;});
+// 
+// 				Point2d pt;
+// 				pt.x = cam.m_feats.key_points[iter->y].pt.x;
+// 				pt.y = cam.m_feats.key_points[iter->y].pt.y;
+// 				imgpts.push_back(pt);
+// 
+// 				idxFeat_k.push_back(i);
+// 			}
+// 		}
+// 
+// 		// there are no common track needs to be triangulated between current image and the kth image
+// 		if (imgpts.size()<1)
+// 		{
+// 			continue;
+// 		}
+// 
+// 		vector<Point3d> wrdpts;
+// 		vector<Point2d> errs;
+// 		double rpj_err = Triangulate_Optimal(imgpts_other, mK_other, mR_other, mt_other, imgpts, mK, mR, mt, wrdpts, errs);
+// 
+// 		for (i=0;i<imgpts.size();i++)
+// 		{
+// 			if (errs[i].x >= 1.5 || errs[i].y >= 1.5)
+// 			{
+// 				continue;
+// 			}
+// 
+// 			wrdpts_new[idxFeat_k[i]].push_back(wrdpts[i]);
+// 		}
+// 	}
+// 
+// //	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("003");
+// 
+// 	vIdxOrientedImg.push_back(idx_cam);
+// 	vKs_oriented.push_back(mK);
+// 	vRs_oriented.push_back(mR);
+// 	vts_oriented.push_back(mt);
+// 
+// 	// 
+// 	for (i=0;i<n_nonExist;i++)
+// 	{
+// 		vector<Point3d> pts = wrdpts_new[i];
+// 
+// 		int nCand = pts.size();
+// 
+// 		if (nCand<1) // there should be at least 1 candidate 3d coordinates
+// 		{
+// 			continue;
+// 		}
+// 
+// 		int idxTrack = tracks[vIdxTrack_nonExist[i]];
+// 		vector<Point2i> track = allTracks[idxTrack];
+// 
+// 		vector<int> vNs;
+// 		vector<double> vrpjerrs;
+// 		vector<vector<Point2i>> vVisis;
+// 
+// 		// check each candidate
+// 		for (j=0;j<nCand;j++)
+// 		{
+// 			Point3d pt = pts[j];
+// 			Matx31d XYZ;
+// 			XYZ(0)=pt.x;
+// 			XYZ(1)=pt.y;
+// 			XYZ(2)=pt.z;
+// 
+// 			int N = 0;
+// 			double sum2 = 0;
+// 			vector<Point2i> visi;
+// 
+// 			for (k=0;k<vIdxOrientedImg.size();k++)
+// 			{
+// 				int idxImg = vIdxOrientedImg[k];
+// 
+// 				auto iter = find_if(track.begin(), track.end(), [idxImg](const Point2i & pt){return pt.x == idxImg;});
+// 
+// 				if (iter == track.end())
+// 				{
+// 					continue;
+// 				}
+// 
+// 				cam_data cam_other = vCams[idxImg];
+// 
+// 				double x0 = cam_other.m_feats.key_points[iter->y].pt.x;
+// 				double y0 = cam_other.m_feats.key_points[iter->y].pt.y;
+// 
+// 				// project
+// 				Matx31d xyw = vKs_oriented[k]*vRs_oriented[k]*XYZ+vKs_oriented[k]*vts_oriented[k];
+// 				double x = xyw(0)/xyw(2);
+// 				double y = xyw(1)/xyw(2);
+// 
+// 				double dx = x-x0;
+// 				double dy = y-y0;
+// 
+// 				double d2 = dx*dx+dy*dy;
+// 
+// 				double d = sqrt(d2);
+// 
+// 				if (d>=1.5)
+// 				{
+// 					continue;
+// 				}
+// 
+// 				N++;
+// 				sum2+=d2;
+// 
+// 				visi.push_back(*iter);
+// 			}
+// 
+// 			double rpjerr = sqrt(sum2/N);
+// 
+// 			vNs.push_back(N);
+// 			vrpjerrs.push_back(rpjerr);
+// 			vVisis.push_back(visi);
+// 		}
+// 
+// 		// find the coordinate that delivers the maximum matched images
+// 		auto iter = max_element(vNs.begin(), vNs.end());
+// 		int max_imgs = *iter;
+// 
+// 		if (max_imgs < 2)
+// 		{
+// 			continue;
+// 		}
+// 		
+// 		vector<int> idxMax;
+// 		vector<double> rpjMax;
+// 
+// 		for (j=0;j<nCand;j++)
+// 		{
+// 			if (vNs[j]==max_imgs)
+// 			{
+// 				idxMax.push_back(j);
+// 				rpjMax.push_back(vrpjerrs[j]);
+// 			}
+// 		}
+// 
+// 		auto iter2 = min_element(rpjMax.begin(), rpjMax.end());
+// 		int idx = iter2 - rpjMax.begin();
+// 		int idx_final = idxMax[idx];
+// 
+// 		Point3d pt = pts[idx_final];
+// 		vector<Point2i> visi_track = vVisis[idx_final];
+// 
+// 		// this track is added
+// 		CloudPoint cldpt;
+// 		cldpt.m_idx = tracks[vIdxTrack_nonExist[i]];
+// 
+// 		cldpt.m_pt.x = pt.x;
+// 		cldpt.m_pt.y = pt.y;
+// 		cldpt.m_pt.z = pt.z;
+// 
+// 		for (j=0;j<visi_track.size();j++)
+// 		{
+// 			Point2i indices = visi_track[j];
+// 			
+// 			CloudPoint_ImgInfo cldpt_imginfo;
+// 			cldpt_imginfo.m_idxImg = indices.x;
+// 			cldpt_imginfo.m_idxImgPt = indices.y;
+// 			cldpt.m_vImgInfos.push_back(cldpt_imginfo);
+// 		}
+// 
+// 		clouds.push_back(cldpt);
+// 	}
+
+	return true;
+}
+
+// 20151105, zhaokunz, feature points in all images are supposed to be distortion free
+// 点云和特征轨迹都改用std::map容器
+// 只针对一幅图像只尝试对其进行定向，不负责前方交会和光束法平差
+bool DeepVoid::EO_PnP_RANSAC(const cam_data & cam,						// input:	the image to be oriented
+						     const SfM_ZZK::PointCloud & map_pointcloud,// input:	the reconstructed cloud points in reference camera frame, which is the first image
+						     Matx33d & mR,								// output:	the estimated rotation matrix
+						     Matx31d & mt,								// output:	the estimated translation vector
+						     double thresh_rpj_inlier /*= 1*/,			// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
+						     double thresh_ratio_inlier /*= 0.5*/		// input:	the allowed minimum ratio of inliers within all reconstructed matches
+						     )
+{
+	const vector<cv::KeyPoint> & key_points = cam.m_feats.key_points; // 当前图像的所有特征点的坐标
+	const vector<int> & tracks = cam.m_feats.tracks; // 当前图像所有特征点所属的特征轨迹
+	const Matx33d & mK = cam.m_K; // 当前图像的内参数矩阵
+
+	// check how many tracks have already been reconstructed
+	vector<Point3f> objectPoints;
+	vector<Point2f> imagePoints;
+
+	for (int i=0;i<tracks.size();i++)
+	{
+		const int & trackID = tracks[i];
+
+		if (trackID == -1)
+		{
+			continue;
+		}
+
+		auto iter_found = map_pointcloud.find(trackID);
+
+		if (iter_found==map_pointcloud.end())
+		{
+			// 当前特征点还未被重建出来
+			continue;
+		}
+		
+		// 重建出来的物点坐标
+		Point3f pt3d;
+		pt3d.x = iter_found->second.m_pt.x;
+		pt3d.y = iter_found->second.m_pt.y;
+		pt3d.z = iter_found->second.m_pt.z;
+		objectPoints.push_back(pt3d);
+
+		// 重建出来的物点对应的像点坐标
+		Point2f pt2d;
+		pt2d.x = key_points[i].pt.x;
+		pt2d.y = key_points[i].pt.y;
+		imagePoints.push_back(pt2d);
+	}
+
+	int n_exist = objectPoints.size(); // the number of observed tracks already been reconstructed
+
+	if (n_exist < 6)
+	{
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("EO failed: no more than 6 exist points");
+
+		return false;
+	}
+
+	Mat distCoeffs;
+	Matx31d rvec;
+	vector<int> vInliers;
+
+	try
+	{
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str;
+		str = e.msg.c_str();
+		AfxMessageBox(str);
+	}
+
+	int n_inliers = vInliers.size();
+
+	double ratio_inliers = n_inliers/(double)n_exist;
+
+	// if the ratio of inliers is not big enough then this eo is considered failure
+	if (ratio_inliers < thresh_ratio_inlier || n_inliers < 6)
+	{
+		CString strInfo;
+		strInfo.Format("RANSAC EO failed: ratio_inliers: %lf, n_inliers: %d", ratio_inliers, n_inliers);
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+		return false;
+	}
+
+	// 从旋转向量生成旋转矩阵
+	Rodrigues(rvec, mR);
+	
 	return true;
 }
 
@@ -27827,7 +29186,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 01 direction --------------------------------------------------------------------------*/
 	// dir = [1, 0] i.e. along positive direction of x-axis or the 0 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
 	for (i=0;i<h;i++) // left image border
 	{
 		for (k=0;k<nCam;k++)
@@ -27867,7 +29226,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 02 direction --------------------------------------------------------------------------*/
 	// dir = [-1, 0] i.e. along negative direction of x-axis or the 180 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
 	for (i=0;i<h;i++) // right image border
 	{
 		for (k=0;k<nCam;k++)
@@ -27907,7 +29266,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 03 direction --------------------------------------------------------------------------*/
 	// dir = [0, 1] i.e. along positive direction of y-axis or the -90 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 03 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 03 starts");
 	for (k=0;k<nCam;k++) // top image border
 	{
 		for (j=0;j<w;j++)
@@ -27947,7 +29306,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 04 direction --------------------------------------------------------------------------*/
 	// dir = [0, -1] i.e. along negative direction of y-axis or the 90 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 04 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 04 starts");
 	for (k=0;k<nCam;k++) // bottom image border
 	{
 		for (j=0;j<w;j++)
@@ -27987,7 +29346,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 05 direction --------------------------------------------------------------------------*/
 	// dir = [1, 1] i.e. along the -45 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 05 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 05 starts");
 	for (i=0;i<h;i++) // left image border
 	{
 		for (k=0;k<nCam;k++)
@@ -28042,7 +29401,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 06 direction --------------------------------------------------------------------------*/
 	// dir = [-1, -1] i.e. along the 135 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 06 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 06 starts");
 	for (i=0;i<h;i++) // right image border
 	{
 		for (k=0;k<nCam;k++)
@@ -28097,7 +29456,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 07 direction --------------------------------------------------------------------------*/
 	// dir = [1, -1] i.e. along the 45 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 07 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 07 starts");
 	for (i=0;i<h;i++) // left image border
 	{
 		for (k=0;k<nCam;k++)
@@ -28152,7 +29511,7 @@ void DeepVoid::Extract_MRF_ncc_d_n_DP_withInvalids(const Matx33d & mK0,			// inp
 
 	/*------------ 08 direction --------------------------------------------------------------------------*/
 	// dir = [-1, 1] i.e. along the -135 direction
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 08 starts");
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 08 starts");
 	for (i=0;i<h;i++) // right image border
 	{
 		for (k=0;k<nCam;k++)
@@ -31602,8 +32961,8 @@ void DeepVoid::MVDE_package_final(const CString & path_output,					// input:	the
 	}
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	for (k=0;k<nImg;k++)
-//	for (k=0;k<1;k++)
+//	for (k=0;k<nImg;++k)
+	for (k=28;k<29;++k)
 	{
 		int n_spt = vIdxSupports[k].size();
 
@@ -34125,7 +35484,27 @@ void DeepVoid::PatchMatch_Binocular_3DPropagation(const Matx33d & mK0,				// inp
 				for (i=0;i<imgHeight;i++)
 				{
 					strInfo.Format("evaluate row %04d with image %02d in iteration %02d", i, k, ii);
-//					theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+					theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+					// 20151106, 输出运行中的结果
+// 					if (i==0||i==79||i==159||i==239||i==319||i==399||i==479)
+// 					{
+// 						Mat mDepth_map;
+// 
+// 						double min_depth, max_depth;
+// 
+// 						minMaxIdx(vDepths[k], &min_depth, &max_depth);
+// 
+// 						vDepths[k].convertTo(mDepth_map, CV_8UC1, 255/(max_depth-min_depth), -255*min_depth/(max_depth-min_depth));
+// 
+// 						strInfo.Format("D:\\all\\depth map iteration %02d with image %02d at row %04d.bmp", ii, k, i);
+// 						imwrite(strInfo.GetBuffer(), mDepth_map);
+// 
+// 						Mat mNormColor;
+// 						GetNormColorField(mK0, mR0, mt0, fx0_1, fy0_1, vDepths[k], vHxs[k], vHys[k], mNormColor);
+// 						strInfo.Format("D:\\all\\normcolor map iteration %02d with image %02d at row %04d.bmp", ii, k, i);
+// 						imwrite(strInfo.GetBuffer(), mNormColor);
+// 					}
 
 					for (j=0;j<imgWidth;j++)
 					{
@@ -34314,7 +35693,7 @@ void DeepVoid::PatchMatch_Binocular_3DPropagation(const Matx33d & mK0,				// inp
 				for (i=imgHeight-1;i>=0;i--)
 				{
 					strInfo.Format("evaluate row %04d with image %02d in iteration %02d", i, k, ii);
-//					theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+					theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 					for (j=imgWidth-1;j>=0;j--)
 					{
@@ -36539,11 +37918,18 @@ void DeepVoid::GetInliers_knn(const vector<KeyPoint> & pts0,			// input:	keypoin
 
 		int n_valid = matches_valid.size();
 
-		if (n_valid!=1)
+		if (/*n_valid!=1*/n_valid<1) // 20151018改，把必须没有冲突的约束给改弱了
 		{
+			// 表示该特征点的knn中没有一个满足当前F估计的nn
 			continue;
 		}
 
+		// 20151018注
+		// 运行至此处，说明该特征点的knn中至少有一个nn满足当前F估计
+		// 那么输出其中匹配距离最小的那个，也就是最前面的[0]，如果输入的knn是按匹配距离降序排列的
+		// 如果有2个或以上的nn满足F，即产生冲突时，这样做也是合理的，反正后续还有symmetry test，如果左右对称性检查都通过了
+		// 该对匹配就得以保留了，否则就在symmetry test这一步中被删除了。
+		// 像之前那样一旦出现冲突就所有都不录入的做法有点约束设的太强了。
 		matches_out.push_back(matches_valid[0]);
 	}
 }

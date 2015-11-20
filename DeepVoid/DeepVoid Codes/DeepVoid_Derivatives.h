@@ -44,6 +44,10 @@ struct Point4d
 namespace derivatives
 {
 
+// 20151107, ¼ÆËã Huber È¨ÖØ
+// Ä¬ÈÏ²Ğ²î x ¿Ï¶¨ÊÇÕıÖµ£¬ÀıÈçÖØÍ¶Ó°²Ğ²îÕâÖÖ
+double weight_Huber(double x, double c);
+
 // ÏßĞÔ³ÉÏñµã×ø±ê¶Ôfx,fy,cx,cy,s¹²5¸öÄÚ²ÎÊıÇóµ¼
 Matx<double,2,5> der_xy_fxfycxcys(const Matx33d & mR,	// input:	current rotation matrix
 								  const Matx31d & mt,	// input:	current translation vector
@@ -380,6 +384,31 @@ void j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 				  Mat & g,									// Êä³ö£º6*m+4*nÎ¬µÄ²ÎÊıÌİ¶È
 				  vector<double> & vds						// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
 				  );
+
+// 20151107, iteratively reweighted least square IRLS
+// µü´úÖØ¼ÓÈ¨Ä£Ê½£¬ÎªÁËÓ¦¶Ô outliers
+// ²ÉÓÃ Huber È¨ÖØ
+void j_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
+						     const vector<Matx33d> & Ks,			// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+						     const vector<Matx33d> & Rs,			// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+							 const vector<Matx31d> & ts,			// ÊäÈë£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+							 const vector<Matx<double,5,1>> & dists,// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+							 const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+							 const vector<Point2d> & xys,			// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+							 vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬Ò²¼´¸÷¶Ô½ÇÏßÔªËØ (i)=wi*wi£¬¼´Ã¿¸ö¹Û²âÁ¿È¨ÖØµÄÆ½·½£¬È¨ÖØÊÇÓÉ¹Û²âÁ¿×ÔÉíµÄÖØÍ¶Ó°²Ğ²îÀ´¾ö¶¨µÄ
+							 const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+							 const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+							 const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+							 vector<Matx<double,6,6>> & U,			// Êä³ö£ºm¸öUj¾ØÕó£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							 vector<Matx<double,4,4>> & V,			// Êä³ö£ºn¸öVi¾ØÕó£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+							 vector<Matx<double,6,4>> & W,			// Êä³ö£ºl¸öWij¾ØÕó£¬Í¬Ê±¸ú¿Õ¼äµã¼°Æä¹Û²âÍ¼ÏñÓĞ¹Ø
+							 vector<Matx<double,6,1>> & ea,			// Êä³ö£ºm¸öeaj²Ğ²îÏòÁ¿£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							 vector<Matx<double,4,1>> & eb,			// Êä³ö£ºn¸öebi²Ğ²îÏòÁ¿£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+							 Mat & f,								// Êä³ö£º2*l¸öÏñµã²Ğ²îÁ¿£¬ÆäÊµÒ²¾ÍÊÇÆÀ¼ÛµÄÄ¿±êº¯ÊıÖµ£¬×¼È·À´ËµÓ¦¸ÃÊÇ wi*fi£¬»¹Ó¦¸Ã³ËÉÏÈ¨ÖØÖµ
+							 Mat & g,								// Êä³ö£º6*m+4*nÎ¬µÄ²ÎÊıÌİ¶È
+							 vector<double> & vds,					// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
+							 double tc = 3.0						// ÊäÈë£º¶ÔÓÚÖØÍ¶Ó°²Ğ²î d Ğ¡ÓÚ tc µÄ¹Û²âÁ¿È¨ÖØÈ«¶¨Îª1£¬·ñÔò¶¨È¨ÖØÎª tc/d
+							 );
 
 void j_f_w_t_XYZ(const vector<Point3d> & XYZs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZ×ø±ê
 				 const vector<Matx33d> & Ks,			// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
@@ -1221,6 +1250,15 @@ void optim_lm_fcxcy_w_t_k1k2(const vector<Point3d> & vWrdPts,	// ÊäÈë£º		¿ØÖÆµã×
 namespace SfM_ZZK
 {
 
+// 2015.11.03, a pair structure representing a 2D index
+typedef std::pair<int,int> pair_ij;
+
+// 2015.11.03, a pair structure representing a 2D index with a int value, often used in std::vector
+typedef std::pair<pair_ij,int> pair_ij_k;
+
+// 2015.11.03, a pair structure representing a 2D index with a double value, often used in std::vector
+typedef std::pair<pair_ij,double> pair_ij_a;
+
 // 2015.09.20, a map container contains all the pairwise matches between each image pair: {<image i,image j>, matches}, named after openMVG convention.
 typedef std::map<std::pair<int,int>, std::vector<DMatch>> PairWiseMatches;
 
@@ -1228,13 +1266,20 @@ typedef std::map<std::pair<int,int>, std::vector<DMatch>> PairWiseMatches;
 // The corresponding image points with their imageId and FeatureId.
 // the reason why map instead of set is used here is that one track is supposed to contain only one feature for one image
 // setting ImageId the first input of map can make it unique, whereas (0,1) and (0,2) are two different keys to set
-typedef std::map<int,int> OneTrack;
+// typedef std::map<int,int> OneTrack;
+// 20151108 Ìí¼ÓÒ»Î»±í¶ÔÓ¦ÌØÕ÷µãÊÇÄÚµã£¨1£©»¹ÊÇÍâµã£¨0£©
+typedef std::map<int,std::pair<int,int>> OneTrack;
 
 // 2015.10.08, a map container to store all tracks: collection of {trackId, onetrack}
 typedef std::map<int,OneTrack> MultiTracks;
 
+// 2015.11.04, a map container to store all the coordinates of the reconstructed tracks
+typedef std::map<int,DeepVoid::CloudPoint> PointCloud;
+
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
 // global minimum weight version
+// 2015.10.22, °Ñ±£´æÈ¨ÖØµÄ{<I,J>, weight}½á¹¹´Ó map ¸Ä³É vector£¬´Ó¶ø¿ÉÒÔÔÚ½øĞĞ¹ì¼£ÈÚºÏÖ®Ç°ÏÈ¶ÔÍ¼Ïñ¶Ô°´Æ¥ÅäÊı½øĞĞÅÅĞò£¨mapÈİÆ÷ÊÇÖ»ÄÜ°´keyÅÅĞò£©
+// Ö®ºó¾Í°¤¸öÍ¼Ïñ¶ÔÈ¥½øĞĞÈÚºÏ¼´¿É£¬²»ĞèÒªÔÙÃ¿´Î¶¼ÓÚmapÖĞ°´ÖµËÑË÷×î´óµÄÍ¼Ïñ¶Ô£¬²¢ÓÚ×îºó½«ÆäÉ¾³ı
 void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 						  MultiTracks & map_tracks				// output:	all the found tracks
 						  );
@@ -1245,15 +1290,59 @@ void FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input
 								   MultiTracks & map_tracks				// output:	all the found tracks
 								   );
 
-// 2015.10.08, build the track length histogram
-void BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
-							   std::map<int,int> & hist			// output:	the histogram
-							   );
+// 2015.10.21, find all tracks that are connected components, and do not contain any conflict at all
+// this method finds the ever least tracks
+void FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+						 MultiTracks & map_tracks				// output:	all the found tracks
+						 );
 
 // 2015.10.08, build the track length histogram
-void BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
-							   std::map<int,int> & hist						// output:	the histogram
-							   );
+// 2015.10.21, and return the average track length
+double BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
+								 std::map<int,int> & hist			// output:	the histogram
+							     );
+
+// 2015.10.08, build the track length histogram
+// 2015.10.21, and return the average track length
+double BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
+							     std::map<int,int> & hist						// output:	the histogram
+							     );
+
+// 20151103, zhaokunz, find image pair good for RO
+// rank all image pairs according to the sum of track lengths
+void RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								   const MultiTracks & map_tracks,		// input:	all the tracks
+								   vector<pair_ij_k> & pairs			// output:	pairs in descending order
+								   );
+
+// 20151108£¬ĞÂ¼ÓÈëÒ»·ùÍ¼Ïñºó£¬ÒªÇ°·½½»»áĞÂµÄµã
+void Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	µãÔÆ
+							 const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓĞÍ¼Ïñ
+							 const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+							 int idx_newImg,							// input:	ĞÂÍê³É¶¨ÏòÍ¼ÏñµÄË÷ÒıºÅ
+							 double thresh_inlier = 1.5					// input:	ÓÃÀ´ÅĞ¶ÏÄÚµãµÄÖØÍ¶Ó°²Ğ²îãĞÖµ
+							 );
+
+// 20151111£¬ÀûÓÃÌØÕ÷¹ì¼£ÖĞµ±Ç°ËùÓĞÍê³É¶¨ÏòµÄÍ¼×öÇ°·½½»»á£¬Ã¿Á½Á½½»»áµÃµ½Ò»¸ö×ø±ê£¬×îÖÕÈ¡Ö§³Ö¼¯×î´óµÄ×ø±ê¸üĞÂ
+int Triangulation_AllImgs(PointCloud & map_pointcloud,				// output:	µãÔÆ
+						   const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓĞÍ¼Ïñ
+						   const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+						   double thresh_inlier = 1.5				// input:	ÓÃÀ´ÅĞ¶ÏÄÚµãµÄÖØÍ¶Ó°²Ğ²îãĞÖµ
+						   );
+
+// 20151109£¬Êä³öµ±Ç°µãÔÆ
+void OutputPointCloud(CString strFile,							// input:	Êä³öÎÄ¼şÂ·¾¶
+					  const PointCloud & map_pointcloud,		// output:	µãÔÆ
+					  const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓĞÍ¼Ïñ
+					  const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+					  int n_minInilier = 2						// input:	ÖÁÉÙµÃÓĞ¸Ã¸öÊıÍ¼Ïñ¹Û²âµ½¸Ãµã
+					  );
+
+// 20151112,Í³¼ÆÃ¿¸öµãÔÆµã±»¹Û²â´ÎÊıµÄÖ±·½Í¼
+double BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,	// output:	µãÔÆ
+									  const MultiTracks & map_tracks,		// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+									  std::map<int,int> & hist				// output:	the histogram
+									  );
 
 // optimize Ri based on Rotation Averaging using Newton-Raphson method
 // ÏêÏ¸²Î¿¼ Govindu 04 <Lie-algebraic averaging for globally consistent motion estimation> ÖĞµÄ Algorithm A2
@@ -1337,6 +1426,33 @@ void optim_sparse_lm_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn
 									double eps1 = 1.0E-8,					// input:	threshold
 									double eps2 = 1.0E-12					// input:	threshold
 								    );
+
+// 20151107£¬iteratively reweighted least squares
+// µü´úÖØ¼ÓÈ¨°æ±¾£¬²ÉÓÃ Huber È¨ÖØ
+void optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
+											   const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+											   vector<Matx33d> & Rs,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+											   vector<Matx31d> & ts,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+											   const vector<Matx<double,5,1>> & dists,	// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+											   const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+											   const vector<Point2d> & xys,				// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+											   vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬(i)=wi*wi
+											   const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+											   const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+											   const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+											   vector<double> & vds,					// Êä³ö£ºÃ¿¸öÏñµãµÄÖØÍ¶Ó°²Ğ²î
+											   double tc = 3.0,							// ÊäÈë£º¼ÆËã Huber È¨ÖØÊ±ÓÃµ½µÄ³£Á¿
+											   double * info = NULL,					// output:	runtime info, 5-vector
+																						// info[0]:	the initial reprojection error
+																						// info[1]:	the final reprojection error
+																						// info[2]: final max gradient
+																						// info[3]: the number of iterations
+																						// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+											   double tau = 1.0E-3,						// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+											   int maxIter = 64,						// input:	the maximum number of iterations
+											   double eps1 = 1.0E-8,					// input:	threshold
+											   double eps2 = 1.0E-12					// input:	threshold
+											   );
 
 void optim_sparse_lm_wj_tj_XiYiZi(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
 								  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó

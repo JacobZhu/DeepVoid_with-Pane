@@ -1,5 +1,19 @@
 #include "stdafx.h"
 
+// 20151107, ¼ÆËã Huber È¨ÖØ
+// Ä¬ÈÏ²Ğ²î x ¿Ï¶¨ÊÇÕıÖµ£¬ÀıÈçÖØÍ¶Ó°²Ğ²îÕâÖÖ
+double derivatives::weight_Huber(double x, double c)
+{
+	if (x<c)
+	{
+		return 1;
+	}
+	else
+	{
+		return c/x;
+	}
+}
+
 // ÏßĞÔ³ÉÏñµã×ø±ê¶Ôfx,fy,cx,cy,s¹²5¸öÄÚ²ÎÊıÇóµ¼
 Matx<double,2,5> derivatives::der_xy_fxfycxcys(const Matx33d & mR,	// input:	current rotation matrix
 											   const Matx31d & mt,	// input:	current translation vector
@@ -2844,6 +2858,190 @@ void derivatives::j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼ä
 			Matx22d cij = covInvs[*ptr];
 			Matx21d eij = e[*ptr];
 			
+			Matx<double,6,2> Aijtcij = Aij.t()*cij;
+
+			Uj += Aijtcij*Aij;
+			eaj += Aijtcij*eij;
+
+			Matx<double,6,4> Wij = Aijtcij*Bij;
+
+			W[*ptr] = Wij;
+		}
+
+		U[j] = Uj;
+		ea[j] = eaj;
+
+		int j6 = j*6;
+
+		for (int ii=0;ii<6;++ii)
+		{
+			g.at<double>(j6+ii) = -eaj(ii);
+		}
+	}
+
+	int m6 = m*6;
+
+	// °´ĞĞÉ¨£¬¼ÆËãËùÓĞµÄ Vi ºÍ ebi
+	for (int i=0;i<n;++i)
+	{
+		Matx<double,4,4> Vi;
+		Matx<double,4,1> ebi;
+
+		for (int j=0;j<m;++j)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL == ptr)
+			{
+				// Èç¹û ptr == NULL£¬ËµÃ÷Ïñµã xij ²»´æÔÚ
+				continue;
+			}
+
+			Matx<double,2,4> Bij = B[*ptr];
+			Matx22d cij = covInvs[*ptr];
+			Matx21d eij = e[*ptr];
+
+			Matx<double,4,2> Bijtcij = Bij.t()*cij;
+
+			Vi += Bijtcij*Bij;
+			ebi += Bijtcij*eij;
+		}
+
+		V[i] = Vi;
+		eb[i] = ebi;
+
+		int i4 = i*4;
+
+		for (int ii=0;ii<4;++ii)
+		{
+			g.at<double>(m6+i4+ii) = -ebi(ii);
+		}
+	}
+}
+
+// 20151107, iteratively reweighted least square IRLS
+// µü´úÖØ¼ÓÈ¨Ä£Ê½£¬ÎªÁËÓ¦¶Ô outliers
+// ²ÉÓÃ Huber È¨ÖØ
+void derivatives::j_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
+										  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+										  const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+										  const vector<Matx31d> & ts,				// ÊäÈë£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+										  const vector<Matx<double,5,1>> & dists,	// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+										  const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+										  const vector<Point2d> & xys,				// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+										  vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬Ò²¼´¸÷¶Ô½ÇÏßÔªËØ (i)=wi*wi£¬¼´Ã¿¸ö¹Û²âÁ¿È¨ÖØµÄÆ½·½£¬È¨ÖØÊÇÓÉ¹Û²âÁ¿×ÔÉíµÄÖØÍ¶Ó°²Ğ²îÀ´¾ö¶¨µÄ
+										  const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+										  const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+										  const SparseMat & ptrMat,					// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+										  vector<Matx<double,6,6>> & U,				// Êä³ö£ºm¸öUj¾ØÕó£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+										  vector<Matx<double,4,4>> & V,				// Êä³ö£ºn¸öVi¾ØÕó£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+										  vector<Matx<double,6,4>> & W,				// Êä³ö£ºl¸öWij¾ØÕó£¬Í¬Ê±¸ú¿Õ¼äµã¼°Æä¹Û²âÍ¼ÏñÓĞ¹Ø
+										  vector<Matx<double,6,1>> & ea,			// Êä³ö£ºm¸öeaj²Ğ²îÏòÁ¿£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+										  vector<Matx<double,4,1>> & eb,			// Êä³ö£ºn¸öebi²Ğ²îÏòÁ¿£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+										  Mat & f,									// Êä³ö£º2*l¸öÏñµã²Ğ²îÁ¿£¬ÆäÊµÒ²¾ÍÊÇÆÀ¼ÛµÄÄ¿±êº¯ÊıÖµ£¬×¼È·À´ËµÓ¦¸ÃÊÇ wi*fi£¬»¹Ó¦¸Ã³ËÉÏÈ¨ÖØÖµ
+										  Mat & g,									// Êä³ö£º6*m+4*nÎ¬µÄ²ÎÊıÌİ¶È
+										  vector<double> & vds,						// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
+										  double tc /*= 3.0*/						// ÊäÈë£º¶ÔÓÚÖØÍ¶Ó°²Ğ²î d Ğ¡ÓÚ tc µÄ¹Û²âÁ¿È¨ÖØÈ«¶¨Îª1£¬·ñÔò¶¨È¨ÖØÎª tc/d
+										  )
+{
+	int n = XYZWs.size(); // ¿Õ¼äµã¸öÊı
+	int m = Ks.size(); // Í¼Ïñ¸öÊı
+	int l = xys.size(); // ËùÓĞ¹Û²âÏñµãµÄ¸öÊı
+
+	vector<Matx<double,2,6>> A(l); // ËùÓĞµÄ Aij ¾ØÕó
+	vector<Matx<double,2,4>> B(l); // ËùÓĞµÄ Bij ¾ØÕó
+	vector<Matx21d> e(l); // ËùÓĞµÄ eij ²Ğ²îÏòÁ¿
+
+	// ¼ÆËãËùÓĞµÄ Aij¡¢Bij ºÍ eij
+	for (int i=0;i<n;++i)
+	{
+		Point4d XYZW = XYZWs[i];
+
+		for (int j=0;j<m;++j)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL==ptr) 
+			{
+				// Èç¹û ptr == NULL£¬ËµÃ÷Ïñµã xij ²»´æÔÚ
+				continue;
+			}
+
+			Matx33d K = Ks[j];
+			Matx33d R = Rs[j];
+			Matx31d t = ts[j];
+			Matx<double,5,1> dist = dists[j];
+			int distType = distTypes[j];
+
+			Point2d xy = xys[*ptr];
+
+			Matx<double,2,6> Aij;
+			Matx<double,2,4> Bij;
+			Matx21d eij;
+
+			double dx, dy;
+
+			j_f_w_t_XYZW(XYZW.x, XYZW.y, XYZW.z, XYZW.w, xy.x, xy.y, 
+				K, R, t, dist(0), dist(1), dist(2), dist(3), dist(4), distType, Aij, Bij, dx, dy);
+
+			double d = sqrt(dx*dx + dy*dy);
+
+			// ÒÀ¾İÖØÍ¶Ó°²Ğ²î¼ÆËãÏñµãµÄ Huber È¨ÖØ
+			double weight = weight_Huber(d,tc);
+			double weight2 = weight*weight;
+
+			int idx2 = 2*(*ptr);
+
+			// ¼ÓÈ¨µÄÄ¿±êº¯Êı
+			f.at<double>(idx2)   = weight*dx;
+			f.at<double>(idx2+1) = weight*dy;
+
+			// ¸øÈ¨Öµ¾ØÕó¸³Öµ
+			Matx22d & covInv = covInvs[*ptr];
+			covInv(0,0) = covInv(1,1) = weight2;
+
+			vds[*ptr] = d;
+
+			eij(0) = -dx;
+			eij(1) = -dy;
+
+			if (!j_fixed[j])
+			{
+				// Ö»ÓĞµ± j Í¼²»¹Ì¶¨£¬²ÎÓëÓÅ»¯Ê±£¬²Å¸üĞÂ Aij£¬·ñÔò²»¶¯×÷£¬Õâ¾ÍÒªÇóËùÓĞµÄ Aij ÔÚ A ÖĞÒ»¿ªÊ¼¾ÍÈ«²¿³õÊ¼»¯Îª 0 ¾ØÕó
+				A[*ptr] = Aij;
+			}
+
+			if (!i_fixed[i])
+			{
+				// Ö»ÓĞµ± i µã²»¹Ì¶¨£¬²ÎÓëÓÅ»¯Ê±£¬²Å¸üĞÂ Bij£¬·ñÔò²»¶¯×÷£¬Õâ¾ÍÒªÇóËùÓĞµÄ Bij ÔÚ B ÖĞÒ»¿ªÊ¼¾ÍÈ«²¿³õÊ¼»¯Îª 0 ¾ØÕó
+				B[*ptr] = Bij;
+			}
+
+			e[*ptr] = eij;			
+		}
+	}
+
+	// °´ÁĞÉ¨£¬¼ÆËãËùÓĞµÄ Uj¡¢eaj ºÍ Wij
+	for (int j=0;j<m;++j)
+	{
+		Matx<double,6,6> Uj;
+		Matx<double,6,1> eaj;
+
+		for (int i=0;i<n;++i)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL == ptr)
+			{
+				// Èç¹û ptr == NULL£¬ËµÃ÷Ïñµã xij ²»´æÔÚ
+				continue;
+			}
+
+			Matx<double,2,6> Aij = A[*ptr];
+			Matx<double,2,4> Bij = B[*ptr];
+			Matx22d cij = covInvs[*ptr];
+			Matx21d eij = e[*ptr];
+
 			Matx<double,6,2> Aijtcij = Aij.t()*cij;
 
 			Uj += Aijtcij*Aij;
@@ -10496,11 +10694,14 @@ void optim::optim_lm_fcxcy_w_t_k1k2(const vector<Point3d> & vWrdPts,// ÊäÈë£º		¿
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
 // global minimum weight version
+// 2015.10.22, °Ñ±£´æÈ¨ÖØµÄ{<I,J>, weight}½á¹¹´Ó map ¸Ä³É vector£¬´Ó¶ø¿ÉÒÔÔÚ½øĞĞ¹ì¼£ÈÚºÏÖ®Ç°ÏÈ¶ÔÍ¼Ïñ¶Ô°´Æ¥ÅäÊı½øĞĞÅÅĞò£¨mapÈİÆ÷ÊÇÖ»ÄÜ°´keyÅÅĞò£©
+// Ö®ºó¾Í°¤¸öÍ¼Ïñ¶ÔÈ¥½øĞĞÈÚºÏ¼´¿É£¬²»ĞèÒªÔÙÃ¿´Î¶¼ÓÚmapÖĞ°´ÖµËÑË÷×î´óµÄÍ¼Ïñ¶Ô£¬²¢ÓÚ×îºó½«ÆäÉ¾³ı
 void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 								   MultiTracks & map_tracks				// output:	all the found tracks
 								   )
 {
-	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+//	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::vector<std::pair<std::pair<int,int>,int>> vec_w_IJ; // contains all the weights: collection of {<I,J>, weight}
 	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
 
 	int n_features = 0; // number of all features
@@ -10513,9 +10714,9 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 		const int & J = iter->first.second; // image J
 		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
 		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
-		
-		map_w_IJ.insert(make_pair(iter->first, w_IJ));
 
+		vec_w_IJ.push_back(make_pair(iter->first, w_IJ));
+		
 		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
 		{
 			// check if the query feature Ii has already been grouped into some track
@@ -10524,7 +10725,8 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 				// initialize each feature as a track
 				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
 				OneTrack map_one_track;
-				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,0)));
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
@@ -10536,7 +10738,8 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 				// initialize each feature as a track
 				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
 				OneTrack map_one_track;
-				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,0)));
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
@@ -10544,13 +10747,13 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 		}
 	}
 
-	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
-	while (!map_w_IJ.empty())
-	{
-		// find currently the most weighted image pair ie the one has the most matches
-		auto iter_max = max_element(map_w_IJ.begin(), map_w_IJ.end(), 
-			[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second < b.second;});
+	// sort image pairs according to the number of matches found between them before merging
+	sort(vec_w_IJ.begin(),vec_w_IJ.end(),
+		[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second>b.second;});
 
+	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
+	for (auto iter_max=vec_w_IJ.begin();iter_max!=vec_w_IJ.end();++iter_max)
+	{
 		auto iter_max_IJ = map_matches.find(iter_max->first);
 
 		const int & I = iter_max->first.first; // image I
@@ -10599,7 +10802,8 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 				// update trackID of all features in the to-be-erased track
 				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
 				{
-					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(*iter);
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
 					iter_tmp->second = trackID;
 				}
 
@@ -10616,7 +10820,8 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 				// update trackID of all features in the to-be-erased track
 				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
 				{
-					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(*iter);
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
 					iter_tmp->second = trackID;
 				}
 
@@ -10624,9 +10829,6 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 				map_tracks.erase(iter_track_Ii);
 			}
 		}
-
-		// remove currently most weighted image pair
-		map_w_IJ.erase(iter_max);
 	}
 }
 
@@ -10641,6 +10843,8 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 
 	int n_features = 0; // number of all features
 
+	int I_max = -1; // the max image index
+
 	// 1. record all the weights between each IJ //////////////////////////////////////////////////////////////////////////////////
 	// and initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
 	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
@@ -10649,6 +10853,16 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 		const int & J = iter->first.second; // image J
 		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
 		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		if (I>I_max)
+		{
+			I_max = I;
+		}
+
+		if (J>I_max)
+		{
+			I_max = J;
+		}
 
 		map_w_IJ.insert(make_pair(iter->first, w_IJ));
 
@@ -10660,7 +10874,8 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 				// initialize each feature as a track
 				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
 				OneTrack map_one_track;
-				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,0)));
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
@@ -10672,7 +10887,8 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 				// initialize each feature as a track
 				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
 				OneTrack map_one_track;
-				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,0)));
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
@@ -10682,7 +10898,7 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 
 	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
 	std::map<std::pair<int,int>,int> map_w_IJ_cur; // contains all the weights: collection of {<I,J>, weight}
-	int I_cur = 0;
+	int I_cur = I_max;
 	for (auto iter=map_w_IJ.begin(); iter!=map_w_IJ.end(); ++iter)
 	{
 		if (iter->first.first==I_cur || iter->first.second==I_cur)
@@ -10708,24 +10924,35 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 		const std::vector<DMatch> & vec_matches_IJ = iter_max_IJ->second; // the pairwise matches found between image I and J
 
 		//////////////////////////////////////////////////////////////////////////
+		bool found_new = false;
+
 		if (A.find(I)==A.end())
 		{
 			I_cur = I;
+			found_new = true;
 		}
 		else
 		{
-			I_cur = J;
-		}
-		A.insert(I_cur);
-
-		auto iter_find = map_w_IJ.find(iter_max->first);
-		map_w_IJ.erase(iter_find);
-
-		for (auto iter=map_w_IJ.begin(); iter!=map_w_IJ.end(); ++iter)
-		{
-			if (iter->first.first==I_cur || iter->first.second==I_cur)
+			if (A.find(J)==A.end())
 			{
-				map_w_IJ_cur.insert(*iter);
+				I_cur = J;
+				found_new = true;
+			}
+		}
+
+		if (found_new)
+		{
+			A.insert(I_cur);
+
+			auto iter_find = map_w_IJ.find(iter_max->first);
+			map_w_IJ.erase(iter_find);
+
+			for (auto iter=map_w_IJ.begin(); iter!=map_w_IJ.end(); ++iter)
+			{
+				if (iter->first.first==I_cur || iter->first.second==I_cur)
+				{
+					map_w_IJ_cur.insert(*iter);
+				}
 			}
 		}
 		//////////////////////////////////////////////////////////////////////////
@@ -10772,7 +10999,8 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 				// update trackID of all features in the to-be-erased track
 				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
 				{
-					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(*iter);
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
 					iter_tmp->second = trackID;
 				}
 
@@ -10789,7 +11017,8 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 				// update trackID of all features in the to-be-erased track
 				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
 				{
-					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(*iter);
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
 					iter_tmp->second = trackID;
 				}
 
@@ -10803,10 +11032,150 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 	}
 }
 
+// 2015.10.21, find all tracks that are connected components, and do not contain any conflict at all
+// this method finds the ever least tracks
+void SfM_ZZK::FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								  MultiTracks & map_tracks				// output:	all the found tracks
+								  )
+{
+	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	typedef std::pair<int,int> pair_ij;
+	typedef std::set<pair_ij> set_pair_ij;
+	std::map<int,set_pair_ij> map_tracks_tmp;
+
+	int n_features = 0; // number of all features
+
+	// 1. initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+				set_pair_ij set_one_track;
+				set_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				set_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,1)));
+				map_tracks_tmp.insert(make_pair(n_features, set_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+				set_pair_ij set_one_track;
+				set_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				set_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,1)));
+				map_tracks_tmp.insert(make_pair(n_features, set_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// 2. merge all tracks between currently image pair ////////////////////////////////////////////////////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+
+		// start merging
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks_tmp.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks_tmp.find(iter_Jj->second);
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks_tmp.erase(iter_track_Jj);
+			} 
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks_tmp.erase(iter_track_Ii);
+			}
+		}
+	}
+
+	// remove all the tracks containing conflicts
+	for (auto iter=map_tracks_tmp.begin(); iter!=map_tracks_tmp.end(); ++iter)
+	{
+		OneTrack map_one_track;
+
+		for (auto iter_ij=iter->second.begin(); iter_ij!=iter->second.end(); ++iter_ij)
+		{
+//			map_one_track.insert(make_pair(iter_ij->first,iter_ij->second));
+			map_one_track.insert(make_pair(iter_ij->first,make_pair(iter_ij->second,0)));
+		}
+
+		if (map_one_track.size() < iter->second.size())
+		{
+			// there are conflicts
+			continue;
+		}
+
+		map_tracks.insert(make_pair(iter->first, map_one_track));
+	}
+}
+
 // 2015.10.08, build the track length histogram
-void SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
-									    std::map<int,int> & hist		// output:	the histogram
-									    )
+double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
+									      std::map<int,int> & hist		// output:	the histogram
+									      )
 {
 	for (auto iter=map_tracks.begin(); iter!=map_tracks.end(); ++iter)
 	{
@@ -10825,12 +11194,24 @@ void SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input
 			++iter_find->second;
 		}
 	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter=hist.begin(); iter!=hist.end(); ++iter)
+	{
+		n_total+=iter->second;
+		sum_length+=iter->first*iter->second;
+	}
+
+	return sum_length/(double)n_total;
 }
 
 // 2015.10.08, build the track length histogram
-void SfM_ZZK::BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
-									    std::map<int,int> & hist					// output:	the histogram
-									    )
+// 2015.10.21, and return the average track length
+double SfM_ZZK::BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
+									      std::map<int,int> & hist					// output:	the histogram
+									      )
 {
 	for (auto iter=allTracks.begin(); iter!=allTracks.end(); ++iter)
 	{
@@ -10849,6 +11230,611 @@ void SfM_ZZK::BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTrack
 			++iter_find->second;
 		}
 	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter=hist.begin(); iter!=hist.end(); ++iter)
+	{
+		n_total+=iter->second;
+		sum_length+=iter->first*iter->second;
+	}
+
+	return sum_length/(double)n_total;
+}
+
+// 20151103, zhaokunz, find image pair good for RO
+// rank all image pairs according to the sum of track lengths
+void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,// input:	all pairwise matches
+											const MultiTracks & map_tracks,		// input:	all the tracks
+											vector<pair_ij_k> & pairs			// output:	pairs in descending order
+											)
+{
+	pairs.clear();
+
+	for (auto iter_pair_match=map_matches.begin();iter_pair_match!=map_matches.end();++iter_pair_match)
+	{
+		int count = 0;
+
+		const int & I = iter_pair_match->first.first; // image I
+		const int & J = iter_pair_match->first.second; // image J
+
+		for (auto iter_track=map_tracks.begin();iter_track!=map_tracks.end();++iter_track)
+		{
+			const OneTrack & track = iter_track->second;
+
+			auto iter_find_I = track.find(I); // first try find image I in this track
+
+			if (iter_find_I==track.end())
+			{
+				continue;
+			}
+
+			auto iter_find_J = track.find(J); // if image I exist then try find image J in this track
+
+			if (iter_find_J==track.end())
+			{
+				continue;
+			}
+
+			count += track.size(); // if this track contains both imge I and J, then add the length of this track to pair (I,J)
+		}
+
+		pair_ij_k ij_k;
+		ij_k.first.first = I;
+		ij_k.first.second = J;
+		ij_k.second = count;
+
+		pairs.push_back(ij_k);
+	}
+
+	// sort image pairs according to the sum of track lengths in descending order
+	sort(pairs.begin(),pairs.end(),
+		[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second>b.second;});
+}
+
+// 20151108£¬ĞÂ¼ÓÈëÒ»·ùÍ¼Ïñºó£¬ÒªÇ°·½½»»áĞÂµÄµã
+void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	µãÔÆ
+									  const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓĞÍ¼Ïñ
+									  const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+									  int idx_newImg,							// input:	ĞÂÍê³É¶¨ÏòÍ¼ÏñµÄË÷ÒıºÅ
+									  double thresh_inlier /*= 1.5*/			// input:	ÓÃÀ´ÅĞ¶ÏÄÚµãµÄÖØÍ¶Ó°²Ğ²îãĞÖµ
+									  )
+{
+	// Í³¼ÆÓĞÄÄĞ©ĞèÒª½øĞĞÇ°·½½»»¥µÄÌØÕ÷¹ì¼£
+	typedef std::pair<Point3d,std::pair<int,double>> pair_XYZ_n_e; // <XYZi, ni, ei> ·Ö±ğ´æ´¢ºòÑ¡ÎïµãµÄ×ø±ê¡¢ÄÚµã¸öÊıºÍÖØÍ¶Ó°²Ğ²î
+	typedef std::vector<pair_XYZ_n_e> vec_wrdpt_candidate;
+	// ÕâÀïÊÇÍ³¼ÆµÄĞèÒª½øĞĞÇ°·½½»»áµÄÌØÕ÷¹ì¼£
+	std::map<int,std::vector<pair_XYZ_n_e>> map_tracks_need_triang; // <ID, <XYZ1, n1, e1>, <XYZ2, n2, e2>, ...>
+
+	// 1. ¿¼²ìÃ¿Ò»ÌõÌØÕ÷¹ì¼££¬Í³¼ÆÓĞÄÄĞ©ÌØÕ÷¹ì¼£ĞèÒª½øĞĞÇ°·½½»»á
+	for (auto iter_track=map_tracks.begin();iter_track!=map_tracks.end();++iter_track)
+	{
+		const int & trackID = iter_track->first;
+
+		// ÏÈ¿´µ±Ç°ÌØÕ÷¹ì¼£ÖĞ°ü²»°üº¬ĞÂ¼ÓÈëÍ¼ÏñÖĞµÄÌØÕ÷µã
+		auto iter_found_newImgPt = iter_track->second.find(idx_newImg);
+		if (iter_found_newImgPt==iter_track->second.end())
+		{
+			// ËµÃ÷µ±Ç°¿¼²ìµÄÌØÕ÷¹ì¼£ÖĞ²»°üº¬ĞÂ¼ÓÈëÍ¼ÏñÖĞµÄÌØÕ÷µã
+			continue;
+		}
+
+		// ÔÚ°üº¬µ±Ç°ĞÂ¼ÓÈëÍ¼ÏñÌØÕ÷µãµÄÇ°ÌáÏÂ£¬ÔÙ¿´¸ÃÌØÕ÷¹ì¼£ÊÇ·ñÊÂÏÈÒÑ±»ÖØ½¨³öÀ´
+		auto iter_found_objpt = map_pointcloud.find(trackID);
+		if (iter_found_objpt!=map_pointcloud.end())
+		{
+			// ËµÃ÷ÒÑ±»ÖØ½¨³öÀ´
+			if (iter_found_newImgPt->second.second)
+			{
+				// ÇÒĞÂ¼ÓÈëÍ¼ÏñÖĞµÄÌØÕ÷µãÒÑ±»ÅĞÎªÄÚµã£¬ÕâÊ±Ê²Ã´¶¼²»ÓÃ×ö
+				continue;
+			} 
+
+			// ÔËĞĞµ½´ËËµÃ÷ĞÂ¼ÓÈëÍ¼ÏñÖĞÌØÕ÷µã±»ÅĞÎªÍâµã£¬ÕâÊ±¸ÃÌØÕ÷µã¿ÉÒÔÉêËß£¬ºÍÆäËüÍê³É¶¨ÏòµÄÍ¼Ïñ½»»á£¬ÒÔÆÚÕÒµ½¸üºÃµÄÎïµã×ø±ê¹À¼Æ
+			// ÇÒÆäÒÑ¾­ÓĞÒ»¸öºòÑ¡Îïµã×ø±ê¹À¼ÆÁË
+			vec_wrdpt_candidate vec_candidates;
+			vec_candidates.push_back(make_pair(iter_found_objpt->second.m_pt,make_pair(0,0)));
+			map_tracks_need_triang.insert(make_pair(trackID,vec_candidates));
+		} 
+		else
+		{
+			// ËµÃ÷»¹Î´±»ÖØ½¨³öÀ´£¬ĞèÒª½øĞĞÇ°·½½»»á
+			// ÇÒÄ¿Ç°Ã»ÓĞÈÎºÎÒÑÓĞµÄºòÑ¡Îïµã×ø±ê¹À¼Æ
+			vec_wrdpt_candidate vec_candidates;
+			map_tracks_need_triang.insert(make_pair(trackID,vec_candidates));
+		}
+	}
+
+	// ĞÂ¼ÓÈëÍ¼ÏñµÄ²ÎÊı
+	const cam_data & cam = cams[idx_newImg];
+	const Matx33d & mK = cam.m_K;
+	const Matx33d & mR = cam.m_R;
+	const Matx31d & mt = cam.m_t;
+
+	// 2. ÀûÓÃĞÂ¼ÓÈëµÄÍ¼ÏñºÍÃ¿Ò»·ùÒÑ¶¨ÏòºÃµÄÍ¼ÏñÊµÊ©Ç°·½½»»á
+	for (int i=0;i<cams.size();++i)
+	{
+		const cam_data & cam_other = cams[i];
+
+		if (!cam_other.m_bOriented || i==idx_newImg)
+		{
+			// ¸ÃÍ¼ÏñÃ»ÓĞ¶¨ÏòºÃ
+			continue;
+		}
+
+		// µÚ i ·ùÍ¼ÏñµÄ²ÎÊı
+		const Matx33d & mK_other = cam_other.m_K;
+		const Matx33d & mR_other = cam_other.m_R;
+		const Matx31d & mt_other = cam_other.m_t;
+
+		vector<int> trackIDs;
+		vector<Point2d> imgpts;
+		vector<Point2d> imgpts_other;
+
+		// ±éÀúÃ¿¸öĞèÒª½øĞĞÇ°·½½»»áµÄÌØÕ÷¹ì¼££¬¿´ÄÄĞ©ÌØÕ÷¹ì¼£Í¬Ê±±»µÚ i ·ùÍ¼ºÍĞÂ¼ÓÈëµÄÍ¼Ïñ¹Û²âµ½
+		for (auto iter_track_need_triang=map_tracks_need_triang.begin();iter_track_need_triang!=map_tracks_need_triang.end();++iter_track_need_triang)
+		{
+			const int & trackID = iter_track_need_triang->first;
+
+			auto iter_track = map_tracks.find(trackID);
+
+			auto iter_found_imgi = iter_track->second.find(i);
+
+			if (iter_found_imgi==iter_track->second.end())
+			{
+				// ÓÚµÚ i ·ùÖĞÃ»±»ÕÒµ½
+				continue;
+			}
+
+			auto iter_found_newImg = iter_track->second.find(idx_newImg);
+
+			// ¼ÇÂ¼Á½·ùÍ¼ÉÏµÄÏñµã×ø±ê
+			Point2d imgpt, imgpt_other;
+
+			imgpt.x = cam.m_feats.key_points[iter_found_newImg->second.first].pt.x;
+			imgpt.y = cam.m_feats.key_points[iter_found_newImg->second.first].pt.y;
+
+			imgpt_other.x = cam_other.m_feats.key_points[iter_found_imgi->second.first].pt.x;
+			imgpt_other.y = cam_other.m_feats.key_points[iter_found_imgi->second.first].pt.y;
+
+			trackIDs.push_back(trackID);
+			imgpts.push_back(imgpt);
+			imgpts_other.push_back(imgpt_other);
+		}
+
+		// Ö´ĞĞ×îÓÅË«Ä¿Ç°·½½»»á
+		vector<Point3d> wrdpts;
+		vector<Point2d> errs;
+		double rpj_err = Triangulate_Optimal(imgpts_other, mK_other, mR_other, mt_other, imgpts, mK, mR, mt, wrdpts, errs);
+
+		for (int j=0;j<wrdpts.size();++j)
+		{
+			if (errs[j].x >= thresh_inlier || errs[j].y >= thresh_inlier)
+			{
+				continue;
+			}
+
+			// Â¼ÈëÒ»¸öÓĞĞ§µÄÎïµã×ø±ê
+			pair_XYZ_n_e XYZ_n_e = make_pair(wrdpts[j],make_pair(0,0));
+			
+			auto iter_found_track_need_triang = map_tracks_need_triang.find(trackIDs[j]);
+			iter_found_track_need_triang->second.push_back(XYZ_n_e);
+		}
+	}
+
+	// 3. ¶Ô½øĞĞÇ°·½½»»áµÄËùÓĞÌØÕ÷¹ì¼£µÄºòÑ¡Îïµã×ø±ê½øĞĞÆÀ¼Û£¬ÓÅÏÈ¿´ÄÚµã¼¯µÄ´óĞ¡£¬ÔÚÄÚµã¼¯´óĞ¡ÏàÍ¬µÄÇé¿öÏÂÑ¡Ôñ×ÛºÏÖØÍ¶Ó°²Ğ²î×îĞ¡µÄÄÇ¸öÎïµã×ø±êÊä³ö
+	for (auto iter_track_need_triang=map_tracks_need_triang.begin();iter_track_need_triang!=map_tracks_need_triang.end();++iter_track_need_triang)
+	{
+		const int & trackID = iter_track_need_triang->first;
+
+		auto iter_track = map_tracks.find(trackID);
+
+		vector<pair_XYZ_n_e> & vec_XYZ_n_e = iter_track_need_triang->second;
+
+		// Èç¹ûÁ¬Ò»¸öºòÑ¡µÄÎïµã×ø±ê¹À¼Æ¶¼Ã»ÓĞµÄ»°¾ÍÖ±½Ó¼ÌĞøÏÂÒ»¸ö
+		if (vec_XYZ_n_e.size()<1)
+		{
+			continue;
+		}
+
+		// ¿¼²ìÆÀ¹ÀÃ¿¸öºòÑ¡Îïµã¹À¼Æ
+		for (auto iter_one_candidate=vec_XYZ_n_e.begin();iter_one_candidate!=vec_XYZ_n_e.end();++iter_one_candidate)
+		{
+			const Point3d & wrdpt = iter_one_candidate->first;
+
+			Matx31d XYZ;
+			XYZ(0) = wrdpt.x;
+			XYZ(1) = wrdpt.y;
+			XYZ(2) = wrdpt.z;
+
+			int n_inliers = 0;
+			double sum_inliers_d2 = 0;
+
+			for (auto iter_oneimgpt=iter_track->second.begin();iter_oneimgpt!=iter_track->second.end();++iter_oneimgpt)
+			{
+				const int & I = iter_oneimgpt->first;
+				const int & i = iter_oneimgpt->second.first;
+
+				const cam_data & camI = cams[I];
+
+				if (!camI.m_bOriented)
+				{
+					// Ã»Íê³É¶¨ÏòµÄÍ¼Ïñ¾Í²»×öÖØÍ¶Ó°
+					continue;
+				}
+
+				// È¡³ö¹Û²âÁ¿
+				Point2d imgpt;
+				imgpt.x = camI.m_feats.key_points[i].pt.x;
+				imgpt.y = camI.m_feats.key_points[i].pt.y;
+
+				// ÎïµãÖØÍ¶Ó°
+				Matx31d xyz = camI.m_K*(camI.m_R*XYZ+camI.m_t);
+				xyz(0)/=xyz(2);
+				xyz(1)/=xyz(2);
+
+				double dx = xyz(0)-imgpt.x;
+				double dy = xyz(1)-imgpt.y;
+				double d = sqrt(dx*dx+dy*dy);
+
+				if (d<thresh_inlier)
+				{
+					++iter_one_candidate->second.first;
+					sum_inliers_d2 += d*d;
+					++n_inliers;
+				}
+			}
+
+			iter_one_candidate->second.second = sqrt(sum_inliers_d2/n_inliers);
+		}
+
+		// ÏÈ°´ÄÚµã¼¯´óĞ¡´Ó´óµ½Ğ¡ÅÅÁĞ
+		sort(vec_XYZ_n_e.begin(),vec_XYZ_n_e.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b){return a.second.first>b.second.first;});
+
+		int n_inliers_max = vec_XYZ_n_e[0].second.first;
+
+		if (n_inliers_max<2)
+		{
+			// ÖÁÉÙµÃÓĞ 2 ¸öÍ¼ÏñÅĞÎªÄÚµã
+			continue;
+		}
+
+		vector<pair_XYZ_n_e> vec_XYZ_n_e_max;
+		for (int i=0;i<vec_XYZ_n_e.size();++i)
+		{
+			if (vec_XYZ_n_e[i].second.first==n_inliers_max)
+			{
+				vec_XYZ_n_e_max.push_back(vec_XYZ_n_e[i]);
+			}
+		}
+
+		// ¶ÔÓÚÄÚµã¼¯´óĞ¡ÏàÍ¬µÄ£¬ÔÙ°´ÕÕÖØÍ¶Ó°²Ğ²î´ÓĞ¡µ½´óÅÅÁĞ
+		sort(vec_XYZ_n_e_max.begin(),vec_XYZ_n_e_max.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b){return a.second.second<b.second.second;});
+
+		auto iter_found_wrdpt = map_pointcloud.find(trackID);
+		if (iter_found_wrdpt!=map_pointcloud.end())
+		{
+			// Èç¹ûÒÑ¾­´æÔÚÁË¾ÍÖ±½Ó¸üĞÂ×ø±ê
+			iter_found_wrdpt->second.m_pt = vec_XYZ_n_e_max[0].first;
+		} 
+		else
+		{
+			// Èç¹û»¹²»´æÔÚ£¬Ôò¿ª±ÙĞÂµÄ
+			CloudPoint cloudpt;
+			cloudpt.m_idx = trackID;
+			cloudpt.m_pt = vec_XYZ_n_e_max[0].first;
+
+			map_pointcloud.insert(make_pair(trackID,cloudpt));
+		}
+
+// 		CloudPoint cloudpt;
+// 		cloudpt.m_idx = trackID;
+// 		cloudpt.m_pt = vec_XYZ_n_e_max[0].first;
+// 
+// 		map_pointcloud.insert(make_pair(trackID,cloudpt));
+	}
+}
+
+// 20151111£¬ÀûÓÃÌØÕ÷¹ì¼£ÖĞµ±Ç°ËùÓĞÍê³É¶¨ÏòµÄÍ¼×öÇ°·½½»»á£¬Ã¿Á½Á½½»»áµÃµ½Ò»¸ö×ø±ê£¬×îÖÕÈ¡Ö§³Ö¼¯×î´óµÄ×ø±ê¸üĞÂ
+int SfM_ZZK::Triangulation_AllImgs(PointCloud & map_pointcloud,			// output:	µãÔÆ
+								    const vector<DeepVoid::cam_data> & cams,// input:	ËùÓĞÍ¼Ïñ
+								    const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+								    double thresh_inlier /*= 1.5*/			// input:	ÓÃÀ´ÅĞ¶ÏÄÚµãµÄÖØÍ¶Ó°²Ğ²îãĞÖµ
+								    )
+{
+	typedef std::pair<Point3d,std::pair<int,double>> pair_XYZ_n_e; // <XYZi, ni, ei> ·Ö±ğ´æ´¢ºòÑ¡ÎïµãµÄ×ø±ê¡¢ÄÚµã¸öÊıºÍÖØÍ¶Ó°²Ğ²î
+	typedef std::vector<pair_XYZ_n_e> vec_wrdpt_candidate;
+
+	int n_inliers_changed = 0;
+
+	for (auto iter_track=map_tracks.begin();iter_track!=map_tracks.end();++iter_track)
+	{
+		const int & trackID = iter_track->first;
+
+		// ´æ·ÅËùÓĞµÄºòÑ¡Îïµã×ø±ê
+		vec_wrdpt_candidate vec_XYZ_n_e;
+
+		auto iter_found_wrdpt = map_pointcloud.find(trackID);
+		if (iter_found_wrdpt!=map_pointcloud.end())
+		{
+			// ÒÑ±»ÖØ½¨³öÀ´
+			pair_XYZ_n_e XYZ_n_e = make_pair(iter_found_wrdpt->second.m_pt,make_pair(0,0));
+			vec_XYZ_n_e.push_back(XYZ_n_e);
+		}
+
+		int n_curInliers = 0; // µ±Ç°¿Õ¼ä×ø±êÓµÓĞµÄÄÚµãÊı
+
+//		vector<int> vIdx_orientedImgs; // ËùÓĞÒÑÍê³É¶¨ÏòµÄÍ¼ÏñË÷Òı
+		vector<Point2d> vImgPts; // ËùÓĞÒÑÍê³É¶¨ÏòµÄÍ¼ÏñÖĞµÄÏñµã×ø±ê
+		vector<Matx33d> vKs; // ÒÑÍê³É¶¨ÏòµÄÍ¼ÏñÄÚ²ÎÊı
+		vector<Matx33d> vRs; // ÒÑÍê³É¶¨ÏòµÄÍ¼ÏñĞı×ª¾ØÕó
+		vector<Matx31d> vts; // ÒÑÍê³É¶¨ÏòµÄÍ¼ÏñÆ½ÒÆÏòÁ¿
+
+		for (auto iter_Ii=iter_track->second.begin();iter_Ii!=iter_track->second.end();++iter_Ii)
+		{
+			const int & I = iter_Ii->first;
+			const int & i = iter_Ii->second.first;
+			const int & bInlier = iter_Ii->second.second;
+			const cam_data & cam_I = cams[I];
+
+			if (!cam_I.m_bOriented)
+			{
+				continue;
+			}
+
+			Point2d imgpt;
+			imgpt.x = cam_I.m_feats.key_points[i].pt.x;
+			imgpt.y = cam_I.m_feats.key_points[i].pt.y;
+			vImgPts.push_back(imgpt);
+			vKs.push_back(cam_I.m_K);
+			vRs.push_back(cam_I.m_R);
+			vts.push_back(cam_I.m_t);
+
+			if (bInlier)
+			{
+				++n_curInliers;
+			}
+		}
+
+		// Á½Á½Í¼Ïñ½øĞĞ×îÓÅË«Ä¿½»»áÉú³ÉºòÑ¡Îïµã×ø±ê
+		for (int i=0;i<vImgPts.size();++i)
+		{
+			for (int j=i+1;j<vImgPts.size();++j)
+			{
+				vector<Point2d> imgpts_other, imgpts;
+				imgpts_other.push_back(vImgPts[i]);
+				imgpts.push_back(vImgPts[j]);				
+
+				// Ö´ĞĞ×îÓÅË«Ä¿Ç°·½½»»á
+				vector<Point3d> wrdpts;
+				vector<Point2d> errs;
+				double rpj_err = Triangulate_Optimal(imgpts_other, vKs[i], vRs[i], vts[i], imgpts, vKs[j], vRs[j], vts[j], wrdpts, errs);
+
+				if (errs[0].x >= thresh_inlier || errs[0].y >= thresh_inlier)
+				{
+					continue;
+				}
+
+				// Â¼ÈëÒ»¸öÓĞĞ§µÄÎïµã×ø±ê
+				pair_XYZ_n_e XYZ_n_e = make_pair(wrdpts[0],make_pair(0,0));
+				vec_XYZ_n_e.push_back(XYZ_n_e);
+			}
+		}
+
+		// Èç¹ûÁ¬Ò»¸öºòÑ¡µÄÎïµã×ø±ê¹À¼Æ¶¼Ã»ÓĞµÄ»°¾ÍÖ±½Ó¼ÌĞøÏÂÒ»¸ö
+		if (vec_XYZ_n_e.size()<1)
+		{
+			continue;
+		}
+
+		// ¿¼²ìÆÀ¹ÀÃ¿¸öºòÑ¡Îïµã¹À¼Æ
+		for (auto iter_one_candidate=vec_XYZ_n_e.begin();iter_one_candidate!=vec_XYZ_n_e.end();++iter_one_candidate)
+		{
+			const Point3d & wrdpt = iter_one_candidate->first;
+
+			Matx31d XYZ;
+			XYZ(0) = wrdpt.x;
+			XYZ(1) = wrdpt.y;
+			XYZ(2) = wrdpt.z;
+
+			int n_inliers = 0;
+			double sum_inliers_d2 = 0;
+
+			for (int i=0;i<vKs.size();++i)
+			{
+				// È¡³ö¹Û²âÁ¿
+				Point2d imgpt = vImgPts[i];
+				
+				// ÎïµãÖØÍ¶Ó°
+				Matx31d xyz = vKs[i]*(vRs[i]*XYZ+vts[i]);
+				xyz(0)/=xyz(2);
+				xyz(1)/=xyz(2);
+
+				double dx = xyz(0)-imgpt.x;
+				double dy = xyz(1)-imgpt.y;
+				double d = sqrt(dx*dx+dy*dy);
+
+				if (d<thresh_inlier)
+				{
+					++iter_one_candidate->second.first;
+					sum_inliers_d2 += d*d;
+					++n_inliers;
+				}
+			}
+
+			iter_one_candidate->second.second = sqrt(sum_inliers_d2/n_inliers);
+		}
+
+		if (iter_found_wrdpt!=map_pointcloud.end())
+		{
+			n_curInliers = vec_XYZ_n_e[0].second.first;
+		}
+
+		// ÏÈ°´ÄÚµã¼¯´óĞ¡´Ó´óµ½Ğ¡ÅÅÁĞ
+		sort(vec_XYZ_n_e.begin(),vec_XYZ_n_e.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b){return a.second.first>b.second.first;});
+
+		int n_inliers_max = vec_XYZ_n_e[0].second.first;
+
+		if (n_inliers_max<2)
+		{
+			// ÖÁÉÙµÃÓĞ 2 ¸öÍ¼ÏñÅĞÎªÄÚµã
+			continue;
+		}
+
+		vector<pair_XYZ_n_e> vec_XYZ_n_e_max;
+		for (int i=0;i<vec_XYZ_n_e.size();++i)
+		{
+			if (vec_XYZ_n_e[i].second.first==n_inliers_max)
+			{
+				vec_XYZ_n_e_max.push_back(vec_XYZ_n_e[i]);
+			}
+		}
+
+		// ¶ÔÓÚÄÚµã¼¯´óĞ¡ÏàÍ¬µÄ£¬ÔÙ°´ÕÕÖØÍ¶Ó°²Ğ²î´ÓĞ¡µ½´óÅÅÁĞ
+		sort(vec_XYZ_n_e_max.begin(),vec_XYZ_n_e_max.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b){return a.second.second<b.second.second;});
+
+		if (iter_found_wrdpt!=map_pointcloud.end())
+		{
+//			if (n_curInliers<n_inliers_max/* && n_curInliers>1*/)
+			if ((n_inliers_max-n_curInliers)>1)
+			{
+				++n_inliers_changed;
+			}
+
+			// Èç¹ûÒÑ¾­´æÔÚÁË¾ÍÖ±½Ó¸üĞÂ×ø±ê
+			iter_found_wrdpt->second.m_pt = vec_XYZ_n_e_max[0].first;
+		} 
+		else
+		{
+			// Èç¹û»¹²»´æÔÚ£¬Ôò¿ª±ÙĞÂµÄ
+			CloudPoint cloudpt;
+			cloudpt.m_idx = trackID;
+			cloudpt.m_pt = vec_XYZ_n_e_max[0].first;
+
+			map_pointcloud.insert(make_pair(trackID,cloudpt));
+		}
+
+// 		if (n_curInliers<n_inliers_max)
+// 		{
+// 			++n_inliers_changed;
+// 		}
+	}
+
+	return n_inliers_changed;
+}
+
+// 20151109£¬Êä³öµ±Ç°µãÔÆ
+void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	Êä³öÎÄ¼şÂ·¾¶
+							   const PointCloud & map_pointcloud,		// output:	µãÔÆ
+							   const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓĞÍ¼Ïñ
+							   const MultiTracks & map_tracks,			// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+							   int n_minInilier /*= 2*/					// input:	ÖÁÉÙµÃÓĞ¸Ã¸öÊıÍ¼Ïñ¹Û²âµ½¸Ãµã
+							   )
+{
+	FILE * file = fopen(strFile, "w");
+	for (auto iter_wrdpt=map_pointcloud.begin();iter_wrdpt!=map_pointcloud.end();++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		double sumR = 0;
+		double sumG = 0;
+		double sumB = 0;
+
+		int count = 0;
+
+		for (auto iter_imgpt=iter_found_track->second.begin();iter_imgpt!=iter_found_track->second.end();++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second;
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			const cam_data & cam = cams[I];
+
+			sumR += cam.m_feats.rgbs[i][2];
+			sumG += cam.m_feats.rgbs[i][1];
+			sumB += cam.m_feats.rgbs[i][0];
+
+			++count;
+		}
+
+		if (count<n_minInilier)
+		{
+			continue;
+		}
+
+		int R = (int)sumR/count;
+		int G = (int)sumG/count;
+		int B = (int)sumB/count;
+
+		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", iter_wrdpt->second.m_pt.x, iter_wrdpt->second.m_pt.y, iter_wrdpt->second.m_pt.z, R, G, B);
+	}
+	fclose(file);
+}
+
+// 20151112,Í³¼ÆÃ¿¸öµãÔÆµã±»¹Û²â´ÎÊıµÄÖ±·½Í¼
+double SfM_ZZK::BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,	// output:	µãÔÆ
+											   const MultiTracks & map_tracks,		// input:	ËùÓĞµÄÌØÕ÷¹ì¼£
+											   std::map<int,int> & hist				// output:	the histogram
+											   )
+{
+	for (auto iter_wrdpt=map_pointcloud.begin();iter_wrdpt!=map_pointcloud.end();++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		int count = 0;
+
+		for (auto iter_imgpt=iter_found_track->second.begin();iter_imgpt!=iter_found_track->second.end();++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second;
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			++count;
+		}
+
+		auto iter_found_num = hist.find(count);
+
+		if (iter_found_num == hist.end())
+		{
+			// does not exist
+			hist.insert(make_pair(count,1));
+		}
+		else
+		{
+			// exist
+			++iter_found_num->second;
+		}
+	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter=hist.begin(); iter!=hist.end(); ++iter)
+	{
+		n_total+=iter->second;
+		sum_length+=iter->first*iter->second;
+	}
+
+	return sum_length/(double)n_total;
 }
 
 // optimize Ri based on Rotation Averaging using Newton-Raphson method
@@ -11819,6 +12805,273 @@ void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,				// ÊäÈë¼
 	}
 
 	double err_rpj_final = sqrt(2*Fx/l);
+
+	if (info)
+	{
+		info[0] = err_rpj_init;
+		info[1] = err_rpj_final;
+		info[2] = g_norm;
+		info[3] = k;
+		info[4] = code;
+	}
+}
+
+// 20151107£¬iteratively reweighted least squares
+// µü´úÖØ¼ÓÈ¨°æ±¾£¬²ÉÓÃ Huber È¨ÖØ
+void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
+													    const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+													    vector<Matx33d> & Rs,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+													    vector<Matx31d> & ts,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+													    const vector<Matx<double,5,1>> & dists,	// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+													    const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+													    const vector<Point2d> & xys,			// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+														vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬(i)=wi*wi
+													    const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+													    const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+													    const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+														vector<double> & vds,					// Êä³ö£ºÃ¿¸öÏñµãµÄÖØÍ¶Ó°²Ğ²î
+													    double tc /*= 3.0*/,					// ÊäÈë£º¼ÆËã Huber È¨ÖØÊ±ÓÃµ½µÄ³£Á¿
+													    double * info /*= NULL*/,				// output:	runtime info, 5-vector
+																								// info[0]:	the initial reprojection error
+																								// info[1]:	the final reprojection error
+																								// info[2]: final max gradient
+																								// info[3]: the number of iterations
+																								// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+													    double tau /*= 1.0E-3*/,				// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+													    int maxIter /*= 64*/,					// input:	the maximum number of iterations
+													    double eps1 /*= 1.0E-8*/,				// input:	threshold
+													    double eps2 /*= 1.0E-12*/				// input:	threshold
+													    )
+{
+	int k = 0;		// µü´ú´ÎÊıË÷Òı
+	int v = 2;		// ¸üĞÂ u Ê±ĞèÒªÓÃµ½µÄÒ»¸ö¿ØÖÆÁ¿      
+	double u;		// LM ÓÅ»¯Ëã·¨ÖĞ×î¹Ø¼üµÄ×èÄáÏµÊı (J'J + uI)h = -J'f
+	double r;		// gain ratio, ÔöÒæÂÊ£¬ÓÃÀ´ºâÁ¿½üËÆÕ¹¿ªÊ½µÄºÃ»µ
+	double g_norm;  // Ìİ¶ÈµÄÄ£
+	double h_norm;	// ¸ÄÕıÁ¿µÄÄ£
+
+	double ratio_1_3 = 1.0/3.0;
+
+	bool found = false; // ±êÊ¶ÊÇ·ñÒÑ¾­Âú×ãµü´úÊÕÁ²Ìõ¼ş
+	int code = 2; // termination code
+
+	int m = Ks.size(); // Í¼Ïñ¸öÊı
+	int n = XYZs.size(); // Îïµã¸öÊı
+	int l = xys.size(); // ËùÓĞÏñµã¸öÊı
+
+	// Mat ½á¹¹
+	Mat f(2*l,1,CV_64FC1,Scalar(0));
+	Mat g(6*m+4*n,1,CV_64FC1,Scalar(0)),g_new(6*m+4*n,1,CV_64FC1,Scalar(0));
+	Mat h(6*m+4*n,1,CV_64FC1,Scalar(0));
+
+	// µü´ú¹ı³ÌÖĞÊ¹ÓÃµÄÆë´ÎÎïµã×ø±ê£¬Òò´ËÓÉ·ÇÆë´ÎÎïµã×ø±êÍØÕ¹³öÆë´ÎÎïµã×ø±ê
+	vector<Point4d> XYZWs;
+	for (int i=0;i<n;++i)
+	{
+		Point3d XYZ = XYZs[i];
+		Point4d XYZW;
+		XYZW.x = XYZ.x;
+		XYZW.y = XYZ.y;
+		XYZW.z = XYZ.z;
+		XYZW.w = 1;
+
+		XYZWs.push_back(XYZW);
+	}
+
+	// [U W; W' V] ÊÇÔÚµ±Ç°×´Ì¬ÏÂµÄ J'covInv J ¾ØÕó£¬Ò²¼´»¹Î´Ôö¹ãµÄ·¨Ïò·½³ÌÏµÊı¾ØÕó
+	// [-ea; -eb] ÔòÊÇµ±Ç°×´Ì¬ÏÂµÄ²ÎÊıÌİ¶ÈÏòÁ¿
+	// [U_new W_new; W_new' V_new] ÔòÊÇ´æ·ÅµÄºòÑ¡×´Ì¬ÏÂµÄÎ´Ôö¹ã·¨Ïò·½³ÌÏµÊı¾ØÕó
+	// [-ea_new; -eb_new] ÔòÊÇ´æ·ÅµÄºòÑ¡×´Ì¬ÏÂµÄ²ÎÊıÌİ¶ÈÏòÁ¿
+	// Ö»ÓĞµ±ºòÑ¡×´Ì¬Ïà¶ÔÓÚµ±Ç°×´Ì¬ÊÇÊ¹µÃÄ¿±êº¯ÊıÖµÏÂ½µµÄÊ±ºò£¬ºòÑ¡×´Ì¬²ÅÄÜ±»²ÉÄÉ³ÉÎªµ±Ç°×´Ì¬£¬¼´²ÎÊı¹À¼Æ´Óµ±Ç°×´Ì¬ÕıÊ½ÒÆ¶¯µ½ºòÑ¡×´Ì¬
+	// Ò²Ö»ÓĞÔÚ´ËÊ±£¬U_new V_new W_new ea_new eb_new ²ÅÕıÊ½È¡´ú U V W ea eb
+	vector<Matx<double,6,6>> U(m),U_new(m);
+	vector<Matx<double,4,4>> V(n),V_new(n);
+	vector<Matx<double,6,4>> W(l),W_new(l);
+	vector<Matx<double,6,1>> ea(m),ea_new(m);
+	vector<Matx<double,4,1>> eb(n),eb_new(n);
+	vector<Matx<double,6,1>> da(m);
+	vector<Matx<double,4,1>> db(n);
+//	vector<double> vds(l);
+
+	derivatives::j_f_w_t_XYZW_IRLS_Huber(XYZWs,Ks,Rs,ts,dists,distTypes,xys,covInvs,j_fixed,i_fixed,ptrMat,U,V,W,ea,eb,f,g,vds,tc);
+
+	Mat tmp = 0.5*f.t()*f;
+	double Fx = tmp.at<double>(0);
+	double Fx_new, L0_Lh;
+
+	// 20151111£¬½öÍ³¼ÆÄÚµãµÄÖØÍ¶Ó°²Ğ²î
+	int n_inliers = 0;
+	double sum_d2 = 0;
+	for (int i=0;i<l;++i)
+	{
+		double dx = f.at<double>(2*i);
+		double dy = f.at<double>(2*i+1);
+		double d = sqrt(dx*dx+dy*dy);
+		if (d>=tc)
+		{
+			continue;
+		}
+		++n_inliers;
+		sum_d2+=d*d;
+	}
+	double err_rpj_init = sqrt(sum_d2/n_inliers);
+
+//	double err_rpj_init = sqrt(2*Fx/l);
+	
+	g_norm = norm(g,NORM_INF);
+
+	// Ìİ¶ÈÊÕÁ²£¬ËµÃ÷ÒÑÔÚÆ½Ì¹ÇøÓò
+	if (g_norm < eps1)
+	{
+		found = true;
+		code = 0;
+	}
+
+	vector<double> Aii;
+	for (int j=0;j<m;++j)
+	{
+		for (int ii=0;ii<6;++ii)
+		{
+			Aii.push_back(U[j](ii,ii));
+		}
+	}
+	for (int i=0;i<n;++i)
+	{
+		for (int ii=0;ii<4;++ii)
+		{
+			Aii.push_back(V[i](ii,ii));
+		}
+	}
+
+	auto iter = max_element(Aii.begin(),Aii.end());
+	double max_Aii = *iter;
+
+	u = tau * max_Aii; // initial miu
+
+	while (!found && k<maxIter)
+	{
+		++k;
+
+		// »ùÓÚµ±Ç°ËùÔÚ×´Ì¬ÏÂµÄ [U W; W' V] ÒÔ¼°Ìİ¶ÈÏòÁ¿ [-ea; -eb] ºÍ×èÄáÏµÊı u À´Çó½â¸ÄÕıÁ¿
+		derivatives::solveSBA_0_6_4(u,ptrMat,U,V,W,ea,eb,da,db,h); 
+
+		h_norm = norm(h);
+
+		if (h_norm < eps2) // ¸ÄÕıÁ¿ÊÕÁ²
+		{
+			found = true;
+			code = 1;
+		} 
+		else
+		{
+			vector<Matx33d> Rs_new = Rs;
+			vector<Matx31d> ts_new = ts;
+			vector<Point4d> XYZWs_new = XYZWs;
+
+			for (int jj=0;jj<m;++jj)
+			{
+				Matx<double,6,1> daj = da[jj];
+
+				Matx33d dR = calib::converse_rotvec_R(daj(0), daj(1), daj(2));
+
+				Rs_new[jj] = dR*Rs_new[jj];
+
+				ts_new[jj](0)+=daj(3);
+				ts_new[jj](1)+=daj(4);
+				ts_new[jj](2)+=daj(5);
+			}
+
+			for (int ii=0;ii<n;++ii)
+			{
+				Matx<double,4,1> dbi = db[ii];
+				XYZWs_new[ii].x += dbi(0);
+				XYZWs_new[ii].y += dbi(1);
+				XYZWs_new[ii].z += dbi(2);
+				XYZWs_new[ii].w += dbi(3);
+			}
+
+			// »ùÓÚ¸ÄÕıÁ¿µÃµ½Ò»ºòÑ¡²ÎÊı¹À¼Æ£¬²¢ÆÀ¹ÀºòÑ¡²ÎÊı¹À¼Æ´¦µÄÄ¿±êº¯Êı£¬Jacobian ¾ØÕóÒÔ¼°Ìİ¶ÈÏòÁ¿
+			derivatives::j_f_w_t_XYZW_IRLS_Huber(XYZWs_new,Ks,Rs_new,ts_new,dists,distTypes,xys,covInvs,j_fixed,i_fixed,
+				ptrMat,U_new,V_new,W_new,ea_new,eb_new,f,g_new,vds,tc);
+
+			tmp = 0.5*f.t()*f;
+			Fx_new = tmp.at<double>(0); // ºòÑ¡²ÎÊı´¦µÄÄ¿±êº¯ÊıÖµ
+
+			tmp = 0.5*h.t()*(u*h-g);
+			L0_Lh = tmp.at<double>(0); // ÔÚµ±Ç°²ÎÊı´¦ÀûÓÃÌİ¶ÈºÍ¸ÄÕıÁ¿Ô¤¹ÀµÄÆÚÍûÄ¿±êº¯ÊıÏÂ½µÁ¿
+
+			r = (Fx - Fx_new) / L0_Lh;
+
+			if (r>0)
+			{
+				// ²ÉÄÉĞÂ²ÎÊı
+				Rs=Rs_new;
+				ts=ts_new;
+				XYZWs=XYZWs_new;
+
+				// Ò»²¢²ÉÄÉĞÂ²ÎÊı´¦µÄ Jacobian ¾ØÕóºÍÌİ¶ÈÏòÁ¿
+				U = U_new;
+				V = V_new;
+				W = W_new;
+				ea = ea_new;
+				eb = eb_new;
+				g = g_new.clone();
+
+				// »¹²ÉÄÉĞÂ²ÎÊı´¦µÄÄ¿±êº¯ÊıÖµ
+				Fx = Fx_new;
+
+				g_norm = norm(g,NORM_INF);
+
+				if (g_norm < eps1) // Ìİ¶ÈÊÕÁ²£¬ËµÃ÷µÖ´ïÆ½Ì¹ÇøÓò
+				{
+					found = true;
+					code = 0;
+				}
+
+				double tmp_db = std::max(ratio_1_3, 1 - pow(2 * r - 1, 3));
+				u *= tmp_db;
+				v = 2;
+			} 
+			else
+			{
+				u *= v;
+				v *= 2;
+			}
+		}
+	}
+
+	// °ÑÓÅ»¯ÍêµÄÆë´ÎÎïµã×ø±ê»¹Ô­Îª·ÇÆë´ÎÎïµã×ø±êÊä³ö
+	for (int i=0;i<n;++i)
+	{
+		Point4d XYZW = XYZWs[i];
+		double w_1 = 1.0/XYZW.w;
+
+		Point3d XYZ;
+		XYZ.x = XYZW.x*w_1;
+		XYZ.y = XYZW.y*w_1;
+		XYZ.z = XYZW.z*w_1;
+
+		XYZs[i] = XYZ;
+	}
+
+	// 20151111£¬½öÍ³¼ÆÄÚµãµÄÖØÍ¶Ó°²Ğ²î
+	n_inliers = 0;
+	sum_d2 = 0;
+	for (int i=0;i<l;++i)
+	{
+		double dx = f.at<double>(2*i);
+		double dy = f.at<double>(2*i+1);
+		double d = sqrt(dx*dx+dy*dy);
+		if (d>=tc)
+		{
+			continue;
+		}
+		++n_inliers;
+		sum_d2+=d*d;
+	}
+	double err_rpj_final = sqrt(sum_d2/n_inliers);
+
+//	double err_rpj_final = sqrt(2*Fx/l);
 
 	if (info)
 	{

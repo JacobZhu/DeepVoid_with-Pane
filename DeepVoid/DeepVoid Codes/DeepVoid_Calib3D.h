@@ -6,9 +6,15 @@
 #pragma once
 
 #include "DeepVoid Codes/DeepVoid_DataType.h"
+#include "DeepVoid Codes/DeepVoid_Derivatives.h"
 
 namespace DeepVoid
 {
+
+// 2015.10.22, 苏昂提供的计时程序，封装了OpenCV的 getTickCount()
+void tic(void);
+double toc(void);
+//////////////////////////////////////////////////////////////////////////
 
 // 根据提供的绕X轴顺时针旋转的角度（角度表示非弧度）得到4×4的旋转矩阵Rx
 CMatrix GenRX(double angle);
@@ -158,12 +164,53 @@ void Get_F_Matches(const Features & feats0,		// input:	n1 features extracted fro
 				   double fEps = 1.0E-6			// input:	threshold
 				   );
 
+// 20151017, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// input the pair images so that matches can be drawn from inside the function
+void Get_F_Matches(const Mat & img0,			// input:	the 1st image
+				   const Mat & img1,			// input:	the 2nd image
+				   const Features & feats0,		// input:	n1 features extracted from the 1st image
+				   const Features & feats1,		// input:	n2 features extracted from the 2nd image
+				   Matx33d & mF,				// output:	the estimated fundamental matrix
+				   vector<DMatch> & matches,	// output:	matches obtained after feature matching and RANSAC
+				   double thresh_p2l = 3.,		// input:	the distance threshold between point and epiline, used in RANSAC stage
+				   double thresh_conf = 0.99,	// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+				   int maxIter = 10,			// input:	the maximum number of iterations
+				   double xEps = 1.0E-8,		// input:	threshold
+				   double fEps = 1.0E-6			// input:	threshold
+				   );
+
 // 20150128, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get initial fundamental matrix using RANSAC
 // 3. optimize fundamental matrix using only inliers
 // 4. augment inlier set using optimized fundamental matrix
 bool Get_F_Matches_knn(const Features & feats0,				// input:	n1 features extracted from the 1st image
+					   const Features & feats1,				// input:	n2 features extracted from the 2nd image
+					   Matx33d & mF,						// output:	the estimated fundamental matrix
+					   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
+					   bool bOptim = true,					// input:	whether optimize F using Golden Standard algorithm or not
+					   double thresh_ratioTest = 0.3,		// input:	the ratio threshold for ratio test
+					   double thresh_minInlierRatio = 0.5,	// input:	the allowed minimum ratio of inliers
+					   double thresh_p2l = 3.,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+					   double thresh_conf = 0.99,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+					   int maxIter = 10,					// input:	the maximum number of iterations
+					   double xEps = 1.0E-8,				// input:	threshold
+					   double fEps = 1.0E-6					// input:	threshold
+					   );
+
+// 20151016, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// input the pair images so that matches can be drawn from inside the function
+bool Get_F_Matches_knn(const Mat & img0,					// input:	the 1st image
+					   const Mat & img1,					// input:	the 2nd image
+					   const Features & feats0,				// input:	n1 features extracted from the 1st image
 					   const Features & feats1,				// input:	n2 features extracted from the 2nd image
 					   Matx33d & mF,						// output:	the estimated fundamental matrix
 					   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
@@ -496,6 +543,20 @@ bool RelativeOrientation_Features_PIRO_givenMatches(const cam_data & cam1,			// 
 													double thresh_reprojErr = 1		// input:	the threshold of the reprojection error in pixels
 													);
 
+// 20151105, zhaokunz, this PIRO func conduct ro with given matches
+// and the feature points in both cam_data are supposed to be distortion free
+// 采用std::map表示的点云
+bool RelativeOrientation_Features_PIRO_givenMatches(const cam_data & cam1,			// input:	all the information about the image 1
+													const cam_data & cam2,			// input:	all the information about the image 2
+													int idx_cam1,					// input:	the index of the first camera
+													int idx_cam2,					// input:	the index of the second camera
+													const vector<DMatch> & matches,	// input:	the given matches
+													Matx33d & mR,					// output:	the relative rotation matrix
+													Matx31d & mt,					// output:	the relative translation vector
+													SfM_ZZK::PointCloud & map_pointcloud,	// output:	the reconstructed point cloud in reference camera frame, which is the first image
+													double thresh_reprojErr = 1		// input:	the threshold of the reprojection error in pixels
+													);
+
 void Triangulate_PIRO_py(double nx1, double ny1, double nz1,	// input:	the normalized image coordinates in reference image
 						 double nx2, double ny2, double nz2,	// input:	the normalized image coordinates in the other image
 						 const CMatrix & mRT,					// input:	the relative orientation
@@ -701,6 +762,22 @@ void GetReconstructedTrackNum(const vector<cam_data> & allCams,	// input:	all im
 							  vector<Point2i> & pairs			// output:	the maximum number of tracks observed by single image 
 							  );
 
+// 20151103, zhaokunz, find images good for EO
+// rank all images according to the number of reconstructed tracks they observed
+void RankImages_NumObjPts(const vector<cam_data> & allCams,		// input:	all images
+						  const vector<CloudPoint> & clouds,	// input:	all reconstructed tracks
+						  const vector<int> & status,			// input:	status[i]=1 means that image i is not considered
+						  vector<SfM_ZZK::pair_ij> & imgRank	// output:	the maximum number of tracks observed by single image 
+					      );
+
+// 20151105, zhaokunz, find images good for EO
+// rank all images according to the number of reconstructed tracks they observed
+// 使用std::map表示的点云结构
+void RankImages_NumObjPts(const vector<cam_data> & allCams,				// input:	all images
+						  const SfM_ZZK::PointCloud & map_pointcloud,	// input:	all reconstructed tracks
+						  vector<SfM_ZZK::pair_ij> & imgRank			// output:	the maximum number of tracks observed by single image 
+					      );
+
 // 20150127, zhaokunz, find image pair good for RO
 void FindPairObservingMostCommonTracks(const vector<cam_data> & allCams,			// input:	all images
 									   const vector<vector<Point2i>> & allTracks,	// input:	all feature tracks
@@ -748,6 +825,28 @@ bool EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all the images
 				   int idx_cam,									// input:	the index of the image to be oriented
 				   vector<CloudPoint> & clouds,					// input&output:	the reconstructed cloud points in reference camera frame, which is the first image
 				   const vector<vector<Point2i>> & allTracks,	// input:	all the tracks
+				   double thresh_rpj_inlier = 1,				// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
+				   double thresh_ratio_inlier = 0.5				// input:	the allowed minimum ratio of inliers within all reconstructed matches
+				   );
+
+// 20151105, zhaokunz, feature points in all images are supposed to be distortion free
+// 点云和特征轨迹都改用std::map容器
+bool EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all the images
+				   int idx_refimg,								// input:	the reference image, whose R=I and t = [0,0,0]'
+				   int idx_cam,									// input:	the index of the image to be oriented
+				   SfM_ZZK::PointCloud & map_pointcloud,		// input&output:	the reconstructed cloud points in reference camera frame, which is the first image
+				   const SfM_ZZK::MultiTracks & map_tracks,		// input:	all the tracks
+				   double thresh_rpj_inlier = 1,				// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
+				   double thresh_ratio_inlier = 0.5				// input:	the allowed minimum ratio of inliers within all reconstructed matches
+				   );
+
+// 20151105, zhaokunz, feature points in all images are supposed to be distortion free
+// 点云和特征轨迹都改用std::map容器
+// 只针对一幅图像只尝试对其进行定向，不负责前方交会和光束法平差
+bool EO_PnP_RANSAC(const cam_data & cam,						// input:	the image to be oriented
+				   const SfM_ZZK::PointCloud & map_pointcloud,	// input:	the reconstructed cloud points in reference camera frame, which is the first image
+				   Matx33d & mR,								// output:	the estimated rotation matrix
+				   Matx31d & mt,								// output:	the estimated translation vector
 				   double thresh_rpj_inlier = 1,				// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
 				   double thresh_ratio_inlier = 0.5				// input:	the allowed minimum ratio of inliers within all reconstructed matches
 				   );

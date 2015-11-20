@@ -1900,11 +1900,13 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 
 				if (d<-1.5) // d=-2, mismatched
 				{
-					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 255;
+//					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 255; // red
+					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // black
 				} 
 				else if (d<=0) // d=-1, occluded
 				{
-					mDisparity.at<Vec3b>(i,j)[0] = 255; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0;
+//					mDisparity.at<Vec3b>(i,j)[0] = 255; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // blue
+					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // black
 				}
 				else // valid disparity
 				{
@@ -1924,11 +1926,13 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 
 				if (d<-1.5) // d=-2, mismatched
 				{
-					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 255;
+//					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 255; // red
+					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
 				} 
 				else if (d<=0) // d=-1, occluded
 				{
-					mDisparity.at<Vec3b>(j,i)[0] = 255; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0;
+//					mDisparity.at<Vec3b>(j,i)[0] = 255; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // blue
+					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
 				}
 				else // valid disparity
 				{

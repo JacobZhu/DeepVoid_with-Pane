@@ -3540,22 +3540,44 @@ void DeepVoid::SaveCameraData(CString path, const cam_data & cam)
 	CString str, strtmp;
 
 
+// 	str.Format("Distortion Coefficients\n");
+// 	for (i=0;i<5;i++)
+// 	{
+// 		strtmp.Format("%.12f	", cam.k[i]);
+// 		str += strtmp;
+// 	}
+// 	str += "\n\n";
+// 	fprintf(file, str);
+
 	str.Format("Distortion Coefficients\n");
 	for (i=0;i<5;i++)
 	{
-		strtmp.Format("%.12f	", cam.k[i]);
+		strtmp.Format("%.12f	", cam.m_dist(i));
 		str += strtmp;
 	}
 	str += "\n\n";
 	fprintf(file, str);
 
 
+// 	str.Format("Rotation Matrix\n");
+// 	for (i=0;i<3;i++)
+// 	{
+// 		for (j=0;j<3;j++)
+// 		{
+// 			strtmp.Format("%.12f	", cam.R[i*3+j]);
+// 			str += strtmp;
+// 		}
+// 		str += "\n";
+// 	}
+// 	str += "\n";
+// 	fprintf(file, str);
+
 	str.Format("Rotation Matrix\n");
 	for (i=0;i<3;i++)
 	{
 		for (j=0;j<3;j++)
 		{
-			strtmp.Format("%.12f	", cam.R[i*3+j]);
+			strtmp.Format("%.12f	", cam.m_R(i*3+j));
 			str += strtmp;
 		}
 		str += "\n";
@@ -3564,10 +3586,19 @@ void DeepVoid::SaveCameraData(CString path, const cam_data & cam)
 	fprintf(file, str);
 
 
+// 	str.Format("Translation Vector\n");
+// 	for (i=0;i<3;i++)
+// 	{
+// 		strtmp.Format("%.12f	", cam.t[i]);
+// 		str += strtmp;
+// 	}
+// 	str += "\n\n";
+// 	fprintf(file, str);
+
 	str.Format("Translation Vector\n");
 	for (i=0;i<3;i++)
 	{
-		strtmp.Format("%.12f	", cam.t[i]);
+		strtmp.Format("%.12f	", cam.m_t(i));
 		str += strtmp;
 	}
 	str += "\n\n";

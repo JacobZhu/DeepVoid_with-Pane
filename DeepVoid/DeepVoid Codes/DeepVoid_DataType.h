@@ -200,10 +200,15 @@ struct cam_data
 
 	double k[5];            // distortion
 
+// 	double * R;
+// 	double * t;
+// 	double * k;
+
 	// 20150214, zhaokunz, 改用Matx结构体
 	Matx33d m_K;
 	Matx33d m_R;
 	Matx31d m_t;
+	Matx<double,5,1> m_dist;
 
 	bool m_bCalibed;	// whether interior calibrated or not
 	bool m_bOriented;	// whether exterior oriented or not
@@ -218,6 +223,10 @@ struct cam_data
 		fx = -1;	fy = -1;
 		cx = -1;	cy = -1;
 		s  = -1;
+
+// 		R = m_R.val;
+// 		t = m_t.val;
+// 		k = m_dist.val;
 
 		int i;
 		for (i = 0; i < 9; i++)

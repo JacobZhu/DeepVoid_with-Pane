@@ -54,6 +54,7 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_STEREO, &CDeepVoidApp::OnStereo)
 	ON_COMMAND(ID_CALIBSIMU, &CDeepVoidApp::OnCalibsimu)
 	ON_COMMAND(ID_DSBASIMU, &CDeepVoidApp::OnDsbasimu)
+	ON_COMMAND(ID_SFM_SIMU, &CDeepVoidApp::OnSfmSimu)
 END_MESSAGE_MAP()
 
 
@@ -637,7 +638,7 @@ UINT SfM(LPVOID param)
 
 		Mat mask;
 
-		/*SIFT sift;*/
+//		SIFT sift;
 		SURF sift;
 
 		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
@@ -686,17 +687,31 @@ UINT SfM(LPVOID param)
 
 	for (i=0;i<pApp->m_vCams.size();i++)
 	{
-		pApp->m_vCams[i].fx = 707.244864;
-		pApp->m_vCams[i].fy = 707.135373;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 200.696825;
-		pApp->m_vCams[i].cy = 154.045817;
+// 		pApp->m_vCams[i].fx = 707.244864;
+// 		pApp->m_vCams[i].fy = 707.135373;
+// 		pApp->m_vCams[i].s  = 0;
+// 		pApp->m_vCams[i].cx = 200.696825;
+// 		pApp->m_vCams[i].cy = 154.045817;
+// 
+// 		pApp->m_vCams[i].m_K(0,0) = 707.244864;
+// 		pApp->m_vCams[i].m_K(1,1) = 707.135373;
+// 		pApp->m_vCams[i].m_K(0,1) = 0;
+// 		pApp->m_vCams[i].m_K(0,2) = 200.696825;
+// 		pApp->m_vCams[i].m_K(1,2) = 154.045817;
+// 		pApp->m_vCams[i].m_K(2,2) = 1;
+// 		pApp->m_vCams[i].m_bCalibed = true;
 
-		pApp->m_vCams[i].m_K(0,0) = 707.244864;
-		pApp->m_vCams[i].m_K(1,1) = 707.135373;
+		pApp->m_vCams[i].fx = 1414.489728;
+		pApp->m_vCams[i].fy = 1414.270745;
+		pApp->m_vCams[i].s  = 0;
+		pApp->m_vCams[i].cx = 401.3936505;
+		pApp->m_vCams[i].cy = 308.091633;
+
+		pApp->m_vCams[i].m_K(0,0) = 1414.489728;
+		pApp->m_vCams[i].m_K(1,1) = 1414.270745;
 		pApp->m_vCams[i].m_K(0,1) = 0;
-		pApp->m_vCams[i].m_K(0,2) = 200.696825;
-		pApp->m_vCams[i].m_K(1,2) = 154.045817;
+		pApp->m_vCams[i].m_K(0,2) = 401.3936505;
+		pApp->m_vCams[i].m_K(1,2) = 308.091633;
 		pApp->m_vCams[i].m_K(2,2) = 1;
 		pApp->m_vCams[i].m_bCalibed = true;
 
@@ -784,7 +799,8 @@ UINT SfM(LPVOID param)
 	}
 
 	double opts[5];
-	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+//	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+	opts[0] = 1.0E-6;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
 	opts[1] = 1.0E-8;	// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
 	opts[2] = 1.0E-8;	// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
 	opts[3] = 1.0E-12;	// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
@@ -834,13 +850,18 @@ UINT SfM(LPVOID param)
 
 			// 20150113, zhaokunz, new matching function
 			Matx33d mF;
-//			Get_F_Matches(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,thresh_d2epiline,thresh_matchConf);
+//			Get_F_Matches(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,thresh_d2epiline,thresh_matchConf); bool bSuc = true;
+//			Get_F_Matches(vImages[i],vImages[j],pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,thresh_d2epiline,thresh_matchConf); bool bSuc = true;
 			bool bSuc = Get_F_Matches_knn(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,false,0.65,0.5,thresh_d2epiline,thresh_matchConf,64);
+			// 20151017，draw matches from each stage from inside the function
+// 			bool bSuc = Get_F_Matches_knn(vImages[i],vImages[j],pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,
+// 				true,0.65,0.5,thresh_d2epiline,thresh_matchConf,64);
 
 			Mat disp_matches;
-			drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches, disp_matches);
+			drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches,
+				disp_matches, Scalar(0,255,0), Scalar(0,0,255));
 			strInfo.Format("E:\\matches\\matches between image %03d and %03d.bmp", i, j);
-			imwrite(strInfo.GetBuffer(), disp_matches);
+//			imwrite(strInfo.GetBuffer(), disp_matches);
 
 			strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, matches.size());
 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
@@ -864,23 +885,47 @@ UINT SfM(LPVOID param)
 	}
 	fclose(fileMatches);
 
-	vector<vector<Point2i>> allTracks;
-	/*FindAllMatchingTracks_with121mappingcheck(pApp->m_vCams, allMatches, allTracks);*/
 
+	// feature tracking
+	SfM_ZZK::MultiTracks map_tracks_init;
+	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks_init);
+//	SfM_ZZK::FindAllTracks_Least(map_pairwise_matches, map_tracks);
+
+	// 确保特征轨迹从0开始依次计数
+	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
 	SfM_ZZK::MultiTracks map_tracks;
-	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks);
-	std::map<int,int> hist;
-	SfM_ZZK::BuildTrackLengthHistogram(map_tracks, hist);
+	int idx_count = 0;
+	for (auto iter_track=map_tracks_init.begin();iter_track!=map_tracks_init.end();++iter_track)
+	{
+		map_tracks.insert(make_pair(idx_count,iter_track->second));
 
-	SfM_ZZK::MultiTracks map_tracks1;
-	SfM_ZZK::FindAllTracks_Olsson_Original(map_pairwise_matches, map_tracks1);
-	std::map<int,int> hist2;
-	SfM_ZZK::BuildTrackLengthHistogram(map_tracks1, hist2);
+		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
+		for (auto iter_Ii=iter_track->second.begin();iter_Ii!=iter_track->second.end();++iter_Ii)
+		{
+			const int & I = iter_Ii->first; // image I
+//			const int & i = iter_Ii->second; // feature i
+			const int & i = iter_Ii->second.first; // feature i
+			pApp->m_vCams[I].m_feats.tracks[i] = idx_count;
+		}
 
-	FindAllMatchingTracks(pApp->m_vCams, allMatches, allTracks);
+		++idx_count;
+	}
 
-	std::map<int,int> hist1;
-	SfM_ZZK::BuildTrackLengthHistogram(allTracks, hist1);
+	// 统计特征轨迹直方图
+	std::map<int,int> hist_track;
+	SfM_ZZK::BuildTrackLengthHistogram(map_tracks, hist_track);
+	int n_tracklength_more_than_1 = 0;
+	for (auto iter_n=hist_track.begin();iter_n!=hist_track.end();++iter_n)
+	{
+		if (iter_n->first<2)
+		{
+			continue;
+		}
+		n_tracklength_more_than_1+=iter_n->second;
+	}
+
+	vector<vector<Point2i>> allTracks;
+//	FindAllMatchingTracks(pApp->m_vCams, allMatches, allTracks);
 
 // 	FILE * file = fopen("D:\\good tracks.txt", "w");
 // 
@@ -897,11 +942,14 @@ UINT SfM(LPVOID param)
 // 
 // 	fclose(file);
 
-	strInfo.Format("number of good tracks: %07d", allTracks.size());
+	strInfo.Format("number of good tracks: %07d", n_tracklength_more_than_1);
 	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 	// relative orientation //////////////////////////////////////////////////////////////////////////
 	CMatrix mRT; vector<CloudPoint> clouds;
+
+	// 20151105 point cloud based on std::map
+	SfM_ZZK::PointCloud map_pointcloud;
 
 	vector<int> status(nCam);
 	for (i=0;i<nCam;i++)
@@ -910,45 +958,77 @@ UINT SfM(LPVOID param)
 	}
 
 	//////////////////////////////////////////////////////////////////////////
-	vector<Point2i> pairs;
-	FindPairObservingMostCommonTracks(pApp->m_vCams,allTracks,pairs);
+	vector<SfM_ZZK::pair_ij_k> pairs;
+	SfM_ZZK::RankImagePairs_TrackLengthSum(map_pairwise_matches, map_tracks, pairs);
+
+// 	vector<Point2i> pairs;
+// 	FindPairObservingMostCommonTracks(pApp->m_vCams,allTracks,pairs);
 
 	CString strFile;
 	int idx_refimg;
 
-	for (k=0;k<pairs.size();k++)
+//	for (k=0;k<pairs.size();k++)
+	for (auto iter_pair=pairs.begin();iter_pair!=pairs.end();++iter_pair)
 	{
-		i = pairs[k].x;
-		j = pairs[k].y;
+// 		i = pairs[k].x;
+// 		j = pairs[k].y;
 
-		bool bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(pApp->m_vCams[i], pApp->m_vCams[j], i, j, allMatches[i*nCam+j],
-			mRT, clouds, thresh_reproj_ro);
+		i = iter_pair->first.first;
+		j = iter_pair->first.second;
+
+		cam_data & cam_i = pApp->m_vCams[i];
+		cam_data & cam_j = pApp->m_vCams[j];
+
+		// 找到两者之间的特征匹配
+		auto iter_found = map_pairwise_matches.find(iter_pair->first);
+
+		// 尝试做相对定向
+// 		bool bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(cam_i, cam_j, i, j, iter_found->second,
+// 			mRT, clouds, thresh_reproj_ro);
+
+		Matx33d mR;
+		Matx31d mt;
+		SfM_ZZK::PointCloud map_pointcloud_tmp;
+
+		bool bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(cam_i, cam_j, i, j, iter_found->second,
+			mR, mt, map_pointcloud_tmp, thresh_reproj_ro);
 
 		if (bSuc_RO)
 		{
-			for (int ii=0;ii<3;ii++)
-			{
-				for (int jj=0;jj<3;jj++)
-				{
-					pApp->m_vCams[i].R[ii*3+jj] = 0;
-					pApp->m_vCams[j].R[ii*3+jj] = mRT(ii+1,jj+1);
-				}
-			}
+			cam_i.m_R = Matx33d();
+			cam_i.m_t = Matx31d();
+			cam_i.m_R(0,0)=cam_i.m_R(1,1)=cam_i.m_R(2,2)=1;
 
-			pApp->m_vCams[i].R[0]=pApp->m_vCams[i].R[4]=pApp->m_vCams[i].R[8]=1;
-			pApp->m_vCams[i].t[0]=pApp->m_vCams[i].t[1]=pApp->m_vCams[i].t[2]=0;
+			cam_j.m_R = mR;
+			cam_j.m_t = mt;
 
-			pApp->m_vCams[j].t[0]=mRT(1,4);
-			pApp->m_vCams[j].t[1]=mRT(2,4);
-			pApp->m_vCams[j].t[2]=mRT(3,4);
+			map_pointcloud = map_pointcloud_tmp; // 正式录用所有生成的物点
 
-			strInfo.Format("Relative orientation between image %03d and %03d finished, the rank is: %d, number of cloud points are %d", i, j, k, clouds.size());
+//			strInfo.Format("Relative orientation between image %03d and %03d finished, the rank is: %d, number of cloud points are %d", i, j, k, clouds.size());
+			strInfo.Format("Relative orientation between image %03d and %03d finished, number of cloud points are %d", i, j, map_pointcloud.size());
 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			status[i] = 1;
 			status[j] = 1;
 
+			cam_i.m_bOriented = true;
+			cam_j.m_bOriented = true;
+
 			idx_refimg = i;
+
+			// 将所有重建出来的像点暂时赋上都为内点
+			for (auto iter_wrdpt = map_pointcloud.begin();iter_wrdpt!=map_pointcloud.end();++iter_wrdpt)
+			{
+				const int & trackID = iter_wrdpt->first;
+
+				auto iter_found_track = map_tracks.find(trackID);
+
+				auto iter_found_i = iter_found_track->second.find(i);
+				auto iter_found_j = iter_found_track->second.find(j);
+
+				iter_found_i->second.second = 1; // 为内点
+				iter_found_j->second.second = 1; // 为内点
+			}
 
 			strFile.Format("point cloud after RO of images %03d and %03d.txt", i, j);
 
@@ -960,99 +1040,125 @@ UINT SfM(LPVOID param)
 	CString strOut;
 	strOut.Format("E:\\all\\");
 
-	OutputPointCloud(strOut+strFile,pApp->m_vCams,clouds);
+//	OutputPointCloud(strOut+strFile,pApp->m_vCams,clouds);
 
-// 	bool bSuc_RO = false;
-// 	for (i=0;i<nCam;i++)
-// 	{
-// 		for (j=i+1;j<nCam;j++)
-// 		{
-// // 			bSuc_RO = RelativeOrientation_RANSAC_Features_PIRO_givenMatches(pApp->m_vCams[i], pApp->m_vCams[j], i, j, allMatches[i*nCam+j],
-// // 				mRT, clouds, thresh_stdev_YZ, thresh_reproj_ro, thresh_pyerr, thresh_ang);
-// 			// 20150115, zhaokunz, new more robust RO
-// 			bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(pApp->m_vCams[i], pApp->m_vCams[j], i, j, allMatches[i*nCam+j],
-// 				mRT, clouds, thresh_reproj_ro);
-// 
-// 			if (bSuc_RO)
-// 			{
-// 				for (int ii=0;ii<3;ii++)
-// 				{
-// 					for (int jj=0;jj<3;jj++)
-// 					{
-// 						pApp->m_vCams[i].R[ii*3+jj] = 0;
-// 						pApp->m_vCams[j].R[ii*3+jj] = mRT(ii+1,jj+1);
-// 					}
-// 				}
-// 
-// 				pApp->m_vCams[i].R[0]=pApp->m_vCams[i].R[4]=pApp->m_vCams[i].R[8]=1;
-// 				pApp->m_vCams[i].t[0]=pApp->m_vCams[i].t[1]=pApp->m_vCams[i].t[2]=0;
-// 
-// 				pApp->m_vCams[j].t[0]=mRT(1,4);
-// 				pApp->m_vCams[j].t[1]=mRT(2,4);
-// 				pApp->m_vCams[j].t[2]=mRT(3,4);
-// 
-// 				strInfo.Format("Relative orientation between image %03d and %03d finished, number of cloud points are %d", i, j, clouds.size());
-// 				pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 				status[i] = 1;
-// 				status[j] = 1;
-// 
-// 				break;
-// 			}
-// 		}
-// 
-// 		if (bSuc_RO)
-// 		{
-// 			break;
-// 		}
-// 	}
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////
+	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,2);
 
 	double d_mean = MeanMinDistance_3D(clouds);
 	strInfo.Format("average distance between cloud points is: %lf", d_mean);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
-// 	int idx_max, nPts_max;
+	vector<SfM_ZZK::pair_ij> imgRank;
+//	RankImages_NumObjPts(pApp->m_vCams, clouds, status, imgRank);
+	RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
+
+	// 20151103，全自动的增量式 SfM 循环 ////////////////////////////////////
+	double thresh_inlier_rpjerr = 1.5;
+	double thresh_inlier_ratio = 0.15;
+
+	int n_pointcloud_size_old = map_pointcloud.size();
+
+	bool bAllFail = false;
+	while (imgRank.size()>0 && !bAllFail) // 还有图没有完成定向且并不是所有剩余图像都定向失败了就继续
+	{
+		bAllFail = true;
+		vector<SfM_ZZK::pair_ij> imgRank_tmp = imgRank;
+
+		for (auto iter_img=imgRank_tmp.begin();iter_img!=imgRank_tmp.end();++iter_img)
+		{
+			const int & I = iter_img->first; // image I
+
+			cam_data & cam_I = pApp->m_vCams[I];
+
+			// 1. 尝试 RANSAC 后方交会
+			Matx33d mR;
+			Matx31d mt;
+			bool bEOSuc = EO_PnP_RANSAC(cam_I, map_pointcloud, mR, mt, thresh_inlier_rpjerr, thresh_inlier_ratio);
+
+			if (!bEOSuc) // 如果后方交会失败就考虑排在后面的图像
+			{
+				continue;
+			}
+
+			// 到这里就说明后方交会成功了
+			bAllFail = false;
+			
+			// 正式录入外参初值
+			cam_I.m_R = mR;
+			cam_I.m_t = mt;
+
+			status[I] = 1;
+			cam_I.m_bOriented = true;
+
+			// 2. 稀疏光束法平差。只利用现有的物点，还没有利用新加入的图像前方交会新的物点
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
+			double info[10];
+			int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 1024,opts, info);
+			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
+				map_pointcloud.size(), info[0], info[1], info[3], info[4]);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
+			SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,3);
+
+			// 更新阈值
+//			thresh_inlier_rpjerr = 3*info[1];
+
+			// 3. 前方交会
+//			SfM_ZZK::Triangulation_AddOneImg(map_pointcloud,pApp->m_vCams,map_tracks,I,thresh_inlier_rpjerr);
+			SfM_ZZK::Triangulation_AllImgs(map_pointcloud,pApp->m_vCams,map_tracks,thresh_inlier_rpjerr);
+
+			// 4. 如果点云拓展了，就对剩下的图像重新进行排序
+			int n_pointcloud_size_new = map_pointcloud.size();
+			if (n_pointcloud_size_new != n_pointcloud_size_old)
+			{
+				RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
+
+				n_pointcloud_size_old = n_pointcloud_size_new;
+				break;
+			}
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 最后总的来一次稀疏光束法平差
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
+	double info[10];
+	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 1024,opts, info);
+	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
+		map_pointcloud.size(), info[0], info[1], info[3], info[4]);
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+	std::map<int,int> hist_cloudpoint_inlier;
+	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(map_pointcloud,map_tracks,hist_cloudpoint_inlier);
+
+	FILE * file = fopen("E:\\all\\hist.txt", "w");
+	for (auto iter_hist=hist_cloudpoint_inlier.begin();iter_hist!=hist_cloudpoint_inlier.end();++iter_hist)
+	{
+		fprintf(file,"%d	%d\n", iter_hist->first, iter_hist->second);
+	}
+	fprintf(file,"%lf", length_average);
+	fclose(file);
+
+	// 输出点云
+	strFile.Format("Final point cloud.txt");
+	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,3);
+
+	// 输出像机定向
+	// save all cameras' parameters
+	for (i=0;i<nCam;i++)
+	{
+		CString strtmp;
+		strFile.Format("cam%02d.txt", i);
+		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
+	}
+
+// 	int n_inliers_changed = SfM_ZZK::Triangulation_AllImgs(map_pointcloud,pApp->m_vCams,map_tracks,thresh_inlier_rpjerr/*3*info[1]*/);
 // 
-// 	idx_max = FindImgObservingMostTracks_hashSet(pApp->m_vCams, clouds, status, nPts_max);
-// 	strInfo.Format("maximum tracks: %05d by image %03d", nPts_max, idx_max);
+// 	strInfo.Format("n_inliers_changed: %d", n_inliers_changed);
 // 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 	while (idx_max>=0 && nPts_max > 6)
-// 	{
-// //		ExteriorOrientation_PnP_RANSAC(pApp->m_vCams, idx_max, clouds, allTracks, 1, 0.5);
-// //		ExteriorOrientation_PnP_RANSAC_detachOutliers(pApp->m_vCams, idx_max, clouds, allTracks, 1, 0.5);
-// 		bool bSuc_EO = EO_PnP_RANSAC(pApp->m_vCams, idx_max, clouds, allTracks, 1.5, 0.0);
-// 		strInfo.Format("Exterior orientation of image %03d finished, code: %d, number of cloud points are %d", idx_max, bSuc_EO, clouds.size());
-// 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 		if (!bSuc_EO) // failed
-// 		{
-// 			idx_max = FindImgObservingMostTracks_hashSet(pApp->m_vCams, clouds, status, nPts_max);
-// 			strInfo.Format("maximum tracks: %05d by image %03d", nPts_max, idx_max);
-// 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 			continue;
-// 		}
-// 		
-// 		status[idx_max] = 1;
-// 
-// 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
-// 		double info[10];
-// 		int nnn = optim_sba_levmar_XYZ_ext_rotvec(clouds, pApp->m_vCams, 1024, opts, info);
-// 		/*int nnn = optim_sba_levmar_XYZ_ext_rotvec_iterative(clouds, pApp->m_vCams, allTracks, 1024, 1, opts, info);*/
-// 		double rrr = sqrt(info[1]/nnn);
-// 		strInfo.Format("SBA ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[5], info[6]);
-// 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 		d_mean = MeanMinDistance_3D(clouds);
-// 		strInfo.Format("average distance between cloud points is: %lf", d_mean);
-// 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 		idx_max = FindImgObservingMostTracks_hashSet(pApp->m_vCams, clouds, status, nPts_max);
-// 		strInfo.Format("maximum tracks: %05d by image %03d", nPts_max, idx_max);
-// 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 	}
+
+	return TRUE;
 
 	vector<Point2i> candidates;
 	GetReconstructedTrackNum(pApp->m_vCams, clouds, status, candidates);
@@ -1122,7 +1228,7 @@ UINT SfM(LPVOID param)
 
 	int n_outliers = 0;
 
-	FILE * file = fopen("D:\\result_SfM_outliers_inliers.txt", "w");
+	/*FILE * */file = fopen("D:\\result_SfM_outliers_inliers.txt", "w");
 	for (i=0;i<clusters.size();i++)
 	{
 		vector<int> cluster = clusters[i];
@@ -1161,13 +1267,13 @@ UINT SfM(LPVOID param)
 
 	// the final sba after a few obvious outliers being eliminated
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
-	double info[10];
+//	double info[10];
 
 // 	int nnn = optim_sba_levmar_XYZ_ext_rotvec(clouds_no_outliers, pApp->m_vCams, idx_refimg, 1024, opts, info);
 // 	double rrr = sqrt(info[1]/nnn);
 // 	strInfo.Format("Final SBA ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[5], info[6]);
 
-	int nnn = optim_sba_levmar_XYZ_ext_rotvec_own(clouds_no_outliers, pApp->m_vCams, idx_refimg, 1024, opts, info);
+	nnn = optim_sba_levmar_XYZ_ext_rotvec_own(clouds_no_outliers, pApp->m_vCams, idx_refimg, 1024, opts, info);
 	double rrr = info[1];
 	strInfo.Format("Final SBA ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[3], info[4]);
 
@@ -5091,9 +5197,9 @@ UINT NewPatchMatch(LPVOID param)
 	// read in all the IO and EO of test images
 	int nAllImgs;
 //	FILE * file = fopen("E:\\Test Data\\templeSparseRing\\templeSR_par.txt", "r");
-//	FILE * file = fopen("E:\\Test Data\\templeRing\\templeR_par.txt", "r");
+	FILE * file = fopen("E:\\Test Data\\templeRing\\templeR_par.txt", "r");
 //	FILE * file = fopen("E:\\Test Data\\dinoSparseRing\\dinoSR_par.txt", "r");
-	FILE * file = fopen("E:\\Test Data\\dinoRing\\dinoR_par.txt", "r");
+//	FILE * file = fopen("E:\\Test Data\\dinoRing\\dinoR_par.txt", "r");
 	
 	fscanf(file, "%d", &nAllImgs);
 
@@ -5133,9 +5239,9 @@ UINT NewPatchMatch(LPVOID param)
 
 		CString strDir;
 //		strDir.Format("E:\\Test Data\\templeSparseRing\\templeSR%04d.png", i+1);
-//		strDir.Format("E:\\Test Data\\templeRing\\templeR%04d.png", i+1);
+		strDir.Format("E:\\Test Data\\templeRing\\templeR%04d.png", i+1);
 //		strDir.Format("E:\\Test Data\\dinoSparseRing\\dinoSR%04d.png", i+1);
-		strDir.Format("E:\\Test Data\\dinoRing\\dinoR%04d.png", i+1);
+//		strDir.Format("E:\\Test Data\\dinoRing\\dinoR%04d.png", i+1);
 
 		vPaths_imgs.push_back(strDir);
 
@@ -5147,9 +5253,9 @@ UINT NewPatchMatch(LPVOID param)
 
 		// read in contour images
 //		strDir.Format("E:\\Test Data\\templeSparseRing\\contours\\templeSR%04d_seg.png", i+1);
-//		strDir.Format("E:\\Test Data\\templeRing\\contours\\templeR%04d_seg.png", i+1);
+		strDir.Format("E:\\Test Data\\templeRing\\contours\\templeR%04d_seg.png", i+1);
 //		strDir.Format("E:\\Test Data\\dinoSparseRing\\contours\\dinoSR%04d_seg.png", i+1);
-		strDir.Format("E:\\Test Data\\dinoRing\\contours\\dinoR%04d_seg.png", i+1);
+//		strDir.Format("E:\\Test Data\\dinoRing\\contours\\dinoR%04d_seg.png", i+1);
 		img = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_GRAYSCALE);
 		vSilhouettes.push_back(img);
 	}
@@ -5162,9 +5268,9 @@ UINT NewPatchMatch(LPVOID param)
 // 	double bbox_zmin = -0.012445;	double bbox_zmax = 0.062736;
 
 	// bounding box of temple ring
-// 	double bbox_xmin = -0.023121;	double bbox_xmax = 0.078626;
-// 	double bbox_ymin = -0.038009;	double bbox_ymax = 0.121636;
-// 	double bbox_zmin = -0.091940;	double bbox_zmax = -0.017395;
+	double bbox_xmin = -0.023121;	double bbox_xmax = 0.078626;
+	double bbox_ymin = -0.038009;	double bbox_ymax = 0.121636;
+	double bbox_zmin = -0.091940;	double bbox_zmax = -0.017395;
 
 	// bounding box of dino sparse ring
 // 	double bbox_xmin = -0.061897;	double bbox_xmax = 0.010897;
@@ -5172,9 +5278,9 @@ UINT NewPatchMatch(LPVOID param)
 // 	double bbox_zmin = -0.057845;	double bbox_zmax = 0.015495;
 
 	// bounding box of dino ring
-	double bbox_xmin = -0.021897;	double bbox_xmax = 0.050897;
-	double bbox_ymin = 0.021126;	double bbox_ymax = 0.108227;
-	double bbox_zmin = -0.017845;	double bbox_zmax = 0.055495;
+// 	double bbox_xmin = -0.021897;	double bbox_xmax = 0.050897;
+// 	double bbox_ymin = 0.021126;	double bbox_ymax = 0.108227;
+// 	double bbox_zmin = -0.017845;	double bbox_zmax = 0.055495;
 
 	vector<CloudPoint> cloudpts_bbox;
 	CloudPoint cloudpt;
@@ -5306,9 +5412,9 @@ UINT NewPatchMatch(LPVOID param)
 	vector<vector<int>> vIdxSupports; vector<vector<CloudPoint>> vClouds;
 //	file = fopen("E:\\Test Data\\templeSparseRing\\support images.txt", "r");
 //	file = fopen("E:\\Test Data\\templeRing\\support images.txt", "r");
-//	file = fopen("E:\\Test Data\\templeRing\\support images - without 180 roll.txt", "r");
+	file = fopen("E:\\Test Data\\templeRing\\support images - without 180 roll.txt", "r");
 //	file = fopen("E:\\Test Data\\dinoSparseRing\\support images.txt", "r");
-	file = fopen("E:\\Test Data\\dinoRing\\support images.txt", "r");
+//	file = fopen("E:\\Test Data\\dinoRing\\support images.txt", "r");
 	for (i=0;i<vAllCams.size();i++)
 	{
 		vector<int> vIdxSpts;
@@ -6911,6 +7017,14 @@ void CDeepVoidApp::OnStereo()
 		// 直接进行密集匹配得到视差图，但不反投影生成点云
 		if (!bGivenParams)
 		{
+			// 20151014 原图太大，就截取一下 /////////////////////////////////////////
+// 			Mat img0_roi(img0, Range(160,1400), Range(180,1800));
+// 			Mat img1_roi(img1, Range(160,1400), Range(180,1800));
+// 
+// 			img0 = img0_roi.clone();
+// 			img1 = img1_roi.clone();
+			//////////////////////////////////////////////////////////////////////////
+
 			// original gray image
 			Mat img0_gray, img1_gray;
 			cvtColor(img0, img0_gray, CV_RGB2GRAY);
@@ -7826,26 +7940,25 @@ void CDeepVoidApp::OnCalibsimu()
 // 	double dr443 = norm(dw44);
 }
 
-
-void CDeepVoidApp::OnDsbasimu()
+UINT DSBA_Simu_increaseImgPtNoise(LPVOID param)
 {
-	// TODO: Add your command handler code here
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
 	RNG rng(0xffffffff);			// Initializes a random number generator state
 //	RNG rng((unsigned)time(NULL));	// Initializes a random number generator state
 
 	// parameters setting /////////////////////////////////////////////////////////////////////////////
-	int nObj = 100;				// number of object points
+	int nObj = 30;				// number of object points
 	int nImg = 7;				// number of images
-	int nImgperPt = 3;			// each object point is observed by this many images
+	int nImgperPt = 7;			// each object point is observed by this many images
 	double range = 1;			// the spread of object points
-	double distance = 10;		// distance between camera and object points center
+	double distance = 3;		// distance between camera and object points center
 	double interval_ang = 15;	// the angular interval between neighboring images (in degree)
-	double img_noise_std = 0.2;	// standard deviation of image point error
+	double img_noise_std = 1.0;	// standard deviation of image point error
 	double t_noise_std = 0.1;	// standard deviation of the initial translation vector
 	double rad_noise_std = 0.5*calib::D2R;			// standard deviation of the initial rotation, in radian
 	double rv_noise_std = rad_noise_std/sqrt(3.0);	// standard deviation of the initial rotation vector element
-	int nSimu = 100;			// the times of simulation in order to do the statistics
+	int nSimu = 200;			// the times of simulation in order to do the statistics
 
 	double f = 1500;			// equivalent focal length
 	double w = 1280;			// image width
@@ -7854,7 +7967,7 @@ void CDeepVoidApp::OnDsbasimu()
 	double cy = 0.5*(h-1);		// principal point
 	double s = 0;				// screw factor
 
-	double f_e = f + 0;			// equivalent focal length with error
+	double f_e = f + 0;		// equivalent focal length with error
 	double cx_e = cx + 0;		// principal point with error
 	double cy_e = cy + 0;		// principal point with error
 	double s_e = s + 0;			// screw factor with error
@@ -7872,6 +7985,7 @@ void CDeepVoidApp::OnDsbasimu()
 	double k5_e = k5 + 0;		// 6th order radial distortion coefficient with error
 
 	// simulate object points //////////////////////////////////////////////////////////////////////////
+//	FILE * file_objpts = fopen("C:\\Users\\DeepVoid\\Desktop\\wrdpts.txt", "w");
 	vector<Point3d> vObjPts;
 	for (int i=0;i<nObj;++i)
 	{
@@ -7882,7 +7996,10 @@ void CDeepVoidApp::OnDsbasimu()
 		objPt.z = rng.uniform(-range*0.5, range*0.5);
 
 		vObjPts.push_back(objPt);
+
+//		fprintf(file_objpts, "%lf	%lf	%lf\n", objPt.x,objPt.y,objPt.z);
 	}
+//	fclose(file_objpts);
 
 	// simulate images /////////////////////////////////////////////////////////////////////////////////
 	vector<Matx33d> Ks,K_es;
@@ -7917,6 +8034,14 @@ void CDeepVoidApp::OnDsbasimu()
 	ts.push_back(mt);
 	t_es.push_back(mt);
 
+// 	FILE * file_cam = fopen("C:\\Users\\DeepVoid\\Desktop\\RT00.txt", "w");
+// 	for (int i=0;i<3;++i)
+// 	{
+// 		fprintf(file_cam, "%lf	%lf	%lf	%lf\n", mR(i,0), mR(i,1), mR(i,2), mt(i));
+// 	}
+// 	fprintf(file_cam, "%lf	%lf	%lf	%lf", 0.0, 0.0, 0.0, 1.0);
+// 	fclose(file_cam);
+
 	Matx<double,5,1> dist;
 	dist(0) = k1;	dist(1) = k2;	dist(2) = k3;	dist(3) = k4;	dist(4) = k5;
 	dists.push_back(dist);
@@ -7938,6 +8063,16 @@ void CDeepVoidApp::OnDsbasimu()
 
 		Matx33d dR = calib::converse_angY_R(ang_Y);
 		Rs.push_back(dR*mR);
+
+// 		CString strfile;
+// 		strfile.Format("C:\\Users\\DeepVoid\\Desktop\\RT%02d.txt", j);
+// 		file_cam = fopen(strfile, "w");
+// 		for (int i=0;i<3;++i)
+// 		{
+// 			fprintf(file_cam, "%lf	%lf	%lf	%lf\n", Rs[j](i,0), Rs[j](i,1), Rs[j](i,2), mt(i));
+// 		}
+// 		fprintf(file_cam, "%lf	%lf	%lf	%lf", 0.0, 0.0, 0.0, 1.0);
+// 		fclose(file_cam);
 
 		// parameters with error, ie given estimates of image parameters
 		K_es.push_back(mK_e);
@@ -7988,6 +8123,7 @@ void CDeepVoidApp::OnDsbasimu()
 
 		idxVisiImg.push_back(idxVisi);
 		idxRefVisiImg.push_back(idxVisi[k]);
+//		idxRefVisiImg.push_back(3);
 	}
 
 	// generate the visibility matrix /////////////////////////////////////////////////////////////////
@@ -8041,11 +8177,11 @@ void CDeepVoidApp::OnDsbasimu()
 			double x_d = x+dx;
 			double y_d = y+dy;
 
-			double e_x = rng.gaussian(img_noise_std);
-			double e_y = rng.gaussian(img_noise_std);
-
-			double x_d_e = x_d + e_x;
-			double y_d_e = y_d + e_y;
+// 			double e_x = rng.gaussian(img_noise_std);
+// 			double e_y = rng.gaussian(img_noise_std);
+// 
+// 			double x_d_e = x_d + e_x;
+// 			double y_d_e = y_d + e_y;
 
 			Point2d imgPt;
 			imgPt.x = x;
@@ -8062,16 +8198,567 @@ void CDeepVoidApp::OnDsbasimu()
 		}
 	}
 
-	vector<vector<double>> SBA(nImg),DSBA(nImg);
+	// 像点提取噪声递增
+	double img_noise_std_min = 0;
+	double img_noise_std_max = 4;
+	double img_noise_std_step = 0.1;
+	int n_step = (img_noise_std_max-img_noise_std_min)/img_noise_std_step;
 
-	// run multiple times, add observation noises, and do statistics /////////////////////////////////
-	for (int kk=0;kk<nSimu;++kk)
+	vector<vector<double>> record_SBA(nImg), record_DSBA(nImg); // 记录每幅图像每个状态下统计出来的姿态角中误差
+
+	FILE * file_SBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_SBA.txt", "w");
+	FILE * file_DSBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_DSBA.txt", "w");
+
+	for (int iter=0;iter<n_step;++iter)
 	{
-		vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
-		vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+		CString strInfo;
+		strInfo.Format("%03d iterations left", n_step-1-iter);
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+		img_noise_std = iter*img_noise_std_step; // 当前的像点噪声等级
+
+		vector<vector<double>> SBA(nImg),DSBA(nImg);
+
+		fprintf(file_SBA,"%lf	", img_noise_std);
+		fprintf(file_DSBA,"%lf	", img_noise_std);
+
+		// run multiple times, add observation noises, and do statistics /////////////////////////////////
+		for (int kk=0;kk<nSimu;++kk)
+		{
+			vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+			vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+
+			for (int i=0;i<nObj;++i)
+			{
+				vector<int> idxVisi = idxVisiImg[i];
+				int idxRef = idxRefVisiImg[i];
+
+				sort(idxVisi.begin(), idxVisi.end());
+
+				for (int k=0;k<idxVisi.size();++k)
+				{
+					int j = idxVisi[k];
+
+					const int * ptr = ptrMat.find<int>(i,j);
+
+					if (NULL==ptr)
+					{
+						continue;
+					}
+
+					Matx33d K_e = K_es[j];
+					Matx<double,5,1> dist_e = dist_es[j];
+
+					int idx_ij = (*ptr);
+
+					Point2d pt2d = vImgPts_dist[idx_ij];
+
+					double x_d = pt2d.x;
+					double y_d = pt2d.y;
+
+					double e_x = rng.gaussian(img_noise_std);
+					double e_y = rng.gaussian(img_noise_std);
+
+					double x_d_e = x_d + e_x;
+					double y_d_e = y_d + e_y;
+
+					if (j==idxRef)
+					{
+						// reference image point has random noise
+// 						pt2d.x = x_d_e;
+// 						pt2d.y = y_d_e;
+
+						// reference image point has no random noise
+						vImgPts_dist_err.push_back(pt2d);
+
+						// remove distortion using given estimates of interior orientations
+						double ideal_x,ideal_y;
+						distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+							dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+
+						Matx31d nxy;
+						nxy(0) = ideal_x;
+						nxy(1) = ideal_y;
+						nxy(2) = 1;
+
+						// compute the normalized image point using given estimates of interior orientations
+						nxys.push_back(calib::invK(K_e)*nxy);
+					} 
+					else
+					{
+						// non-reference image point has random noise
+						pt2d.x = x_d_e;
+						pt2d.y = y_d_e;
+						vImgPts_dist_err.push_back(pt2d);
+					}
+				}
+			}
+
+
+			double info[5];
+
+			// run SBA first //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_SBA = vObjPts;
+			vector<Matx33d> Rs_SBA = R_es;
+			vector<Matx31d> ts_SBA = t_es;
+
+			SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				j_fixed,i_fixed,ptrMat,info);
+
+			vector<double> drads_SBA,drads_DSBA;
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_SBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_SBA.push_back(drad*calib::R2D);
+
+				SBA[j].push_back(drad*calib::R2D);
+			}
+
+			// then run DSBA //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_DSBA = vObjPts;
+			vector<Matx33d> Rs_DSBA = R_es;
+			vector<Matx31d> ts_DSBA = t_es;
+
+			SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_DSBA.push_back(drad*calib::R2D);
+
+				DSBA[j].push_back(drad*calib::R2D);
+			}
+		}
+
+		vector<vector<double>> dSBA_DSBA(nImg);
+		vector<double> davg_SBA_DSBA;
+		vector<double> dds_rms_SBA;
+		vector<double> dds_rms_BSBA;
+		for (int j=0;j<nImg;++j)
+		{
+			double sum = 0;
+
+			double sum_d2_SBA = 0;
+			double sum_d2_DSBA = 0;
+
+			for (int k=0;k<SBA[j].size();++k)
+			{
+				double dd_SBA = SBA[j][k];
+				double dd_DSBA = DSBA[j][k];
+
+				sum += dd_SBA-dd_DSBA;
+
+				sum_d2_SBA += dd_SBA*dd_SBA;
+				sum_d2_DSBA += dd_DSBA*dd_DSBA;
+
+				dSBA_DSBA[j].push_back(dd_SBA-dd_DSBA);
+			}
+
+			davg_SBA_DSBA.push_back(sum/SBA[j].size());
+
+			double rms_dd_SBA = sqrt(sum_d2_SBA/SBA[j].size());
+			double rms_dd_DSBA = sqrt(sum_d2_DSBA/DSBA[j].size());
+
+			dds_rms_SBA.push_back(rms_dd_SBA);
+			dds_rms_BSBA.push_back(rms_dd_DSBA);
+
+			record_SBA[j].push_back(rms_dd_SBA);
+			record_DSBA[j].push_back(rms_dd_DSBA);
+
+			fprintf(file_SBA,"%lf	", rms_dd_SBA);
+			fprintf(file_DSBA,"%lf	", rms_dd_DSBA);
+		}
+		fprintf(file_SBA,"\n");
+		fprintf(file_DSBA,"\n");
+	}
+	fclose(file_SBA);
+	fclose(file_DSBA);
+
+// 	vector<vector<double>> SBA(nImg),DSBA(nImg);
+// 
+// 	// run multiple times, add observation noises, and do statistics /////////////////////////////////
+// 	for (int kk=0;kk<nSimu;++kk)
+// 	{
+// 		vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+// 		vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+// 
+// 		for (int i=0;i<nObj;++i)
+// 		{
+// 			vector<int> idxVisi = idxVisiImg[i];
+// 			int idxRef = idxRefVisiImg[i];
+// 
+// 			sort(idxVisi.begin(), idxVisi.end());
+// 
+// 			for (int k=0;k<idxVisi.size();++k)
+// 			{
+// 				int j = idxVisi[k];
+// 
+// 				const int * ptr = ptrMat.find<int>(i,j);
+// 
+// 				if (NULL==ptr)
+// 				{
+// 					continue;
+// 				}
+// 
+// 				Matx33d K_e = K_es[j];
+// 				Matx<double,5,1> dist_e = dist_es[j];
+// 
+// 				int idx_ij = (*ptr);
+// 
+// 				Point2d pt2d = vImgPts_dist[idx_ij];
+// 
+// 				double x_d = pt2d.x;
+// 				double y_d = pt2d.y;
+// 
+// 				double e_x = rng.gaussian(img_noise_std);
+// 				double e_y = rng.gaussian(img_noise_std);
+// 
+// 				double x_d_e = x_d + e_x;
+// 				double y_d_e = y_d + e_y;
+// 
+// 				if (j==idxRef)
+// 				{
+// 					// reference image point has random noise
+// 					pt2d.x = x_d_e;
+// 					pt2d.y = y_d_e;
+// 
+// 					// reference image point has no random noise
+// 					vImgPts_dist_err.push_back(pt2d);
+// 
+// 					// remove distortion using given estimates of interior orientations
+// 					double ideal_x,ideal_y;
+// 					distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+// 						dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+// 
+// 					Matx31d nxy;
+// 					nxy(0) = ideal_x;
+// 					nxy(1) = ideal_y;
+// 					nxy(2) = 1;
+// 
+// 					// compute the normalized image point using given estimates of interior orientations
+// 					nxys.push_back(calib::invK(K_e)*nxy);
+// 				} 
+// 				else
+// 				{
+// 					// non-reference image point has random noise
+// 					pt2d.x = x_d_e;
+// 					pt2d.y = y_d_e;
+// 					vImgPts_dist_err.push_back(pt2d);
+// 				}
+// 			}
+// 		}
+// 
+// 
+// 		double info[5];
+// 
+// 		// run SBA first //////////////////////////////////////////////////////////////////////////
+// 		vector<Point3d> objPts_SBA = vObjPts;
+// 		vector<Matx33d> Rs_SBA = R_es;
+// 		vector<Matx31d> ts_SBA = t_es;
+// 
+// 		SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+// 			j_fixed,i_fixed,ptrMat,info);
+// 
+// 		vector<double> drads_SBA,drads_DSBA;
+// 		for (int j=0;j<nImg;++j)
+// 		{
+// 			Matx33d dR = Rs_SBA[j].t()*Rs[j];
+// 			Matx31d rov = calib::converse_R_rotvec(dR);
+// 			double drad = norm(rov);
+// 			drads_SBA.push_back(drad*calib::R2D);
+// 
+// 			SBA[j].push_back(drad*calib::R2D);
+// 		}
+// 
+// 		// then run DSBA //////////////////////////////////////////////////////////////////////////
+// 		vector<Point3d> objPts_DSBA = vObjPts;
+// 		vector<Matx33d> Rs_DSBA = R_es;
+// 		vector<Matx31d> ts_DSBA = t_es;
+// 
+// 		SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+// 			nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+// 
+// 		for (int j=0;j<nImg;++j)
+// 		{
+// 			Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+// 			Matx31d rov = calib::converse_R_rotvec(dR);
+// 			double drad = norm(rov);
+// 			drads_DSBA.push_back(drad*calib::R2D);
+// 
+// 			DSBA[j].push_back(drad*calib::R2D);
+// 		}
+// 	}
+// 
+// 	vector<vector<double>> dSBA_DSBA(nImg);
+// 	vector<double> davg_SBA_DSBA;
+// 	vector<double> dds_rms_SBA;
+// 	vector<double> dds_rms_BSBA;
+// 	for (int j=0;j<nImg;++j)
+// 	{
+// 		double sum = 0;
+// 
+// 		double sum_d2_SBA = 0;
+// 		double sum_d2_DSBA = 0;
+// 
+// 		for (int k=0;k<SBA[j].size();++k)
+// 		{
+// 			double dd_SBA = SBA[j][k];
+// 			double dd_DSBA = DSBA[j][k];
+// 
+// 			sum += dd_SBA-dd_DSBA;
+// 
+// 			sum_d2_SBA += dd_SBA*dd_SBA;
+// 			sum_d2_DSBA += dd_DSBA*dd_DSBA;
+// 
+// 			dSBA_DSBA[j].push_back(dd_SBA-dd_DSBA);
+// 		}
+// 
+// 		davg_SBA_DSBA.push_back(sum/SBA[j].size());
+// 
+// 		double rms_dd_SBA = sqrt(sum_d2_SBA/SBA[j].size());
+// 		double rms_dd_DSBA = sqrt(sum_d2_DSBA/DSBA[j].size());
+// 
+// 		dds_rms_SBA.push_back(rms_dd_SBA);
+// 		dds_rms_BSBA.push_back(rms_dd_DSBA);
+// 	}
+// 
+// 	FILE * file = fopen("C:\\Users\\DeepVoid\\Desktop\\error.txt", "a");
+// 	for (int i=0;i<nImg;++i)
+// 	{
+// 		fprintf(file, "%d	%lf	%lf\n", i, dds_rms_SBA[i], dds_rms_BSBA[i]);
+// 	}
+// 	fprintf(file, "\n");
+// 	fclose(file);
+
+	return TRUE;
+}
+
+UINT DSBA_Simu_increaseObservations(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
+
+	RNG rng(0xffffffff);			// Initializes a random number generator state
+//	RNG rng((unsigned)time(NULL));	// Initializes a random number generator state
+
+	// parameters setting /////////////////////////////////////////////////////////////////////////////
+	int nObj = 30;				// number of object points
+	int nImg = 20;				// number of images
+	int nImgperPt = 7;			// each object point is observed by this many images
+	double range = 1;			// the spread of object points
+	double distance = 3;		// distance between camera and object points center
+	double interval_ang = 15;	// the angular interval between neighboring images (in degree)
+	double img_noise_std = 0.1;	// standard deviation of image point error
+	double t_noise_std = 0.1;	// standard deviation of the initial translation vector
+	double rad_noise_std = 0.5*calib::D2R;			// standard deviation of the initial rotation, in radian
+	double rv_noise_std = rad_noise_std/sqrt(3.0);	// standard deviation of the initial rotation vector element
+	int nSimu = 200;			// the times of simulation in order to do the statistics
+
+	double f = 1500;			// equivalent focal length
+	double w = 1280;			// image width
+	double h = 720;				// image height
+	double cx = 0.5*(w-1);		// principal point
+	double cy = 0.5*(h-1);		// principal point
+	double s = 0;				// screw factor
+
+	double f_e = f + 0;		// equivalent focal length with error
+	double cx_e = cx + 0;		// principal point with error
+	double cy_e = cy + 0;		// principal point with error
+	double s_e = s + 0;			// screw factor with error
+
+	double k1 = 0.01;			// 2nd order radial distortion coefficient
+	double k2 = -0.02;			// 4th order radial distortion coefficient
+	double k3 = 0.003;			// one tangential distortion coefficient
+	double k4 = 0.002;			// the other tangential distortion coefficient
+	double k5 = -0.001;			// 6th order radial distortion coefficient
+
+	double k1_e = k1 + 0;		// 2nd order radial distortion coefficient with error
+	double k2_e = k2 + 0;		// 4th order radial distortion coefficient with error
+	double k3_e = k3 + 0;		// one tangential distortion coefficient with error 
+	double k4_e = k4 + 0;		// the other tangential distortion coefficient with error
+	double k5_e = k5 + 0;		// 6th order radial distortion coefficient with error
+
+	// simulate object points //////////////////////////////////////////////////////////////////////////
+//	FILE * file_objpts = fopen("C:\\Users\\DeepVoid\\Desktop\\wrdpts.txt", "w");
+	vector<Point3d> vObjPts;
+	for (int i=0;i<nObj;++i)
+	{
+		Point3d objPt;
+
+		objPt.x = rng.uniform(-range*0.5, range*0.5);
+		objPt.y = rng.uniform(-range*0.5, range*0.5);
+		objPt.z = rng.uniform(-range*0.5, range*0.5);
+
+		vObjPts.push_back(objPt);
+
+//		fprintf(file_objpts, "%lf	%lf	%lf\n", objPt.x,objPt.y,objPt.z);
+	}
+//	fclose(file_objpts);
+
+	// simulate images /////////////////////////////////////////////////////////////////////////////////
+	vector<Matx33d> Ks,K_es;
+	vector<Matx33d> Rs,R_es;
+	vector<Matx31d> ts,t_es;
+	vector<Matx<double,5,1>> dists,dist_es;
+	vector<int> distTypes;
+
+	vector<uchar> j_fixed(nImg);		// indicates which images' parameters are fixed
+	vector<uchar> i_fixed(nObj);		// indicates which object points' are fixed
+	j_fixed[0] = 1;						// the 1st image's parameters are fixed
+
+	Matx33d mK;
+	mK(0,0) = mK(1,1) = f;
+	mK(0,2) = cx; mK(1,2) = cy;
+	mK(0,1) = s;  mK(2,2) = 1;
+	Ks.push_back(mK);
+
+	Matx33d mK_e;
+	mK_e(0,0) = mK_e(1,1) = f_e;
+	mK_e(0,2) = cx_e; mK_e(1,2) = cy_e;
+	mK_e(0,1) = s_e;  mK_e(2,2) = 1;
+	K_es.push_back(mK_e);
+
+	Matx33d mR;
+	mR(0,0)=mR(1,1)=mR(2,2)=1;
+	Rs.push_back(mR);
+	R_es.push_back(mR);
+
+	Matx31d mt;
+	mt(2) = distance;
+	ts.push_back(mt);
+	t_es.push_back(mt);
+
+// 	FILE * file_cam = fopen("C:\\Users\\DeepVoid\\Desktop\\RT00.txt", "w");
+// 	for (int i=0;i<3;++i)
+// 	{
+// 		fprintf(file_cam, "%lf	%lf	%lf	%lf\n", mR(i,0), mR(i,1), mR(i,2), mt(i));
+// 	}
+// 	fprintf(file_cam, "%lf	%lf	%lf	%lf", 0.0, 0.0, 0.0, 1.0);
+// 	fclose(file_cam);
+
+	Matx<double,5,1> dist;
+	dist(0) = k1;	dist(1) = k2;	dist(2) = k3;	dist(3) = k4;	dist(4) = k5;
+	dists.push_back(dist);
+
+	Matx<double,5,1> dist_e;
+	dist_e(0) = k1_e;	dist_e(1) = k2_e;	dist_e(2) = k3_e;	dist_e(3) = k4_e;	dist_e(4) = k5_e;
+	dist_es.push_back(dist_e);
+
+	distTypes.push_back(1);
+
+	for (int j=1;j<nImg;++j)
+	{
+		// real parameters
+		Ks.push_back(mK);
+		ts.push_back(mt);
+		dists.push_back(dist);
+
+		double ang_Y = j*interval_ang;
+
+		Matx33d dR = calib::converse_angY_R(ang_Y);
+		Rs.push_back(dR*mR);
+
+// 		CString strfile;
+// 		strfile.Format("C:\\Users\\DeepVoid\\Desktop\\RT%02d.txt", j);
+// 		file_cam = fopen(strfile, "w");
+// 		for (int i=0;i<3;++i)
+// 		{
+// 			fprintf(file_cam, "%lf	%lf	%lf	%lf\n", Rs[j](i,0), Rs[j](i,1), Rs[j](i,2), mt(i));
+// 		}
+// 		fprintf(file_cam, "%lf	%lf	%lf	%lf", 0.0, 0.0, 0.0, 1.0);
+// 		fclose(file_cam);
+
+		// parameters with error, ie given estimates of image parameters
+		K_es.push_back(mK_e);
+		dist_es.push_back(dist_e);
+		
+		double drvx = rng.gaussian(rv_noise_std);
+		double drvy = rng.gaussian(rv_noise_std);
+		double drvz = rng.gaussian(rv_noise_std);
+
+		dR = calib::converse_rotvec_R(drvx,drvy,drvz);
+		R_es.push_back(dR*Rs[j]);
+
+		double dtx = rng.gaussian(t_noise_std);
+		double dty = rng.gaussian(t_noise_std);
+		double dtz = rng.gaussian(t_noise_std);
+
+		Matx31d mdt;
+		mdt(0) = dtx;
+		mdt(1) = dty;
+		mdt(2) = dtz;
+
+		t_es.push_back(mdt+ts[j]);
+
+		distTypes.push_back(1);
+	}
+
+	vector<vector<double>> record_SBA(nImg), record_DSBA(nImg); // 记录每幅图像每个状态下统计出来的姿态角中误差
+
+	FILE * file_SBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_SBA.txt", "w");
+	FILE * file_DSBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_DSBA.txt", "w");
+
+	// 递增每个物点被观测次数
+	for (int iter=3;iter<=nImg;++iter)
+	{
+		CString strInfo;
+		strInfo.Format("%03d iterations left", nImg-iter);
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+		nImgperPt = iter;
+
+		// choose randomly the given number of images for each object point in which the object point is observed
+		// and further choose randomly one reference image from this observing image set ////////////////////////
+		vector<vector<int>> idxVisiImg;
+		vector<int> idxRefVisiImg;
+		for (int i=0;i<nObj;++i)
+		{
+			vector<int> idxVisi;
+
+			while (idxVisi.size()<nImgperPt)
+			{
+				int k = rng.next()%nImg;
+
+				if (find(idxVisi.begin(),idxVisi.end(),k) != idxVisi.end()) // found, already exist
+				{
+					continue;
+				}
+
+				idxVisi.push_back(k);
+			}
+
+			int k = rng.next()%nImgperPt;
+
+			idxVisiImg.push_back(idxVisi);
+			idxRefVisiImg.push_back(idxVisi[k]);
+//			idxRefVisiImg.push_back(3);
+		}
+
+		// generate the visibility matrix /////////////////////////////////////////////////////////////////
+		// and real observations without random noise /////////////////////////////////////////////////////
+		int sizes[] = {nObj, nImg};
+		SparseMat ptrMat(2,sizes,CV_32SC1);
+
+		vector<Point2d> vImgPts_nonDist; // non-distorted image points
+		vector<Point2d> vImgPts_dist;	 // distorted image points
+		vector<Matx22d> covInvs;		 // inverses of all the covariance matrix of image points
+
+		Matx22d I22;
+		I22(0,0) = I22(1,1) = 1;
 
 		for (int i=0;i<nObj;++i)
 		{
+			Point3d pt3d = vObjPts[i];
+
+			Matx31d XYZ;
+			XYZ(0) = pt3d.x;
+			XYZ(1) = pt3d.y;
+			XYZ(2) = pt3d.z;
+
 			vector<int> idxVisi = idxVisiImg[i];
 			int idxRef = idxRefVisiImg[i];
 
@@ -8081,115 +8768,1091 @@ void CDeepVoidApp::OnDsbasimu()
 			{
 				int j = idxVisi[k];
 
-				const int * ptr = ptrMat.find<int>(i,j);
+				Matx33d K = Ks[j];	Matx33d K_e = K_es[j];
+				Matx33d R = Rs[j];
+				Matx31d t = ts[j];
+				Matx<double,5,1> dist = dists[j];	Matx<double,5,1> dist_e = dist_es[j];
 
-				if (NULL==ptr)
+				Matx31d uv = R*XYZ+t;
+				Matx31d xy = K*uv;
+
+				double u = uv(0)/uv(2);
+				double v = uv(1)/uv(2);
+
+				double x = xy(0)/xy(2);
+				double y = xy(1)/xy(2);
+
+				double dx,dy;
+
+				distortions::dxdy_brown(K(0,0),K(1,1),K(0,1),u,v,dist(0),dist(1),dist(2),dist(3),dist(4),dx,dy);
+
+				double x_d = x+dx;
+				double y_d = y+dy;
+
+				Point2d imgPt;
+				imgPt.x = x;
+				imgPt.y = y;
+				vImgPts_nonDist.push_back(imgPt);
+
+				imgPt.x = x_d;
+				imgPt.y = y_d;
+				vImgPts_dist.push_back(imgPt);
+
+				ptrMat.ref<int>(i,j) = vImgPts_nonDist.size()-1;
+
+				covInvs.push_back(I22);
+			}
+		}
+
+		vector<vector<double>> SBA(nImg),DSBA(nImg);
+
+		fprintf(file_SBA,"%02d	", nImgperPt);
+		fprintf(file_DSBA,"%02d	", nImgperPt);
+
+		double t_total_SBA = 0; // SBA 总耗时
+		double t_total_DSBA = 0; // DSBA 总耗时
+
+		// run multiple times, add observation noises, and do statistics /////////////////////////////////
+		for (int kk=0;kk<nSimu;++kk)
+		{
+			vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+			vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+
+			for (int i=0;i<nObj;++i)
+			{
+				vector<int> idxVisi = idxVisiImg[i];
+				int idxRef = idxRefVisiImg[i];
+
+				sort(idxVisi.begin(), idxVisi.end());
+
+				for (int k=0;k<idxVisi.size();++k)
+				{
+					int j = idxVisi[k];
+
+					const int * ptr = ptrMat.find<int>(i,j);
+
+					if (NULL==ptr)
+					{
+						continue;
+					}
+
+					Matx33d K_e = K_es[j];
+					Matx<double,5,1> dist_e = dist_es[j];
+
+					int idx_ij = (*ptr);
+
+					Point2d pt2d = vImgPts_dist[idx_ij];
+
+					double x_d = pt2d.x;
+					double y_d = pt2d.y;
+
+					double e_x = rng.gaussian(img_noise_std);
+					double e_y = rng.gaussian(img_noise_std);
+
+					double x_d_e = x_d + e_x;
+					double y_d_e = y_d + e_y;
+
+					if (j==idxRef)
+					{
+						// reference image point has random noise
+// 						pt2d.x = x_d_e;
+// 						pt2d.y = y_d_e;
+
+						// reference image point has no random noise
+						vImgPts_dist_err.push_back(pt2d);
+
+						// remove distortion using given estimates of interior orientations
+						double ideal_x,ideal_y;
+						distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+							dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+
+						Matx31d nxy;
+						nxy(0) = ideal_x;
+						nxy(1) = ideal_y;
+						nxy(2) = 1;
+
+						// compute the normalized image point using given estimates of interior orientations
+						nxys.push_back(calib::invK(K_e)*nxy);
+					} 
+					else
+					{
+						// non-reference image point has random noise
+						pt2d.x = x_d_e;
+						pt2d.y = y_d_e;
+						vImgPts_dist_err.push_back(pt2d);
+					}
+				}
+			}
+
+			double info[5];
+
+			// run SBA first //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_SBA = vObjPts;
+			vector<Matx33d> Rs_SBA = R_es;
+			vector<Matx31d> ts_SBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				j_fixed,i_fixed,ptrMat,info);
+			double t_SBA = toc();
+//			t_total_SBA += t_SBA;
+			t_total_SBA += t_SBA/info[3];
+
+			vector<double> drads_SBA,drads_DSBA;
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_SBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_SBA.push_back(drad*calib::R2D);
+
+				SBA[j].push_back(drad*calib::R2D);
+			}
+
+			// then run DSBA //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_DSBA = vObjPts;
+			vector<Matx33d> Rs_DSBA = R_es;
+			vector<Matx31d> ts_DSBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+			double t_DSBA = toc();
+//			t_total_DSBA += t_DSBA;
+			t_total_DSBA += t_DSBA/info[3];
+
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_DSBA.push_back(drad*calib::R2D);
+
+				DSBA[j].push_back(drad*calib::R2D);
+			}
+		}
+
+		double t_mean_SBA = 1000*t_total_SBA/nSimu; // 单次执行毫秒
+		double t_mean_DSBA = 1000*t_total_DSBA/nSimu; // 单次执行毫秒
+
+		vector<vector<double>> dSBA_DSBA(nImg);
+		vector<double> davg_SBA_DSBA;
+		vector<double> dds_rms_SBA;
+		vector<double> dds_rms_BSBA;
+		for (int j=0;j<nImg;++j)
+		{
+			double sum = 0;
+
+			double sum_d2_SBA = 0;
+			double sum_d2_DSBA = 0;
+
+			for (int k=0;k<SBA[j].size();++k)
+			{
+				double dd_SBA = SBA[j][k];
+				double dd_DSBA = DSBA[j][k];
+
+				sum += dd_SBA-dd_DSBA;
+
+				sum_d2_SBA += dd_SBA*dd_SBA;
+				sum_d2_DSBA += dd_DSBA*dd_DSBA;
+
+				dSBA_DSBA[j].push_back(dd_SBA-dd_DSBA);
+			}
+
+			davg_SBA_DSBA.push_back(sum/SBA[j].size());
+
+			double rms_dd_SBA = sqrt(sum_d2_SBA/SBA[j].size());
+			double rms_dd_DSBA = sqrt(sum_d2_DSBA/DSBA[j].size());
+
+			dds_rms_SBA.push_back(rms_dd_SBA);
+			dds_rms_BSBA.push_back(rms_dd_DSBA);
+
+			record_SBA[j].push_back(rms_dd_SBA);
+			record_DSBA[j].push_back(rms_dd_DSBA);
+
+			fprintf(file_SBA,"%lf	", rms_dd_SBA);
+			fprintf(file_DSBA,"%lf	", rms_dd_DSBA);
+		}
+		fprintf(file_SBA,"%lf\n", t_mean_SBA);
+		fprintf(file_DSBA,"%lf\n", t_mean_DSBA);
+	}
+	fclose(file_SBA);
+	fclose(file_DSBA);
+	
+	return TRUE;
+}
+
+UINT DSBA_Simu_increaseObjpts(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
+
+	RNG rng(0xffffffff);			// Initializes a random number generator state
+//	RNG rng((unsigned)time(NULL));	// Initializes a random number generator state
+
+	// parameters setting /////////////////////////////////////////////////////////////////////////////
+	int nObj = 30;				// number of object points
+	int nImg = 7;				// number of images
+	int nImgperPt = 5;			// each object point is observed by this many images
+	double range = 1;			// the spread of object points
+	double distance = 3;		// distance between camera and object points center
+	double interval_ang = 15;	// the angular interval between neighboring images (in degree)
+	double img_noise_std = 0.1;	// standard deviation of image point error
+	double t_noise_std = 0.1;	// standard deviation of the initial translation vector
+	double rad_noise_std = 0.5*calib::D2R;			// standard deviation of the initial rotation, in radian
+	double rv_noise_std = rad_noise_std/sqrt(3.0);	// standard deviation of the initial rotation vector element
+	int nSimu = 200;			// the times of simulation in order to do the statistics
+	int nObj_min = 10;
+	int nObj_max = 100;
+	int nObj_step = 10;
+	int nObj_n = 30;
+
+	double f = 1500;			// equivalent focal length
+	double w = 1280;			// image width
+	double h = 720;				// image height
+	double cx = 0.5*(w-1);		// principal point
+	double cy = 0.5*(h-1);		// principal point
+	double s = 0;				// screw factor
+
+	double f_e = f + 0;		// equivalent focal length with error
+	double cx_e = cx + 0;		// principal point with error
+	double cy_e = cy + 0;		// principal point with error
+	double s_e = s + 0;			// screw factor with error
+
+	double k1 = 0.01;			// 2nd order radial distortion coefficient
+	double k2 = -0.02;			// 4th order radial distortion coefficient
+	double k3 = 0.003;			// one tangential distortion coefficient
+	double k4 = 0.002;			// the other tangential distortion coefficient
+	double k5 = -0.001;			// 6th order radial distortion coefficient
+
+	double k1_e = k1 + 0;		// 2nd order radial distortion coefficient with error
+	double k2_e = k2 + 0;		// 4th order radial distortion coefficient with error
+	double k3_e = k3 + 0;		// one tangential distortion coefficient with error 
+	double k4_e = k4 + 0;		// the other tangential distortion coefficient with error
+	double k5_e = k5 + 0;		// 6th order radial distortion coefficient with error
+
+	vector<vector<double>> record_SBA(nImg), record_DSBA(nImg); // 记录每幅图像每个状态下统计出来的姿态角中误差
+
+	FILE * file_SBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_SBA.txt", "w");
+	FILE * file_DSBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_DSBA.txt", "w");
+
+	for (int iter=0;iter<nObj_n;++iter)
+	{
+		CString strInfo;
+		strInfo.Format("%03d iterations left", nObj_n-1-iter);
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+		nObj = nObj_min + iter*nObj_step;
+
+		// simulate object points //////////////////////////////////////////////////////////////////////////
+		vector<Point3d> vObjPts;
+		for (int i=0;i<nObj;++i)
+		{
+			Point3d objPt;
+
+			objPt.x = rng.uniform(-range*0.5, range*0.5);
+			objPt.y = rng.uniform(-range*0.5, range*0.5);
+			objPt.z = rng.uniform(-range*0.5, range*0.5);
+
+			vObjPts.push_back(objPt);
+		}
+
+		// simulate images /////////////////////////////////////////////////////////////////////////////////
+		vector<Matx33d> Ks,K_es;
+		vector<Matx33d> Rs,R_es;
+		vector<Matx31d> ts,t_es;
+		vector<Matx<double,5,1>> dists,dist_es;
+		vector<int> distTypes;
+
+		vector<uchar> j_fixed(nImg);		// indicates which images' parameters are fixed
+		vector<uchar> i_fixed(nObj);		// indicates which object points' are fixed
+		j_fixed[0] = 1;						// the 1st image's parameters are fixed
+
+		Matx33d mK;
+		mK(0,0) = mK(1,1) = f;
+		mK(0,2) = cx; mK(1,2) = cy;
+		mK(0,1) = s;  mK(2,2) = 1;
+		Ks.push_back(mK);
+
+		Matx33d mK_e;
+		mK_e(0,0) = mK_e(1,1) = f_e;
+		mK_e(0,2) = cx_e; mK_e(1,2) = cy_e;
+		mK_e(0,1) = s_e;  mK_e(2,2) = 1;
+		K_es.push_back(mK_e);
+
+		Matx33d mR;
+		mR(0,0)=mR(1,1)=mR(2,2)=1;
+		Rs.push_back(mR);
+		R_es.push_back(mR);
+
+		Matx31d mt;
+		mt(2) = distance;
+		ts.push_back(mt);
+		t_es.push_back(mt);
+
+		Matx<double,5,1> dist;
+		dist(0) = k1;	dist(1) = k2;	dist(2) = k3;	dist(3) = k4;	dist(4) = k5;
+		dists.push_back(dist);
+
+		Matx<double,5,1> dist_e;
+		dist_e(0) = k1_e;	dist_e(1) = k2_e;	dist_e(2) = k3_e;	dist_e(3) = k4_e;	dist_e(4) = k5_e;
+		dist_es.push_back(dist_e);
+
+		distTypes.push_back(1);
+
+		for (int j=1;j<nImg;++j)
+		{
+			// real parameters
+			Ks.push_back(mK);
+			ts.push_back(mt);
+			dists.push_back(dist);
+
+			double ang_Y = j*interval_ang;
+
+			Matx33d dR = calib::converse_angY_R(ang_Y);
+			Rs.push_back(dR*mR);
+
+			// parameters with error, ie given estimates of image parameters
+			K_es.push_back(mK_e);
+			dist_es.push_back(dist_e);
+
+			double drvx = rng.gaussian(rv_noise_std);
+			double drvy = rng.gaussian(rv_noise_std);
+			double drvz = rng.gaussian(rv_noise_std);
+
+			dR = calib::converse_rotvec_R(drvx,drvy,drvz);
+			R_es.push_back(dR*Rs[j]);
+
+			double dtx = rng.gaussian(t_noise_std);
+			double dty = rng.gaussian(t_noise_std);
+			double dtz = rng.gaussian(t_noise_std);
+
+			Matx31d mdt;
+			mdt(0) = dtx;
+			mdt(1) = dty;
+			mdt(2) = dtz;
+
+			t_es.push_back(mdt+ts[j]);
+
+			distTypes.push_back(1);
+		}
+
+		// choose randomly the given number of images for each object point in which the object point is observed
+		// and further choose randomly one reference image from this observing image set ////////////////////////
+		vector<vector<int>> idxVisiImg;
+		vector<int> idxRefVisiImg;
+		for (int i=0;i<nObj;++i)
+		{
+			vector<int> idxVisi;
+
+			while (idxVisi.size()<nImgperPt)
+			{
+				int k = rng.next()%nImg;
+
+				if (find(idxVisi.begin(),idxVisi.end(),k) != idxVisi.end()) // found, already exist
 				{
 					continue;
 				}
 
-				Matx33d K_e = K_es[j];
-				Matx<double,5,1> dist_e = dist_es[j];
+				idxVisi.push_back(k);
+			}
 
-				int idx_ij = (*ptr);
+			int k = rng.next()%nImgperPt;
 
-				Point2d pt2d = vImgPts_dist[idx_ij];
+			idxVisiImg.push_back(idxVisi);
+			idxRefVisiImg.push_back(idxVisi[k]);
+		}
 
-				double x_d = pt2d.x;
-				double y_d = pt2d.y;
+		// generate the visibility matrix /////////////////////////////////////////////////////////////////
+		// and real observations without random noise /////////////////////////////////////////////////////
+		int sizes[] = {nObj, nImg};
+		SparseMat ptrMat(2,sizes,CV_32SC1);
 
-				double e_x = rng.gaussian(img_noise_std);
-				double e_y = rng.gaussian(img_noise_std);
+		vector<Point2d> vImgPts_nonDist; // non-distorted image points
+		vector<Point2d> vImgPts_dist;	 // distorted image points
+		vector<Matx22d> covInvs;		 // inverses of all the covariance matrix of image points
 
-				double x_d_e = x_d + e_x;
-				double y_d_e = y_d + e_y;
+		Matx22d I22;
+		I22(0,0) = I22(1,1) = 1;
 
-				if (j==idxRef)
-				{
-					// reference image point has random noise
-// 					pt2d.x = x_d_e;
-// 					pt2d.y = y_d_e;
+		for (int i=0;i<nObj;++i)
+		{
+			Point3d pt3d = vObjPts[i];
 
-					// reference image point has no random noise
-					vImgPts_dist_err.push_back(pt2d);
+			Matx31d XYZ;
+			XYZ(0) = pt3d.x;
+			XYZ(1) = pt3d.y;
+			XYZ(2) = pt3d.z;
 
-					// remove distortion using given estimates of interior orientations
-					double ideal_x,ideal_y;
-					distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
-						dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+			vector<int> idxVisi = idxVisiImg[i];
+			int idxRef = idxRefVisiImg[i];
 
-					Matx31d nxy;
-					nxy(0) = ideal_x;
-					nxy(1) = ideal_y;
-					nxy(2) = 1;
+			sort(idxVisi.begin(), idxVisi.end());
 
-					// compute the normalized image point using given estimates of interior orientations
-					nxys.push_back(calib::invK(K_e)*nxy);
-				} 
-				else
-				{
-					// non-reference image point has random noise
-					pt2d.x = x_d_e;
-					pt2d.y = y_d_e;
-					vImgPts_dist_err.push_back(pt2d);
-				}
+			for (int k=0;k<idxVisi.size();++k)
+			{
+				int j = idxVisi[k];
+
+				Matx33d K = Ks[j];	Matx33d K_e = K_es[j];
+				Matx33d R = Rs[j];
+				Matx31d t = ts[j];
+				Matx<double,5,1> dist = dists[j];	Matx<double,5,1> dist_e = dist_es[j];
+
+				Matx31d uv = R*XYZ+t;
+				Matx31d xy = K*uv;
+
+				double u = uv(0)/uv(2);
+				double v = uv(1)/uv(2);
+
+				double x = xy(0)/xy(2);
+				double y = xy(1)/xy(2);
+
+				double dx,dy;
+
+				distortions::dxdy_brown(K(0,0),K(1,1),K(0,1),u,v,dist(0),dist(1),dist(2),dist(3),dist(4),dx,dy);
+
+				double x_d = x+dx;
+				double y_d = y+dy;
+
+				Point2d imgPt;
+				imgPt.x = x;
+				imgPt.y = y;
+				vImgPts_nonDist.push_back(imgPt);
+
+				imgPt.x = x_d;
+				imgPt.y = y_d;
+				vImgPts_dist.push_back(imgPt);
+
+				ptrMat.ref<int>(i,j) = vImgPts_nonDist.size()-1;
+
+				covInvs.push_back(I22);
 			}
 		}
 
+		vector<vector<double>> SBA(nImg),DSBA(nImg);
 
-		double info[5];
+		fprintf(file_SBA,"%05d	", nObj);
+		fprintf(file_DSBA,"%05d	", nObj);
 
-		// run SBA first //////////////////////////////////////////////////////////////////////////
-		vector<Point3d> objPts_SBA = vObjPts;
-		vector<Matx33d> Rs_SBA = R_es;
-		vector<Matx31d> ts_SBA = t_es;
+		double t_total_SBA = 0; // SBA 总耗时
+		double t_total_DSBA = 0; // DSBA 总耗时
 
-		SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
-			j_fixed,i_fixed,ptrMat,info);
-
-		vector<double> drads_SBA,drads_DSBA;
-		for (int j=0;j<nImg;++j)
+		// run multiple times, add observation noises, and do statistics /////////////////////////////////
+		for (int kk=0;kk<nSimu;++kk)
 		{
-			Matx33d dR = Rs_SBA[j].t()*Rs[j];
-			Matx31d rov = calib::converse_R_rotvec(dR);
-			double drad = norm(rov);
-			drads_SBA.push_back(drad*calib::R2D);
+			vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+			vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
 
-			SBA[j].push_back(drad*calib::R2D);
+			for (int i=0;i<nObj;++i)
+			{
+				vector<int> idxVisi = idxVisiImg[i];
+				int idxRef = idxRefVisiImg[i];
+
+				sort(idxVisi.begin(), idxVisi.end());
+
+				for (int k=0;k<idxVisi.size();++k)
+				{
+					int j = idxVisi[k];
+
+					const int * ptr = ptrMat.find<int>(i,j);
+
+					if (NULL==ptr)
+					{
+						continue;
+					}
+
+					Matx33d K_e = K_es[j];
+					Matx<double,5,1> dist_e = dist_es[j];
+
+					int idx_ij = (*ptr);
+
+					Point2d pt2d = vImgPts_dist[idx_ij];
+
+					double x_d = pt2d.x;
+					double y_d = pt2d.y;
+
+					double e_x = rng.gaussian(img_noise_std);
+					double e_y = rng.gaussian(img_noise_std);
+
+					double x_d_e = x_d + e_x;
+					double y_d_e = y_d + e_y;
+
+					if (j==idxRef)
+					{
+						// reference image point has random noise
+// 						pt2d.x = x_d_e;
+// 						pt2d.y = y_d_e;
+
+						// reference image point has no random noise
+						vImgPts_dist_err.push_back(pt2d);
+
+						// remove distortion using given estimates of interior orientations
+						double ideal_x,ideal_y;
+						distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+							dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+
+						Matx31d nxy;
+						nxy(0) = ideal_x;
+						nxy(1) = ideal_y;
+						nxy(2) = 1;
+
+						// compute the normalized image point using given estimates of interior orientations
+						nxys.push_back(calib::invK(K_e)*nxy);
+					} 
+					else
+					{
+						// non-reference image point has random noise
+						pt2d.x = x_d_e;
+						pt2d.y = y_d_e;
+						vImgPts_dist_err.push_back(pt2d);
+					}
+				}
+			}
+
+			double info[5];
+
+			// run SBA first //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_SBA = vObjPts;
+			vector<Matx33d> Rs_SBA = R_es;
+			vector<Matx31d> ts_SBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				j_fixed,i_fixed,ptrMat,info);
+			double t_SBA = toc();
+//			t_total_SBA += t_SBA;
+			t_total_SBA += t_SBA/info[3];
+
+			vector<double> drads_SBA,drads_DSBA;
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_SBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_SBA.push_back(drad*calib::R2D);
+
+				SBA[j].push_back(drad*calib::R2D);
+			}
+
+			// then run DSBA //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_DSBA = vObjPts;
+			vector<Matx33d> Rs_DSBA = R_es;
+			vector<Matx31d> ts_DSBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+			double t_DSBA = toc();
+//			t_total_DSBA += t_DSBA;
+			t_total_DSBA += t_DSBA/info[3];
+
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_DSBA.push_back(drad*calib::R2D);
+
+				DSBA[j].push_back(drad*calib::R2D);
+			}
 		}
 
-		// then run DSBA //////////////////////////////////////////////////////////////////////////
-		vector<Point3d> objPts_DSBA = vObjPts;
-		vector<Matx33d> Rs_DSBA = R_es;
-		vector<Matx31d> ts_DSBA = t_es;
+		double t_mean_SBA = 1000*t_total_SBA/nSimu; // 单次执行毫秒
+		double t_mean_DSBA = 1000*t_total_DSBA/nSimu; // 单次执行毫秒
 
-		SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
-			nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
-
+		vector<vector<double>> dSBA_DSBA(nImg);
+		vector<double> davg_SBA_DSBA;
+		vector<double> dds_rms_SBA;
+		vector<double> dds_rms_BSBA;
 		for (int j=0;j<nImg;++j)
 		{
-			Matx33d dR = Rs_DSBA[j].t()*Rs[j];
-			Matx31d rov = calib::converse_R_rotvec(dR);
-			double drad = norm(rov);
-			drads_DSBA.push_back(drad*calib::R2D);
+			double sum = 0;
 
-			DSBA[j].push_back(drad*calib::R2D);
+			double sum_d2_SBA = 0;
+			double sum_d2_DSBA = 0;
+
+			for (int k=0;k<SBA[j].size();++k)
+			{
+				double dd_SBA = SBA[j][k];
+				double dd_DSBA = DSBA[j][k];
+
+				sum += dd_SBA-dd_DSBA;
+
+				sum_d2_SBA += dd_SBA*dd_SBA;
+				sum_d2_DSBA += dd_DSBA*dd_DSBA;
+
+				dSBA_DSBA[j].push_back(dd_SBA-dd_DSBA);
+			}
+
+			davg_SBA_DSBA.push_back(sum/SBA[j].size());
+
+			double rms_dd_SBA = sqrt(sum_d2_SBA/SBA[j].size());
+			double rms_dd_DSBA = sqrt(sum_d2_DSBA/DSBA[j].size());
+
+			dds_rms_SBA.push_back(rms_dd_SBA);
+			dds_rms_BSBA.push_back(rms_dd_DSBA);
+
+			record_SBA[j].push_back(rms_dd_SBA);
+			record_DSBA[j].push_back(rms_dd_DSBA);
+
+			fprintf(file_SBA,"%lf	", rms_dd_SBA);
+			fprintf(file_DSBA,"%lf	", rms_dd_DSBA);
 		}
+		fprintf(file_SBA,"%lf\n", t_mean_SBA);
+		fprintf(file_DSBA,"%lf\n", t_mean_DSBA);
 	}
+	fclose(file_SBA);
+	fclose(file_DSBA);
 
-	vector<vector<double>> dSBA_DSBA(nImg);
-	vector<double> davg_SBA_DSBA;
-	for (int j=0;j<nImg;++j)
+	return TRUE;
+}
+
+UINT DSBA_Simu_increaseImgs(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
+
+	RNG rng(0xffffffff);			// Initializes a random number generator state
+//	RNG rng((unsigned)time(NULL));	// Initializes a random number generator state
+
+	// parameters setting /////////////////////////////////////////////////////////////////////////////
+	int nObj = 50;				// number of object points
+	int nImg = 7;				// number of images
+	int nImgperPt = 3;			// each object point is observed by this many images
+	double range = 1;			// the spread of object points
+	double distance = 3;		// distance between camera and object points center
+	double interval_ang = 15;	// the angular interval between neighboring images (in degree)
+	double img_noise_std = 0.1;	// standard deviation of image point error
+	double t_noise_std = 0.1;	// standard deviation of the initial translation vector
+	double rad_noise_std = 0.5*calib::D2R;			// standard deviation of the initial rotation, in radian
+	double rv_noise_std = rad_noise_std/sqrt(3.0);	// standard deviation of the initial rotation vector element
+	int nSimu = 200;			// the times of simulation in order to do the statistics
+	int nImg_min = 3;
+	int nImg_step = 1;
+	int nImg_n = 18;
+
+	double f = 1500;			// equivalent focal length
+	double w = 1280;			// image width
+	double h = 720;				// image height
+	double cx = 0.5*(w-1);		// principal point
+	double cy = 0.5*(h-1);		// principal point
+	double s = 0;				// screw factor
+
+	double f_e = f + 0;		// equivalent focal length with error
+	double cx_e = cx + 0;		// principal point with error
+	double cy_e = cy + 0;		// principal point with error
+	double s_e = s + 0;			// screw factor with error
+
+	double k1 = 0.01;			// 2nd order radial distortion coefficient
+	double k2 = -0.02;			// 4th order radial distortion coefficient
+	double k3 = 0.003;			// one tangential distortion coefficient
+	double k4 = 0.002;			// the other tangential distortion coefficient
+	double k5 = -0.001;			// 6th order radial distortion coefficient
+
+	double k1_e = k1 + 0;		// 2nd order radial distortion coefficient with error
+	double k2_e = k2 + 0;		// 4th order radial distortion coefficient with error
+	double k3_e = k3 + 0;		// one tangential distortion coefficient with error 
+	double k4_e = k4 + 0;		// the other tangential distortion coefficient with error
+	double k5_e = k5 + 0;		// 6th order radial distortion coefficient with error
+
+//	vector<vector<double>> record_SBA(nImg), record_DSBA(nImg); // 记录每幅图像每个状态下统计出来的姿态角中误差
+
+	FILE * file_SBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_SBA.txt", "w");
+	FILE * file_DSBA = fopen("C:\\Users\\DeepVoid\\Desktop\\error_DSBA.txt", "w");
+
+	for (int iter=0;iter<nImg_n;++iter)
 	{
-		double sum = 0;
+		CString strInfo;
+		strInfo.Format("%03d iterations left", nImg_n-1-iter);
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
-		for (int k=0;k<SBA[j].size();++k)
+		nImg = nImg_min + iter*nImg_step;
+
+		// simulate object points //////////////////////////////////////////////////////////////////////////
+		vector<Point3d> vObjPts;
+		for (int i=0;i<nObj;++i)
 		{
-			sum += SBA[j][k]-DSBA[j][k];
+			Point3d objPt;
 
-			dSBA_DSBA[j].push_back(SBA[j][k]-DSBA[j][k]);
+			objPt.x = rng.uniform(-range*0.5, range*0.5);
+			objPt.y = rng.uniform(-range*0.5, range*0.5);
+			objPt.z = rng.uniform(-range*0.5, range*0.5);
+
+			vObjPts.push_back(objPt);
 		}
 
-		davg_SBA_DSBA.push_back(sum/SBA[j].size());
+		// simulate images /////////////////////////////////////////////////////////////////////////////////
+		vector<Matx33d> Ks,K_es;
+		vector<Matx33d> Rs,R_es;
+		vector<Matx31d> ts,t_es;
+		vector<Matx<double,5,1>> dists,dist_es;
+		vector<int> distTypes;
+
+		vector<uchar> j_fixed(nImg);		// indicates which images' parameters are fixed
+		vector<uchar> i_fixed(nObj);		// indicates which object points' are fixed
+		j_fixed[0] = 1;						// the 1st image's parameters are fixed
+
+		Matx33d mK;
+		mK(0,0) = mK(1,1) = f;
+		mK(0,2) = cx; mK(1,2) = cy;
+		mK(0,1) = s;  mK(2,2) = 1;
+		Ks.push_back(mK);
+
+		Matx33d mK_e;
+		mK_e(0,0) = mK_e(1,1) = f_e;
+		mK_e(0,2) = cx_e; mK_e(1,2) = cy_e;
+		mK_e(0,1) = s_e;  mK_e(2,2) = 1;
+		K_es.push_back(mK_e);
+
+		Matx33d mR;
+		mR(0,0)=mR(1,1)=mR(2,2)=1;
+		Rs.push_back(mR);
+		R_es.push_back(mR);
+
+		Matx31d mt;
+		mt(2) = distance;
+		ts.push_back(mt);
+		t_es.push_back(mt);
+
+		Matx<double,5,1> dist;
+		dist(0) = k1;	dist(1) = k2;	dist(2) = k3;	dist(3) = k4;	dist(4) = k5;
+		dists.push_back(dist);
+
+		Matx<double,5,1> dist_e;
+		dist_e(0) = k1_e;	dist_e(1) = k2_e;	dist_e(2) = k3_e;	dist_e(3) = k4_e;	dist_e(4) = k5_e;
+		dist_es.push_back(dist_e);
+
+		distTypes.push_back(1);
+
+		for (int j=1;j<nImg;++j)
+		{
+			// real parameters
+			Ks.push_back(mK);
+			ts.push_back(mt);
+			dists.push_back(dist);
+
+			double ang_Y = j*interval_ang;
+
+			Matx33d dR = calib::converse_angY_R(ang_Y);
+			Rs.push_back(dR*mR);
+
+			// parameters with error, ie given estimates of image parameters
+			K_es.push_back(mK_e);
+			dist_es.push_back(dist_e);
+
+			double drvx = rng.gaussian(rv_noise_std);
+			double drvy = rng.gaussian(rv_noise_std);
+			double drvz = rng.gaussian(rv_noise_std);
+
+			dR = calib::converse_rotvec_R(drvx,drvy,drvz);
+			R_es.push_back(dR*Rs[j]);
+
+			double dtx = rng.gaussian(t_noise_std);
+			double dty = rng.gaussian(t_noise_std);
+			double dtz = rng.gaussian(t_noise_std);
+
+			Matx31d mdt;
+			mdt(0) = dtx;
+			mdt(1) = dty;
+			mdt(2) = dtz;
+
+			t_es.push_back(mdt+ts[j]);
+
+			distTypes.push_back(1);
+		}
+
+		// choose randomly the given number of images for each object point in which the object point is observed
+		// and further choose randomly one reference image from this observing image set ////////////////////////
+		vector<vector<int>> idxVisiImg;
+		vector<int> idxRefVisiImg;
+		for (int i=0;i<nObj;++i)
+		{
+			vector<int> idxVisi;
+
+			while (idxVisi.size()<nImgperPt)
+			{
+				int k = rng.next()%nImg;
+
+				if (find(idxVisi.begin(),idxVisi.end(),k) != idxVisi.end()) // found, already exist
+				{
+					continue;
+				}
+
+				idxVisi.push_back(k);
+			}
+
+			int k = rng.next()%nImgperPt;
+
+			idxVisiImg.push_back(idxVisi);
+			idxRefVisiImg.push_back(idxVisi[k]);
+		}
+
+		// generate the visibility matrix /////////////////////////////////////////////////////////////////
+		// and real observations without random noise /////////////////////////////////////////////////////
+		int sizes[] = {nObj, nImg};
+		SparseMat ptrMat(2,sizes,CV_32SC1);
+
+		vector<Point2d> vImgPts_nonDist; // non-distorted image points
+		vector<Point2d> vImgPts_dist;	 // distorted image points
+		vector<Matx22d> covInvs;		 // inverses of all the covariance matrix of image points
+
+		Matx22d I22;
+		I22(0,0) = I22(1,1) = 1;
+
+		for (int i=0;i<nObj;++i)
+		{
+			Point3d pt3d = vObjPts[i];
+
+			Matx31d XYZ;
+			XYZ(0) = pt3d.x;
+			XYZ(1) = pt3d.y;
+			XYZ(2) = pt3d.z;
+
+			vector<int> idxVisi = idxVisiImg[i];
+			int idxRef = idxRefVisiImg[i];
+
+			sort(idxVisi.begin(), idxVisi.end());
+
+			for (int k=0;k<idxVisi.size();++k)
+			{
+				int j = idxVisi[k];
+
+				Matx33d K = Ks[j];	Matx33d K_e = K_es[j];
+				Matx33d R = Rs[j];
+				Matx31d t = ts[j];
+				Matx<double,5,1> dist = dists[j];	Matx<double,5,1> dist_e = dist_es[j];
+
+				Matx31d uv = R*XYZ+t;
+				Matx31d xy = K*uv;
+
+				double u = uv(0)/uv(2);
+				double v = uv(1)/uv(2);
+
+				double x = xy(0)/xy(2);
+				double y = xy(1)/xy(2);
+
+				double dx,dy;
+
+				distortions::dxdy_brown(K(0,0),K(1,1),K(0,1),u,v,dist(0),dist(1),dist(2),dist(3),dist(4),dx,dy);
+
+				double x_d = x+dx;
+				double y_d = y+dy;
+
+				Point2d imgPt;
+				imgPt.x = x;
+				imgPt.y = y;
+				vImgPts_nonDist.push_back(imgPt);
+
+				imgPt.x = x_d;
+				imgPt.y = y_d;
+				vImgPts_dist.push_back(imgPt);
+
+				ptrMat.ref<int>(i,j) = vImgPts_nonDist.size()-1;
+
+				covInvs.push_back(I22);
+			}
+		}
+
+		vector<vector<double>> SBA(nImg),DSBA(nImg);
+
+		fprintf(file_SBA,"%05d	", nImg);
+		fprintf(file_DSBA,"%05d	", nImg);
+
+		double t_total_SBA = 0; // SBA 总耗时
+		double t_total_DSBA = 0; // DSBA 总耗时
+
+		// run multiple times, add observation noises, and do statistics /////////////////////////////////
+		for (int kk=0;kk<nSimu;++kk)
+		{
+			vector<Point2d> vImgPts_dist_err;// distorted image points with random noise
+			vector<Matx31d> nxys;			 // contains non-distorted normalized reference image point of each object point
+
+			for (int i=0;i<nObj;++i)
+			{
+				vector<int> idxVisi = idxVisiImg[i];
+				int idxRef = idxRefVisiImg[i];
+
+				sort(idxVisi.begin(), idxVisi.end());
+
+				for (int k=0;k<idxVisi.size();++k)
+				{
+					int j = idxVisi[k];
+
+					const int * ptr = ptrMat.find<int>(i,j);
+
+					if (NULL==ptr)
+					{
+						continue;
+					}
+
+					Matx33d K_e = K_es[j];
+					Matx<double,5,1> dist_e = dist_es[j];
+
+					int idx_ij = (*ptr);
+
+					Point2d pt2d = vImgPts_dist[idx_ij];
+
+					double x_d = pt2d.x;
+					double y_d = pt2d.y;
+
+					double e_x = rng.gaussian(img_noise_std);
+					double e_y = rng.gaussian(img_noise_std);
+
+					double x_d_e = x_d + e_x;
+					double y_d_e = y_d + e_y;
+
+					if (j==idxRef)
+					{
+						// reference image point has random noise
+// 						pt2d.x = x_d_e;
+// 						pt2d.y = y_d_e;
+
+						// reference image point has no random noise
+						vImgPts_dist_err.push_back(pt2d);
+
+						// remove distortion using given estimates of interior orientations
+						double ideal_x,ideal_y;
+						distortions::remove_brown(K_e(0,0),K_e(1,1),K_e(0,2),K_e(1,2),K_e(0,1),
+							dist_e(0),dist_e(1),dist_e(2),dist_e(3),dist_e(4),pt2d.x,pt2d.y,ideal_x,ideal_y);
+
+						Matx31d nxy;
+						nxy(0) = ideal_x;
+						nxy(1) = ideal_y;
+						nxy(2) = 1;
+
+						// compute the normalized image point using given estimates of interior orientations
+						nxys.push_back(calib::invK(K_e)*nxy);
+					} 
+					else
+					{
+						// non-reference image point has random noise
+						pt2d.x = x_d_e;
+						pt2d.y = y_d_e;
+						vImgPts_dist_err.push_back(pt2d);
+					}
+				}
+			}
+
+			double info[5];
+
+			// run SBA first //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_SBA = vObjPts;
+			vector<Matx33d> Rs_SBA = R_es;
+			vector<Matx31d> ts_SBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA,K_es,Rs_SBA,ts_SBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				j_fixed,i_fixed,ptrMat,info);
+			double t_SBA = toc();
+//			t_total_SBA += t_SBA;
+			t_total_SBA += t_SBA/info[3];
+
+			vector<double> drads_SBA,drads_DSBA;
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_SBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_SBA.push_back(drad*calib::R2D);
+
+				SBA[j].push_back(drad*calib::R2D);
+			}
+
+			// then run DSBA //////////////////////////////////////////////////////////////////////////
+			vector<Point3d> objPts_DSBA = vObjPts;
+			vector<Matx33d> Rs_DSBA = R_es;
+			vector<Matx31d> ts_DSBA = t_es;
+
+			tic();
+			SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA,K_es,Rs_DSBA,ts_DSBA,dist_es,distTypes,vImgPts_dist_err,covInvs,
+				nxys,idxRefVisiImg,j_fixed,i_fixed,ptrMat,info);
+			double t_DSBA = toc();
+//			t_total_DSBA += t_DSBA;
+			t_total_DSBA += t_DSBA/info[3];
+
+			for (int j=0;j<nImg;++j)
+			{
+				Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+				Matx31d rov = calib::converse_R_rotvec(dR);
+				double drad = norm(rov);
+				drads_DSBA.push_back(drad*calib::R2D);
+
+				DSBA[j].push_back(drad*calib::R2D);
+			}
+		}
+
+		double t_mean_SBA = 1000*t_total_SBA/nSimu; // 单次执行毫秒
+		double t_mean_DSBA = 1000*t_total_DSBA/nSimu; // 单次执行毫秒
+
+		vector<vector<double>> dSBA_DSBA(nImg);
+		vector<double> davg_SBA_DSBA;
+		vector<double> dds_rms_SBA;
+		vector<double> dds_rms_BSBA;
+		for (int j=0;j<nImg;++j)
+		{
+			double sum = 0;
+
+			double sum_d2_SBA = 0;
+			double sum_d2_DSBA = 0;
+
+			for (int k=0;k<SBA[j].size();++k)
+			{
+				double dd_SBA = SBA[j][k];
+				double dd_DSBA = DSBA[j][k];
+
+				sum += dd_SBA-dd_DSBA;
+
+				sum_d2_SBA += dd_SBA*dd_SBA;
+				sum_d2_DSBA += dd_DSBA*dd_DSBA;
+
+				dSBA_DSBA[j].push_back(dd_SBA-dd_DSBA);
+			}
+
+			davg_SBA_DSBA.push_back(sum/SBA[j].size());
+
+			double rms_dd_SBA = sqrt(sum_d2_SBA/SBA[j].size());
+			double rms_dd_DSBA = sqrt(sum_d2_DSBA/DSBA[j].size());
+
+			dds_rms_SBA.push_back(rms_dd_SBA);
+			dds_rms_BSBA.push_back(rms_dd_DSBA);
+
+// 			record_SBA[j].push_back(rms_dd_SBA);
+// 			record_DSBA[j].push_back(rms_dd_DSBA);
+
+			fprintf(file_SBA,"%lf	", rms_dd_SBA);
+			fprintf(file_DSBA,"%lf	", rms_dd_DSBA);
+		}
+		fprintf(file_SBA,"%lf\n", t_mean_SBA);
+		fprintf(file_DSBA,"%lf\n", t_mean_DSBA);
 	}
+	fclose(file_SBA);
+	fclose(file_DSBA);
+
+	return TRUE;
+}
+
+void CDeepVoidApp::OnDsbasimu()
+{
+	// TODO: Add your command handler code here
+//	AfxBeginThread(DSBA_Simu_increaseImgPtNoise, this, THREAD_PRIORITY_NORMAL);
+//	AfxBeginThread(DSBA_Simu_increaseObservations, this, THREAD_PRIORITY_NORMAL);
+//	AfxBeginThread(DSBA_Simu_increaseObjpts, this, THREAD_PRIORITY_NORMAL);
+	AfxBeginThread(DSBA_Simu_increaseImgs, this, THREAD_PRIORITY_NORMAL);
+}
+
+UINT SfM_Simu(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
+
+// 	std::map<int,int> map_map;
+// 
+// 	map_map.insert(make_pair(0,1));
+// 	map_map.insert(make_pair(1,3));
+// 	map_map.insert(make_pair(0,5));
+
+	return TRUE;
+}
+
+void CDeepVoidApp::OnSfmSimu()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(SfM_Simu, this, THREAD_PRIORITY_NORMAL);
 }
