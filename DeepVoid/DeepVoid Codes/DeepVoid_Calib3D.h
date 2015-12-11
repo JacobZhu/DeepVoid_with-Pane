@@ -104,6 +104,13 @@ Matx31d GetXYZ_givenDepth(const Matx33d & mR,					// input:	3*3, rotation matrix
 						  double depth							// input:	the depth of this point relative to this camera
 						  );
 
+// 20151125, 根据Brown像差模型对图像进行畸变矫正
+void undistortImage_Brown(const Mat & img,					// input:	原图
+						  const Matx33d & K,				// input:	内参数
+						  const Matx<double,5,1> & dist,	// input:	畸变系数
+						  Mat & img_undistort				// output:	畸变矫正完的图像
+						  );
+
 
 // this function first match features by feature descriptors
 // then use epipolar geometry based RANSAC to compute fundamental matrix
@@ -798,6 +805,17 @@ void ScoreMatchingImages(const vector<cam_data> & allCams,			// input:	all image
 						 int idxRefImg,								// input:	the index of the reference image
 						 vector<Point2d> & scores,					// output:	scores of all other images, with x being the index, and y being the score, in descending order
 						 double ang_desired = 15					// input:	the desired triangulation angle
+						 );
+
+// 20151124
+// 为每幅图像按照一定准则对其它图像进行排序，这里用的是期望的交会角大小
+void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	// 输入:	所有物点
+						 const vector<cam_data> & cams,					// 输入:	所有图像
+						 const SfM_ZZK::PairWiseMatches & map_matches,	// 输入：	所有图像对的特征匹配
+						 const SfM_ZZK::MultiTracks & map_tracks,		// 输入：	找到的所有特征轨迹
+						 vector<vector<int>> & vIdxSupports,			// 输出：	确定的每个图像的支持图索引
+						 int nSpt = 2,									// 输入：	每幅图像关联的支持图的个数
+						 double ang_desired = 45						// 输入：	期望的交会角度值
 						 );
 
 // feature points in all images are supposed to be distortion free

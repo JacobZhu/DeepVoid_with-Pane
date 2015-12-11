@@ -740,6 +740,72 @@ Matx31d DeepVoid::GetXYZ_givenDepth(const Matx33d & mR,					// input:	3*3, rotat
 	return mR.t()*(depth*mDir-mt); // Xc=RXw+t -> Xw=R'(Xc-t)
 }
 
+// 20151125, 根据Brown像差模型对图像进行畸变矫正
+void DeepVoid::undistortImage_Brown(const Mat & img,				// input:	原图
+									const Matx33d & K,				// input:	内参数
+								    const Matx<double,5,1> & dist,	// input:	畸变系数
+								    Mat & img_undistort				// output:	畸变矫正完的图像
+								    )
+{
+	int w = img.cols;
+	int h = img.rows;
+	int nc = img.channels();
+
+	double fx = K(0,0);
+	double fy = K(1,1);
+	double cx = K(0,2);
+	double cy = K(1,2);
+	double s  = K(0,1);
+
+	Matx33d mInvK = calib::invK(fx,fy,cx,cy,s);
+	
+	if (nc == 1) // gray image
+	{
+		img_undistort = Mat(h,w,CV_8UC1,Scalar(0));
+	} 
+	else // color image
+	{
+		img_undistort = Mat(h,w,CV_8UC3,Scalar(0));
+	}
+
+	for (int i=0;i<h;++i)
+	{
+		for (int j=0;j<w;++j)
+		{
+			Matx31d uv1; 
+			uv1(0) = j;
+			uv1(1) = i;
+			uv1(2) = 1;
+			uv1 = mInvK*uv1;
+			double u = uv1(0);
+			double v = uv1(1);
+
+			double dx,dy;
+			distortions::dxdy_brown(fx,fy,s,u,v,dist(0),dist(1),dist(2),dist(3),dist(4),dx,dy);
+
+			double x = j+dx;
+			double y = i+dy;
+// 			double x = j-dx;
+// 			double y = i-dy;
+
+			uchar r,g,b;
+			if (BilinearInterp(img,x,y,r,g,b))
+			{
+				if (nc==1) // gray image
+				{
+					img_undistort.at<uchar>(i,j) = r;
+				} 
+				else // color image
+				{
+					img_undistort.at<Vec3b>(i,j).val[0] = b;
+					img_undistort.at<Vec3b>(i,j).val[1] = g;
+					img_undistort.at<Vec3b>(i,j).val[2] = r;
+				}
+			}
+		}
+	}
+}
+
 // this function first match features by feature descriptors
 // then use epipolar geometry based RANSAC to compute fundamental matrix
 // and output refined matches with outliers discarded
@@ -7546,6 +7612,158 @@ void DeepVoid::ScoreMatchingImages(const vector<cam_data> & allCams,			// input:
 	}
 
 	sort(scores.begin(), scores.end(), [](const Point2d & a, const Point2d & b){return a.y>b.y;});
+}
+
+// 20151124
+// 为每幅图像按照一定准则对其它图像进行排序，这里用的是期望的交会角大小
+void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	// 输入:	所有物点
+								   const vector<cam_data> & cams,				// 输入:	所有图像
+								   const SfM_ZZK::PairWiseMatches & map_matches,// 输入：	所有图像对的特征匹配
+								   const SfM_ZZK::MultiTracks & map_tracks,		// 输入：	找到的所有特征轨迹
+								   vector<vector<int>> & vIdxSupports,			// 输出：	确定的每个图像的支持图索引
+								   int nSpt /*= 2*/,							// 输入：	每幅图像关联的支持图的个数
+								   double ang_desired /*= 45*/					// 输入：	期望的交会角度值
+								   )
+{
+	vIdxSupports.clear();
+
+	int m = cams.size();
+
+	double ang_sigma = ang_desired/3.0;
+
+	typedef std::pair<int,std::pair<double,double>> pair_i_a_b; // i为图像索引，a为评分，b为平均交会角
+
+	std::map<int,vector<pair_i_a_b>> map_i_j_a_b;
+
+	for (int i=0;i<m;++i)
+	{
+		if (cams[i].m_bOriented)
+		{
+			vector<pair_i_a_b> vec_i_a_b;
+			map_i_j_a_b.insert(make_pair(i,vec_i_a_b));
+		}
+	}
+
+	for (auto iter_matches=map_matches.begin();iter_matches!=map_matches.end();++iter_matches)
+	{
+		const int & I = iter_matches->first.first;	// 图 I
+		const int & J = iter_matches->first.second;	// 图 J
+		const vector<DMatch> & match = iter_matches->second; // 图 IJ 间的特征匹配
+		
+		const cam_data & cam_I = cams[I];
+		const cam_data & cam_J = cams[J];
+
+		if (!cam_I.m_bOriented || !cam_J.m_bOriented)
+		{
+			// 只有两幅图都完成定向的时候才可以考虑交会角的事情
+			continue;
+		}
+
+		double sum_w = 0;
+		double sum_ang = 0;
+		int n_count = 0;
+
+		// 考察IJ间的每个匹配
+		for (auto iter_match=match.begin();iter_match!=match.end();++iter_match)
+		{
+			int idx_i = iter_match->queryIdx;
+			int idx_j = iter_match->trainIdx;
+
+			int trackID_i = cam_I.m_feats.tracks[idx_i];
+			int trackID_j = cam_J.m_feats.tracks[idx_j];
+
+			if (trackID_i!=trackID_j || trackID_i<0 || trackID_j<0)
+			{
+				// 匹配的两个特征点必须从属于同一个有效的特征轨迹
+				continue;
+			}
+
+			int trackID = trackID_i;
+
+			// 再考察这两幅图对于当前的空间坐标来说是不是内点
+			auto iter_found_track = map_tracks.find(trackID);
+			auto iter_found_I = iter_found_track->second.find(I);
+			auto iter_found_J = iter_found_track->second.find(J);
+
+			if (!iter_found_I->second.second || !iter_found_J->second.second)
+			{
+				// 两个特征点必须同时是内点，这样才能最终确定两个特征点是匹配的
+				continue;
+			}
+
+			// 最后才把物点坐标取出来
+			auto iter_found_wrdpt = map_pointcloud.find(trackID);
+
+			Matx31d XYZ;
+			XYZ(0) = iter_found_wrdpt->second.m_pt.x;
+			XYZ(1) = iter_found_wrdpt->second.m_pt.y;
+			XYZ(2) = iter_found_wrdpt->second.m_pt.z;
+
+			Matx31d C_I = -cam_I.m_R.t()*cam_I.m_t;
+			Matx31d C_J = -cam_J.m_R.t()*cam_J.m_t;
+
+			Matx31d vec_I = XYZ-C_I;
+			double nVec_I = norm(vec_I);
+
+			Matx31d vec_J = XYZ-C_J;
+			double nVec_J = norm(vec_J);
+
+			Matx<double,1,1> cosa = vec_I.t() * vec_J;
+			double tmp = cosa(0)/(nVec_I*nVec_J);
+			if (tmp>1)
+			{
+				tmp=1;
+			}
+			if (tmp<-1)
+			{
+				tmp=-1;
+			}
+			double ang = acos(tmp)*R2D; // 0-180
+
+			double w = exp_miu_sigma(ang,ang_desired,ang_sigma); // compute the weight
+
+			sum_w+=w;
+			sum_ang+=ang;
+			++n_count;
+		}
+
+		double ang_avg = sum_ang/n_count;
+
+		auto iter_found_I = map_i_j_a_b.find(I);
+		auto iter_found_J = map_i_j_a_b.find(J);
+
+		pair_i_a_b I_a_b, J_a_b;
+		I_a_b.first = J; J_a_b.first = I;
+		I_a_b.second.first = J_a_b.second.first = sum_w;
+		I_a_b.second.second = J_a_b.second.second = ang_avg;
+
+		iter_found_I->second.push_back(I_a_b);
+		iter_found_J->second.push_back(J_a_b);
+	}
+		
+	for (int i=0;i<m;++i)
+	{
+		auto iter_found_img = map_i_j_a_b.find(i);
+		vector<int> vIdxSpt;
+		if (iter_found_img == map_i_j_a_b.end())
+		{
+			// 说明第 i 幅图还没有完成定向，此时直接推入空的
+			vIdxSupports.push_back(vIdxSpt);
+			continue;
+		}
+		
+		vector<pair_i_a_b> & vec_i_a_b = iter_found_img->second;
+
+		// 按权重值降序排列
+		sort(vec_i_a_b.begin(), vec_i_a_b.end(), [](const pair_i_a_b & a, const pair_i_a_b & b){return a.second.first>b.second.first;});
+		
+		for (int j=0;j<nSpt;++j)
+		{
+			vIdxSpt.push_back(vec_i_a_b[j].first);
+		}
+
+		vIdxSupports.push_back(vIdxSpt);
+	}
 }
 
 // feature points in all images are supposed to be distortion free
@@ -32962,7 +33180,7 @@ void DeepVoid::MVDE_package_final(const CString & path_output,					// input:	the
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //	for (k=0;k<nImg;++k)
-	for (k=28;k<29;++k)
+	for (k=0;k<3;++k)
 	{
 		int n_spt = vIdxSupports[k].size();
 
@@ -33945,22 +34163,26 @@ void DeepVoid::MVDE_package_150206(const CString & path_output,				// input:	the
 
 	for (k=0;k<nImg;k++)
 	{
-		Matx33d mR,mK; Matx31d mt;
+// 		Matx33d mR,mK; Matx31d mt;
+// 
+// 		for (i=0;i<3;i++)
+// 		{
+// 			for (j=0;j<3;j++)
+// 			{
+// 				mR(i,j) = vCams[k].R[i*3+j];
+// 			}
+// 		}
+// 		mK(0,0) = vCams[k].fx;	mK(0,1) = vCams[k].s;  mK(0,2) = vCams[k].cx;
+// 		mK(1,1) = vCams[k].fy;	mK(1,2) = vCams[k].cy; mK(2,2) = 1;
+// 		mt(0) = vCams[k].t[0];	mt(1) = vCams[k].t[1]; mt(2) = vCams[k].t[2];
+// 
+// 		vRs.push_back(mR);
+// 		vKs.push_back(mK);
+// 		vts.push_back(mt);
 
-		for (i=0;i<3;i++)
-		{
-			for (j=0;j<3;j++)
-			{
-				mR(i,j) = vCams[k].R[i*3+j];
-			}
-		}
-		mK(0,0) = vCams[k].fx;	mK(0,1) = vCams[k].s;  mK(0,2) = vCams[k].cx;
-		mK(1,1) = vCams[k].fy;	mK(1,2) = vCams[k].cy; mK(2,2) = 1;
-		mt(0) = vCams[k].t[0];	mt(1) = vCams[k].t[1]; mt(2) = vCams[k].t[2];
-
-		vRs.push_back(mR);
-		vKs.push_back(mK);
-		vts.push_back(mt);
+		vRs.push_back(vCams[k].m_R);
+		vKs.push_back(vCams[k].m_K);
+		vts.push_back(vCams[k].m_t);
 	}
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -38157,15 +38379,50 @@ double DeepVoid::Triangulate_Optimal(const vector<Point2d> & imgpts0,	// input:	
 	Matx31d mt = -mR*mt0+mt1;
 
 	// get the fundamental matrix
-	Matx33d mF = GetF_Stereo(mK0, mK1, mR, mt);
+	Matx33d mF;
+	try
+	{
+		mF = GetF_Stereo(mK0, mK1, mR, mt);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str;
+		str = e.msg.c_str();
+		str+="	error happened in GetF_Stereo";
+		AfxMessageBox(str);
+	}	
 
 	// correct matches
 	vector<Point2d> imgpts0_crt,imgpts1_crt;
-	correctMatches(mF, imgpts0, imgpts1, imgpts0_crt, imgpts1_crt);
+	try
+	{
+		correctMatches(mF, imgpts0, imgpts1, imgpts0_crt, imgpts1_crt);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str_tmp;
+		str_tmp.Format("nImgPts0 %d nImgPts1 %d", imgpts0.size(), imgpts1.size());
 
+		CString str;
+		str = e.msg.c_str();
+		str+="	error happened in correctMatches";
+		str+=str_tmp;
+		AfxMessageBox(str);
+	}
+	
 	// triangulate
 	Mat mWrdPts;
-	triangulatePoints(mP0, mP1, imgpts0_crt, imgpts1_crt, mWrdPts);
+	try
+	{
+		triangulatePoints(mP0, mP1, imgpts0_crt, imgpts1_crt, mWrdPts);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str;
+		str = e.msg.c_str();
+		str+="	error happened in triangulatePoints";
+		AfxMessageBox(str);
+	}	
 
 	wrdpts.clear();
 	errs.clear();

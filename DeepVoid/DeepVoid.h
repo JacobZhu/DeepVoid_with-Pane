@@ -98,6 +98,12 @@ public:
 	afx_msg void OnCalibsimu();
 	afx_msg void OnDsbasimu();
 	afx_msg void OnSfmSimu();
+	afx_msg void OnFeaturetrackingexp();
+	afx_msg void OnSfmexp();
+	afx_msg void OnDsbasimuNoise();
+	afx_msg void OnDsbasimuObjpts();
+	afx_msg void OnDsbasimuImgnum();
+	afx_msg void OnDsbasimuObsnum();
 };
 
 extern CDeepVoidApp theApp;

@@ -10832,6 +10832,143 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 	}
 }
 
+// 20151128£¬ÀÏµÄÌØÕ÷¹À¼Æ½á¹¹
+void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								   MultiTracks_old & map_tracks				// output:	all the found tracks
+								   )
+{
+//	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::vector<std::pair<std::pair<int,int>,int>> vec_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	int n_features = 0; // number of all features
+
+	// 1. record all the weights between each IJ //////////////////////////////////////////////////////////////////////////////////
+	// and initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		vec_w_IJ.push_back(make_pair(iter->first, w_IJ));
+		
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+				OneTrack_old map_one_track;
+				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+				OneTrack_old map_one_track;
+				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// sort image pairs according to the number of matches found between them before merging
+	sort(vec_w_IJ.begin(),vec_w_IJ.end(),
+		[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second>b.second;});
+
+	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
+	for (auto iter_max=vec_w_IJ.begin();iter_max!=vec_w_IJ.end();++iter_max)
+	{
+		auto iter_max_IJ = map_matches.find(iter_max->first);
+
+		const int & I = iter_max->first.first; // image I
+		const int & J = iter_max->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter_max_IJ->second; // the pairwise matches found between image I and J
+
+		// start merging
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks.find(iter_Jj->second);
+
+			OneTrack_old track_merged;
+			track_merged.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+			track_merged.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+			if (track_merged.size() < (iter_track_Ii->second.size() + iter_track_Jj->second.size()))
+			{
+				// this means that there are conflicts between these two tracks ie the merged track contains more than one feature in one image
+				// in this case we do not merge them
+				continue;
+			}
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Jj);
+			} 
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Ii);
+			}
+		}
+	}
+}
+
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
 // original version ie local minimum weight version with random starting image
 void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input:	all pairwise matches
@@ -11032,6 +11169,205 @@ void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,
 	}
 }
 
+// 20151128£¬ÀÏµÄÌØÕ÷¹À¼Æ½á¹¹
+void SfM_ZZK::FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+										    MultiTracks_old & map_tracks				// output:	all the found tracks
+										    )
+{
+	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	int n_features = 0; // number of all features
+
+	int I_max = -1; // the max image index
+
+	// 1. record all the weights between each IJ //////////////////////////////////////////////////////////////////////////////////
+	// and initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		if (I>I_max)
+		{
+			I_max = I;
+		}
+
+		if (J>I_max)
+		{
+			I_max = J;
+		}
+
+		map_w_IJ.insert(make_pair(iter->first, w_IJ));
+
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+				OneTrack_old map_one_track;
+				map_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+				OneTrack_old map_one_track;
+				map_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
+	std::map<std::pair<int,int>,int> map_w_IJ_cur; // contains all the weights: collection of {<I,J>, weight}
+	int I_cur = I_max;
+	for (auto iter=map_w_IJ.begin(); iter!=map_w_IJ.end(); ++iter)
+	{
+		if (iter->first.first==I_cur || iter->first.second==I_cur)
+		{
+			map_w_IJ_cur.insert(*iter);
+		}
+	}
+
+	// image set that has already been grouped
+	std::set<int> A;
+	A.insert(I_cur);
+
+	while (!map_w_IJ_cur.empty())
+	{
+		// find currently the most weighted image pair ie the one has the most matches
+		auto iter_max = max_element(map_w_IJ_cur.begin(), map_w_IJ_cur.end(), 
+			[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second < b.second;});
+
+		auto iter_max_IJ = map_matches.find(iter_max->first);
+
+		const int & I = iter_max->first.first; // image I
+		const int & J = iter_max->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter_max_IJ->second; // the pairwise matches found between image I and J
+
+		//////////////////////////////////////////////////////////////////////////
+		bool found_new = false;
+
+		if (A.find(I)==A.end())
+		{
+			I_cur = I;
+			found_new = true;
+		}
+		else
+		{
+			if (A.find(J)==A.end())
+			{
+				I_cur = J;
+				found_new = true;
+			}
+		}
+
+		if (found_new)
+		{
+			A.insert(I_cur);
+
+			auto iter_find = map_w_IJ.find(iter_max->first);
+			map_w_IJ.erase(iter_find);
+
+			for (auto iter=map_w_IJ.begin(); iter!=map_w_IJ.end(); ++iter)
+			{
+				if (iter->first.first==I_cur || iter->first.second==I_cur)
+				{
+					map_w_IJ_cur.insert(*iter);
+				}
+			}
+		}
+		//////////////////////////////////////////////////////////////////////////
+
+		// start merging
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks.find(iter_Jj->second);
+
+			OneTrack_old track_merged;
+			track_merged.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+			track_merged.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+			if (track_merged.size() < (iter_track_Ii->second.size() + iter_track_Jj->second.size()))
+			{
+				// this means that there are conflicts between these two tracks ie the merged track contains more than one feature in one image
+				// in this case we do not merge them
+				continue;
+			}
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Jj);
+			} 
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Ii);
+			}
+		}
+
+		// remove currently most weighted image pair
+		map_w_IJ_cur.erase(iter_max);
+	}
+}
+
 // 2015.10.21, find all tracks that are connected components, and do not contain any conflict at all
 // this method finds the ever least tracks
 void SfM_ZZK::FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
@@ -11172,9 +11508,183 @@ void SfM_ZZK::FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:
 	}
 }
 
+// 20151128£¬ÀÏµÄÌØÕ÷¹À¼Æ½á¹¹
+void SfM_ZZK::FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								  MultiTracks_old & map_tracks				// output:	all the found tracks
+								  )
+{
+	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	typedef std::pair<int,int> pair_ij;
+	typedef std::set<pair_ij> set_pair_ij;
+	std::map<int,set_pair_ij> map_tracks_tmp;
+
+	int n_features = 0; // number of all features
+
+	// 1. initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+				set_pair_ij set_one_track;
+				set_one_track.insert(make_pair(I, iter_matches_IJ->queryIdx));
+//				set_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,1)));
+				map_tracks_tmp.insert(make_pair(n_features, set_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+				set_pair_ij set_one_track;
+				set_one_track.insert(make_pair(J, iter_matches_IJ->trainIdx));
+//				set_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,1)));
+				map_tracks_tmp.insert(make_pair(n_features, set_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// 2. merge all tracks between currently image pair ////////////////////////////////////////////////////
+	for (auto iter=map_matches.begin(); iter!=map_matches.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second; // the pairwise matches found between image I and J
+
+		// start merging
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks_tmp.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks_tmp.find(iter_Jj->second);
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks_tmp.erase(iter_track_Jj);
+			} 
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(*iter);
+//					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks_tmp.erase(iter_track_Ii);
+			}
+		}
+	}
+
+	// remove all the tracks containing conflicts
+	for (auto iter=map_tracks_tmp.begin(); iter!=map_tracks_tmp.end(); ++iter)
+	{
+		OneTrack_old map_one_track;
+
+		for (auto iter_ij=iter->second.begin(); iter_ij!=iter->second.end(); ++iter_ij)
+		{
+			map_one_track.insert(make_pair(iter_ij->first,iter_ij->second));
+//			map_one_track.insert(make_pair(iter_ij->first,make_pair(iter_ij->second,0)));
+		}
+
+		if (map_one_track.size() < iter->second.size())
+		{
+			// there are conflicts
+			continue;
+		}
+
+		map_tracks.insert(make_pair(iter->first, map_one_track));
+	}
+}
+
 // 2015.10.08, build the track length histogram
 double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
 									      std::map<int,int> & hist		// output:	the histogram
+									      )
+{
+	for (auto iter=map_tracks.begin(); iter!=map_tracks.end(); ++iter)
+	{
+		int length = iter->second.size();
+
+		auto iter_find = hist.find(length);
+
+		if (iter_find == hist.end())
+		{
+			// does not exist
+			hist.insert(make_pair(length,1));
+		}
+		else
+		{
+			// exist
+			++iter_find->second;
+		}
+	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter=hist.begin(); iter!=hist.end(); ++iter)
+	{
+		n_total+=iter->second;
+		sum_length+=iter->first*iter->second;
+	}
+
+	return sum_length/(double)n_total;
+}
+
+// 20151128£¬²ÉÓÃÀÏµÄ½á¹¹
+double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks_old & map_tracks,	// input:	all the tracks
+									      std::map<int,int> & hist				// output:	the histogram
 									      )
 {
 	for (auto iter=map_tracks.begin(); iter!=map_tracks.end(); ++iter)
@@ -11403,10 +11913,27 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 			imgpts_other.push_back(imgpt_other);
 		}
 
+		// 20151125, ÓÐ¿ÉÄÜÁ½Í¼Ö®¼äÃ»ÓÐÈÎºÎÐèÒª½øÐÐ½»»áµÄµã£¬ÕâÊ±Ö±½Ócontinue
+		if (imgpts.size()<1)
+		{
+			continue;
+		}
+
 		// Ö´ÐÐ×îÓÅË«Ä¿Ç°·½½»»á
 		vector<Point3d> wrdpts;
 		vector<Point2d> errs;
-		double rpj_err = Triangulate_Optimal(imgpts_other, mK_other, mR_other, mt_other, imgpts, mK, mR, mt, wrdpts, errs);
+		double rpj_err;
+		try
+		{
+			rpj_err = Triangulate_Optimal(imgpts_other, mK_other, mR_other, mt_other, imgpts, mK, mR, mt, wrdpts, errs);
+		}
+		catch (cv::Exception & e)
+		{
+			CString str;
+			str = e.msg.c_str();
+			str+="	error happened in Triangulate_Optimal";
+			AfxMessageBox(str);
+		}
 
 		for (int j=0;j<wrdpts.size();++j)
 		{
@@ -11470,7 +11997,18 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 				imgpt.y = camI.m_feats.key_points[i].pt.y;
 
 				// ÎïµãÖØÍ¶Ó°
-				Matx31d xyz = camI.m_K*(camI.m_R*XYZ+camI.m_t);
+				Matx31d xyz;
+				try
+				{
+					xyz = camI.m_K*(camI.m_R*XYZ+camI.m_t);
+				}
+				catch (cv::Exception & e)
+				{
+					CString str;
+					str = e.msg.c_str();
+					str+="	error happened in compute projection";
+					AfxMessageBox(str);
+				}
 				xyz(0)/=xyz(2);
 				xyz(1)/=xyz(2);
 
@@ -11730,12 +12268,15 @@ int SfM_ZZK::Triangulation_AllImgs(PointCloud & map_pointcloud,			// output:	µãÔ
 
 // 20151109£¬Êä³öµ±Ç°µãÔÆ
 void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	Êä³öÎÄ¼þÂ·¾¶
-							   const PointCloud & map_pointcloud,		// output:	µãÔÆ
+							   const PointCloud & map_pointcloud,		// int:		µãÔÆ
 							   const vector<DeepVoid::cam_data> & cams,	// input:	ËùÓÐÍ¼Ïñ
 							   const MultiTracks & map_tracks,			// input:	ËùÓÐµÄÌØÕ÷¹ì¼£
+							   vector<DeepVoid::CloudPoint> & cloud,	// output:	ÀÏµÄµãÔÆ½á¹¹Ìå
 							   int n_minInilier /*= 2*/					// input:	ÖÁÉÙµÃÓÐ¸Ã¸öÊýÍ¼Ïñ¹Û²âµ½¸Ãµã
 							   )
 {
+	cloud.clear();
+
 	FILE * file = fopen(strFile, "w");
 	for (auto iter_wrdpt=map_pointcloud.begin();iter_wrdpt!=map_pointcloud.end();++iter_wrdpt)
 	{
@@ -11779,6 +12320,12 @@ void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	Êä³öÎÄ¼þÂ·¾¶
 		int B = (int)sumB/count;
 
 		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", iter_wrdpt->second.m_pt.x, iter_wrdpt->second.m_pt.y, iter_wrdpt->second.m_pt.z, R, G, B);
+
+		CloudPoint cldpt;
+		cldpt.m_idx = trackID;
+		cldpt.m_pt = iter_wrdpt->second.m_pt;
+
+		cloud.push_back(cldpt);
 	}
 	fclose(file);
 }

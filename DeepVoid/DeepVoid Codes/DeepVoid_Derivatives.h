@@ -1269,9 +1269,13 @@ typedef std::map<std::pair<int,int>, std::vector<DMatch>> PairWiseMatches;
 // typedef std::map<int,int> OneTrack;
 // 20151108 添加一位表对应特征点是内点（1）还是外点（0）
 typedef std::map<int,std::pair<int,int>> OneTrack;
+// 20151128, 老的特征轨迹结构，没有表示 outlier 的 value
+typedef std::map<int,int> OneTrack_old; 
 
 // 2015.10.08, a map container to store all tracks: collection of {trackId, onetrack}
 typedef std::map<int,OneTrack> MultiTracks;
+// 20151128, 老的特征估计结构，没有表示 outlier 的 value
+typedef std::map<int,OneTrack_old> MultiTracks_old; 
 
 // 2015.11.04, a map container to store all the coordinates of the reconstructed tracks
 typedef std::map<int,DeepVoid::CloudPoint> PointCloud;
@@ -1283,11 +1287,19 @@ typedef std::map<int,DeepVoid::CloudPoint> PointCloud;
 void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 						  MultiTracks & map_tracks				// output:	all the found tracks
 						  );
+// 20151128，老的特征估计结构
+void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+						  MultiTracks_old & map_tracks				// output:	all the found tracks
+						  );
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
 // original version ie local minimum weight version with random starting image
 void FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 								   MultiTracks & map_tracks				// output:	all the found tracks
+								   );
+// 20151128，老的特征估计结构
+void FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+								   MultiTracks_old & map_tracks				// output:	all the found tracks
 								   );
 
 // 2015.10.21, find all tracks that are connected components, and do not contain any conflict at all
@@ -1295,11 +1307,19 @@ void FindAllTracks_Olsson_Original(const PairWiseMatches & map_matches,	// input
 void FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 						 MultiTracks & map_tracks				// output:	all the found tracks
 						 );
+// 20151128，老的特征估计结构
+void FindAllTracks_Least(const PairWiseMatches & map_matches,	// input:	all pairwise matches
+						 MultiTracks_old & map_tracks				// output:	all the found tracks
+						 );
 
 // 2015.10.08, build the track length histogram
 // 2015.10.21, and return the average track length
 double BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// input:	all the tracks
 								 std::map<int,int> & hist			// output:	the histogram
+							     );
+// 20151128，采用老的结构
+double BuildTrackLengthHistogram(const MultiTracks_old & map_tracks,	// input:	all the tracks
+								 std::map<int,int> & hist				// output:	the histogram
 							     );
 
 // 2015.10.08, build the track length histogram
@@ -1332,9 +1352,10 @@ int Triangulation_AllImgs(PointCloud & map_pointcloud,				// output:	点云
 
 // 20151109，输出当前点云
 void OutputPointCloud(CString strFile,							// input:	输出文件路径
-					  const PointCloud & map_pointcloud,		// output:	点云
+					  const PointCloud & map_pointcloud,		// input:	点云
 					  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
 					  const MultiTracks & map_tracks,			// input:	所有的特征轨迹
+					  vector<DeepVoid::CloudPoint> & cloud,			// output:	老的点云结构体
 					  int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
 					  );
 
