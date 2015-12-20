@@ -561,7 +561,8 @@ bool RelativeOrientation_Features_PIRO_givenMatches(const cam_data & cam1,			// 
 													Matx33d & mR,					// output:	the relative rotation matrix
 													Matx31d & mt,					// output:	the relative translation vector
 													SfM_ZZK::PointCloud & map_pointcloud,	// output:	the reconstructed point cloud in reference camera frame, which is the first image
-													double thresh_reprojErr = 1		// input:	the threshold of the reprojection error in pixels
+													double thresh_reprojErr = 1,	// input:	the threshold of the reprojection error in pixels
+													double thresh_meanAng = 5		// input:	the threshold of the mean triangulation angle
 													);
 
 void Triangulate_PIRO_py(double nx1, double ny1, double nz1,	// input:	the normalized image coordinates in reference image

@@ -5617,7 +5617,8 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 															  Matx33d & mR,							// output:	the relative rotation matrix
 															  Matx31d & mt,							// output:	the relative translation vector
 															  SfM_ZZK::PointCloud & map_pointcloud,	// output:	the reconstructed point cloud in reference camera frame, which is the first image
-															  double thresh_reprojErr /*= 1*/		// input:	the threshold of the reprojection error in pixels
+															  double thresh_reprojErr /*= 1*/,		// input:	the threshold of the reprojection error in pixels
+															  double thresh_meanAng /*= 5*/			// input:	the threshold of the mean triangulation angle
 															  )
 {
 	int nFeat1 = cam1.m_feats.key_points.size();
@@ -5666,6 +5667,10 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 	}
 	else
 	{
+		double sum_ang = 0;
+		int n_nonneg = 0;
+		vector<double> angs_all;
+
 		for (int i=0;i<n;i++)
 		{
 			if (!status_neg[i])
@@ -5688,10 +5693,57 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 				cldpt.m_idx = cam1.m_feats.tracks[matches[i].queryIdx];
 
 				map_pointcloud.insert(make_pair(cldpt.m_idx, cldpt));
+
+				// 20151219，接下来考察一下当前重建物点的交会角大小
+				Matx31d XYZ;
+				XYZ(0) = pt.x;
+				XYZ(1) = pt.y;
+				XYZ(2) = pt.z;
+
+				Matx31d C_R = -mR.t()*mt;
+
+				double nVec_L = norm(XYZ);
+
+				Matx31d vec_R = XYZ-C_R;
+				double nVec_R = norm(vec_R);
+
+				Matx<double,1,1> cosa = XYZ.t() * vec_R;
+				double tmp = cosa(0)/(nVec_L*nVec_R);
+				if (tmp>1)
+				{
+					tmp=1;
+				}
+				if (tmp<-1)
+				{
+					tmp=-1;
+				}
+				double ang = acos(tmp)*R2D; // 0-180
+
+				sum_ang += ang;
+				++n_nonneg;
+				angs_all.push_back(ang);
 			}
 		}
 
-		return true;
+		// 交会角均值
+		double ang_mean = sum_ang/n_nonneg;
+
+		// 交会角中值
+		int idx_median = n_nonneg/2;
+		sort(angs_all.begin(),angs_all.end(),[](const double & a, const double & b){return a>b;});
+		double ang_median = angs_all[idx_median];
+
+		// 20151219，所有有效重建物点的平均交会角或者中值交会角要大于给定阈值才认为此时相对定向以及重建初始稀疏点成功
+		// 否则认为参与初始相对定向的两幅图像间的基线太小
+//		if (ang_mean>thresh_meanAng)
+		if (ang_median>thresh_meanAng)
+		{
+			return true;
+		} 
+		else
+		{
+			return false;
+		}
 	}
 }
 

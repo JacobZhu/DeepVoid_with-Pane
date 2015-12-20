@@ -104,6 +104,9 @@ public:
 	afx_msg void OnDsbasimuObjpts();
 	afx_msg void OnDsbasimuImgnum();
 	afx_msg void OnDsbasimuObsnum();
+	afx_msg void On3dreconstructionParametersettings();
+	afx_msg void On3dreconstructionNetworkorientationandsparsereconstruction();
+	afx_msg void On3dreconstructionDensereconstruction();
 };
 
 extern CDeepVoidApp theApp;
