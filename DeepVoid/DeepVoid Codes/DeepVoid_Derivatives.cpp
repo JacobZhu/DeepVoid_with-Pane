@@ -11937,13 +11937,30 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 
 		for (int j=0;j<wrdpts.size();++j)
 		{
+			const Point3d & pt3d = wrdpts[j];
+
 			if (errs[j].x >= thresh_inlier || errs[j].y >= thresh_inlier)
 			{
 				continue;
 			}
 
+			// 20151224，交会出来的物点坐标必须得是位于参与交会的两幅图前面，否则就不合理了，不采纳其为一候选物点坐标
+ 			Matx31d XYZ;
+ 			XYZ(0) = pt3d.x;
+ 			XYZ(1) = pt3d.y;
+ 			XYZ(2) = pt3d.z;
+ 
+ 			Matx31d XYZ_0 = mR*XYZ+mt;
+ 			Matx31d XYZ_1 = mR_other*XYZ+mt_other;
+ 
+ 			if (XYZ_0(2)<=0 || XYZ_1(2)<=0)
+ 			{
+ 				// 说明至少有一幅图像是位于该重建物点的前面了
+ 				continue;
+ 			}
+
 			// 录入一个有效的物点坐标
-			pair_XYZ_n_e XYZ_n_e = make_pair(wrdpts[j],make_pair(0,0));
+			pair_XYZ_n_e XYZ_n_e = make_pair(pt3d/*wrdpts[j]*/,make_pair(0,0));
 			
 			auto iter_found_track_need_triang = map_tracks_need_triang.find(trackIDs[j]);
 			iter_found_track_need_triang->second.push_back(XYZ_n_e);
@@ -11997,10 +12014,11 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 				imgpt.y = camI.m_feats.key_points[i].pt.y;
 
 				// 物点重投影
-				Matx31d xyz;
+				Matx31d xyz, XYZ_C;
 				try
 				{
-					xyz = camI.m_K*(camI.m_R*XYZ+camI.m_t);
+					XYZ_C = camI.m_R*XYZ + camI.m_t;
+					xyz = camI.m_K*XYZ_C;
 				}
 				catch (cv::Exception & e)
 				{
@@ -12016,7 +12034,8 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 				double dy = xyz(1)-imgpt.y;
 				double d = sqrt(dx*dx+dy*dy);
 
-				if (d<thresh_inlier)
+				// 20151227，除了满足重投影残差足够小的条件外，还得保证物点位于图像前面
+				if (d<thresh_inlier && XYZ_C(2)>0)
 				{
 					++iter_one_candidate->second.first;
 					sum_inliers_d2 += d*d;
