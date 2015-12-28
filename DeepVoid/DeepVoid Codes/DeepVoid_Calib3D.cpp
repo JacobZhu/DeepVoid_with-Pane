@@ -5655,7 +5655,23 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 	vector<bool> status_neg(n);
 	for (int i=0;i<n;i++)
 	{
-		if (vwrdpts[i].z<=0)
+		const Point3d & pt3d = vwrdpts[i];
+
+		if (pt3d.z<=0)
+		{
+			status_neg[i]=true;
+			continue;
+		}
+
+		// 20151224，上面只是判断了交会出来的物点位于参考图像的后方，其实合理的物点应该同时位于参与交会的两幅图像前方
+		Matx31d XYZ;
+		XYZ(0) = pt3d.x;
+		XYZ(1) = pt3d.y;
+		XYZ(2) = pt3d.z;
+
+		XYZ = mR*XYZ+mt;
+
+		if (XYZ(2)<=0)
 		{
 			status_neg[i]=true;
 		}
