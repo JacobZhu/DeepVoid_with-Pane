@@ -1094,6 +1094,26 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 		cam.m_R = Rs[i];
 		cam.m_t = ts[i];
+
+		// 20151224，查看左乘微小旋转矩阵的这种更新方式在经过很多次迭代之后会不会导致旋转矩阵特性退化
+// 		Matx33d u,vt;
+// 		Matx31d w;
+// 
+// 		SVD::compute(cam.m_R, w, u, vt);
+// 
+// 		double detR = determinant(cam.m_R);
+// 		double a1 = w(0);
+// 		double a2 = w(1);
+// 		double a3 = w(2);
+// 
+// 		if (a>0)
+// 		{
+// 			mR = u*vt;
+// 		} 
+// 		else
+// 		{
+// 			mR = -u*vt;
+// 		}
 	}
 
 	// 用光束法平差完的新的重投影残差来判断内外点
@@ -1108,6 +1128,11 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 		iter_objpt->second.m_pt = XYZ;
 
 		auto iter_found_track = map_tracks.find(iter_objpt->first);
+
+		Matx31d mXYZ;
+		mXYZ(0) = XYZ.x;
+		mXYZ(1) = XYZ.y;
+		mXYZ(2) = XYZ.z;
 
 		for (int j=0;j<m;++j)
 		{
@@ -1126,7 +1151,17 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 			if (rpjerr<sigma3)
 			{
-				iter_found_img->second.second = 1;
+				// 20151227，重投影残差足够小还不行，还得位于该图像正前方，否则该图像依然会被判为外点
+				Matx31d mXYZ_C = Rs[j] * mXYZ + ts[j];
+
+				if (mXYZ_C(2)<=0)
+				{
+					iter_found_img->second.second = 0; // 物点位于图像后方
+				}
+				else
+				{
+					iter_found_img->second.second = 1; // 物点位于图像前方
+				}
 			} 
 			else
 			{
