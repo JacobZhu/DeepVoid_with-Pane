@@ -2474,13 +2474,13 @@ void DeepVoid::symmetryTest(const vector<DMatch> & matches01,	// input:	matches 
 // true one using method described in <Multiple View Geometry> by Richard Hartley, this function
 // do not do bundle adjustment after [R|t] obtained, only the linear solution
 // this function returns the final fundamental 3*3 matrix
-CMatrix DeepVoid::RelativeOrientation_RANSAC_Features_Linear(const cam_data & cam1,			// input:	all the information about the image 1
+/*CMatrix DeepVoid::RelativeOrientation_RANSAC_Features_Linear(const cam_data & cam1,			// input:	all the information about the image 1
 															 const cam_data & cam2,			// input:	all the information about the image 2
 															 CMatrix & mP,					// output:	3*4 matrix, the relative orientation of these two images [R|t]
 															 vector<CloudPoint> & clouds,	// output:	the reconstructed cloud points in reference camera frame, which is the first image
-															 double param1 /*= 3*/,			// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
-															 double param2 /*= 3*/,			// input:	the distance threshold between point and epiline, used in RANSAC stage
-															 double param3 /*= 0.99*/		// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+															 double param1 ,			// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
+															 double param2 ,			// input:	the distance threshold between point and epiline, used in RANSAC stage
+															 double param3 		// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
 															 )
 {
 	int i,j;
@@ -2645,7 +2645,7 @@ CMatrix DeepVoid::RelativeOrientation_RANSAC_Features_Linear(const cam_data & ca
 	//////////////////////////////////////////////////////////////////////////
 
 	return CMatrix(0);
-}
+}*/
 
 // given a essential matrix, find the true one using method described in <Multiple View Geometry> by Richard Hartley
 // void DeepVoid::DisambiguateRT_givenE(const vector<Point2f> & imgPts1,					// input:	normalized image coordinates
@@ -3350,7 +3350,8 @@ bool DeepVoid::ExteriorOrientation_PnP_RANSAC(vector<cam_data> & vCams,		// inpu
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK2, distCoeffs, rvec, mt2, false, 256, param4, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK2, distCoeffs, rvec, mt2, false, 256, param4, n_exist, vInliers, CV_ITERATIVE);
+		solvePnPRansac(objectPoints, imagePoints, mK2, distCoeffs, rvec, mt2, false, 256, param4, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -3512,14 +3513,14 @@ bool DeepVoid::ExteriorOrientation_PnP_RANSAC_Round(vector<cam_data> & vCams,	//
 	return false;
 }
 
-void DeepVoid::ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// input&output:	all the images
+/*void DeepVoid::ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// input&output:	all the images
 												  vector<int> & status,			// input&output:	if status[i] = 0, means that vCams[i] is still not oriented yet
 												  vector<CloudPoint> & clouds,	// input&output:	the reconstructed cloud points in reference camera frame, which is the first image	 
-												  double param1 /*= 3*/,		// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
-												  double param2 /*= 1*/,		// input:	the distance threshold between point and epiline, used in RANSAC stage
-												  double param3 /*= 0.99*/,		// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
-												  double param4 /*= 1*/,		// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
-												  double param5 /*= 0.75*/		// input:	the allowed minimum ratio of inliers within all reconstructed matches
+												  double param1 ,		// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
+												  double param2 ,		// input:	the distance threshold between point and epiline, used in RANSAC stage
+												  double param3 ,		// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+												  double param4 ,		// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
+												  double param5 		// input:	the allowed minimum ratio of inliers within all reconstructed matches
 												  )
 {
 	int i,j;
@@ -3566,7 +3567,7 @@ void DeepVoid::ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// 
 			} 
 		}
 	}
-}
+}*/
 
 void DeepVoid::der_f_PIRO_omg_fai(double nx1, double ny1,								// input: normalized image coordinates in reference image
 								  double nx2, double ny2,								// input: normalized image coordinates in the other image
@@ -4971,19 +4972,19 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 	return err_rpj_all[idx_min_err_rpj];
 }
 
-bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,				// input:	all the information about the image 1
+/*bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,				// input:	all the information about the image 1
 														const cam_data & cam2,				// input:	all the information about the image 2
 														int idx_cam1,						// input:	the index of the first camera
 														int idx_cam2,						// input:	the index of the second camera
 														CMatrix & mRT,						// output:	4*4 matrix, the relative orientation of these two images [R|t; 0 0 0 1]
 														vector<CloudPoint> & clouds,		// output:	the reconstructed cloud points in reference camera frame, which is the first image
-														double param1 /*= 3*/,				// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
-														double param2 /*= 3*/,				// input:	the distance threshold between point and epiline, used in RANSAC stage
-														double param3 /*= 0.99*/,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
-														double thresh_stdev_YZ /*= 0.08*/,	// input:	the threshold of standard deviation of Y and Z
-														double thresh_reprojErr /*= 1*/,	// input:	the threshold of the reprojection error in pixels
-														double thresh_pyErr /*= 0.001*/,	// input:	the threshold of the y-parallax error
-														double thresh_ang /*= 30*/			// input:	the threshold of angle between optical axes
+														double param1 ,				// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
+														double param2 ,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+														double param3 ,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+														double thresh_stdev_YZ ,	// input:	the threshold of standard deviation of Y and Z
+														double thresh_reprojErr ,	// input:	the threshold of the reprojection error in pixels
+														double thresh_pyErr ,	// input:	the threshold of the y-parallax error
+														double thresh_ang 			// input:	the threshold of angle between optical axes
 														)
 {
 	int i,j;
@@ -5205,21 +5206,21 @@ bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,		
 
 		return true;
 	}
-}
+}*/
 
 // this PIRO func conduct ro with given matches
 // and the feature points in both cam_data are supposed to be distortion free
-bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_data & cam1,				// input:	all the information about the image 1
+/*bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_data & cam1,				// input:	all the information about the image 1
 																	 const cam_data & cam2,				// input:	all the information about the image 2
 																	 int idx_cam1,						// input:	the index of the first camera
 																	 int idx_cam2,						// input:	the index of the second camera
 																	 const vector<DMatch> & matches,	// input:	the given matches
 																	 CMatrix & mRT,						// output:	4*4 matrix, the relative orientation of these two images [R|t; 0 0 0 1]
 																	 vector<CloudPoint> & clouds,		// output:	the reconstructed cloud points in reference camera frame, which is the first image	
-																	 double thresh_stdev_YZ /*= 0.08*/,	// input:	the threshold of standard deviation of Y and Z
-																	 double thresh_reprojErr /*= 1*/,	// input:	the threshold of the reprojection error in pixels
-																	 double thresh_pyErr /*= 0.001*/,	// input:	the threshold of the y-parallax error
-																	 double thresh_ang /*= 30*/			// input:	the threshold of angle between optical axes
+																	 double thresh_stdev_YZ ,	// input:	the threshold of standard deviation of Y and Z
+																	 double thresh_reprojErr ,	// input:	the threshold of the reprojection error in pixels
+																	 double thresh_pyErr ,	// input:	the threshold of the y-parallax error
+																	 double thresh_ang 			// input:	the threshold of angle between optical axes
 																	 )
 {
 	int i,j;
@@ -5477,7 +5478,7 @@ bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_d
 
 		return true;
 	}
-}
+}*/
 
 // 20150115, zhaokunz, this PIRO func conduct ro with given matches
 // and the feature points in both cam_data are supposed to be distortion free
@@ -7924,7 +7925,8 @@ bool DeepVoid::ExteriorOrientation_PnP_RANSAC(vector<cam_data> & vCams,						// 
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -8165,7 +8167,8 @@ bool DeepVoid::ExteriorOrientation_PnP_RANSAC_detachOutliers(vector<cam_data> & 
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -8416,7 +8419,8 @@ bool DeepVoid::EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all 
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -8914,7 +8918,8 @@ bool DeepVoid::EO_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all 
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -9397,7 +9402,9 @@ bool DeepVoid::EO_PnP_RANSAC(const cam_data & cam,						// input:	the image to b
 
 	try
 	{
-		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+//		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, n_exist, vInliers, CV_ITERATIVE);
+		// 20160318, the parameter minInliersCount is changed to confidence in opencv 3.x
+		solvePnPRansac(objectPoints, imagePoints, mK, distCoeffs, rvec, mt, false, 256, thresh_rpj_inlier, 0.99, vInliers, CV_ITERATIVE);
 	}
 	catch (cv::Exception & e)
 	{
@@ -38557,4 +38564,36 @@ void DeepVoid::OutputPointCloud(CString strFile,
 		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", iter_pt->m_pt.x, iter_pt->m_pt.y, iter_pt->m_pt.z, R, G, B);
 	}
 	fclose(file);
+}
+
+// 20160329，从旋转矩阵 R 和平移向量 t 输出图像光心、光轴上一点以及 Y 轴方向于世界坐标系中的坐标
+void DeepVoid::get_pos_focalpt_ydir(const Matx33d & R,		// input: rotation matrix
+								    const Matx31d & t,		// input: translation vector
+								    Point3d & pos,			// output: optical center in world coordinate system
+								    Point3d & focal_point,	// output: world coordinates of a point on Z-axis
+								    Point3d & y_dir			// output: world vector of the Y-axis
+								    )
+{
+	// Xc=R*Xw+t -> Xw=R'*(Xc-t)
+	Matx33d R_inv = R.t();
+
+	Matx31d Xw, Xc;
+
+	Xw = -R_inv*t;
+	pos.x = Xw(0);
+	pos.y = Xw(1);
+	pos.z = Xw(2);
+
+	Xc(2) = 1;
+	Xw = R_inv*(Xc - t);
+	focal_point.x = Xw(0);
+	focal_point.y = Xw(1);
+	focal_point.z = Xw(2);
+
+	Xc(2) = 0;
+	Xc(1) = 1;
+	Xw = R_inv*Xc;
+	y_dir.x = Xw(0);
+	y_dir.y = Xw(1);
+	y_dir.z = Xw(2);
 }

@@ -48,7 +48,7 @@ void jacob_ext_rotvec_str(int j,				// current index of image
 
 // ¸Ãº¯Êı·â×°ÁË Sparse Bundle Adjustment ¿âµÄ¹âÊø·¨Æ½²îº¯Êı
 // ·µ»ØËùÓĞÖØÍ¶Ó°Ïñµã¸öÊı
-int  optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
+/*int  optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
 									vector<cam_data> & cams,			// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞÊÓÍ¼µÄĞÅÏ¢£¬ÆäÖĞ°üÀ¨ÊÓÍ¼µÄÄÚ²ÎÊı£¬Íâ²ÎÊı£¬Ïñ²îÏµÊıÒÔ¼°Ëù¹Û²âµ½µÄ±êÖ¾µãÏñµã×ø±ê£¬Æ½²îÖ®ºóÀïÃæÄÜÓÅ»¯µÄÊÓÍ¼Íâ²ÎÊı½«µÃµ½¸üĞÂ
 
 									int itermax = 1024,					// ÊäÈë£º×î´óµü´ú´ÎÊı
@@ -78,11 +78,11 @@ int  optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³
 																		// info[7]£¬# function evaluations£¬		Ä¿±êº¯Êıµ÷ÓÃ´ÎÊı
 																		// info[8]£¬# jacobian evaluations£¬		Jacobian ¾ØÕó¹À¼Æ´ÎÊı
 																		// info[9]£¬# number of linear systems solved£¬Çó½âÏßĞÔ·½³Ì×éµÄ¸öÊı
-									);
+									);*/
 
 // ¸Ãº¯Êı·â×°ÁË Sparse Bundle Adjustment ¿âµÄ¹âÊø·¨Æ½²îº¯Êı
 // ·µ»ØËùÓĞÖØÍ¶Ó°Ïñµã¸öÊı
-int  optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
+/*int  optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
 									 vector<cam_data> & cams,			// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞÊÓÍ¼µÄĞÅÏ¢£¬ÆäÖĞ°üÀ¨ÊÓÍ¼µÄÄÚ²ÎÊı£¬Íâ²ÎÊı£¬Ïñ²îÏµÊıÒÔ¼°Ëù¹Û²âµ½µÄ±êÖ¾µãÏñµã×ø±ê£¬Æ½²îÖ®ºóÀïÃæÄÜÓÅ»¯µÄÊÓÍ¼Íâ²ÎÊı½«µÃµ½¸üĞÂ
 									 int idx_refimg,					// input:	the reference image, whose R=I, and t =[0,0,0]'
 
@@ -116,7 +116,7 @@ int  optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä
 																		// info[7]£¬# function evaluations£¬		Ä¿±êº¯Êıµ÷ÓÃ´ÎÊı
 																		// info[8]£¬# jacobian evaluations£¬		Jacobian ¾ØÕó¹À¼Æ´ÎÊı
 																		// info[9]£¬# number of linear systems solved£¬Çó½âÏßĞÔ·½³Ì×éµÄ¸öÊı
-									 );
+									 );*/
 
 // ¸Ãº¯Êı·â×°ÁË Sparse Bundle Adjustment ¿âµÄ¹âÊø·¨Æ½²îº¯Êı
 // ·µ»ØËùÓĞÖØÍ¶Ó°Ïñµã¸öÊı
@@ -194,7 +194,7 @@ int  optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcloud,	// Êä
 									 );
 
 // iteratively run sba multiple times, until no outliers are detected
-int optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
+/*int optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞ±êÖ¾µãµÄ¿Õ¼ä×ø±ê£¬Æ½²îÖ®ºóÀïÃæµÄµã×ø±ê½«±»¸üĞÂ
 											  vector<cam_data> & cams,			// ÊäÈë¼æÊä³ö£º´æ·ÅËùÓĞÊÓÍ¼µÄĞÅÏ¢£¬ÆäÖĞ°üÀ¨ÊÓÍ¼µÄÄÚ²ÎÊı£¬Íâ²ÎÊı£¬Ïñ²îÏµÊıÒÔ¼°Ëù¹Û²âµ½µÄ±êÖ¾µãÏñµã×ø±ê£¬Æ½²îÖ®ºóÀïÃæÄÜÓÅ»¯µÄÊÓÍ¼Íâ²ÎÊı½«µÃµ½¸üĞÂ
 											  const vector<vector<Point2i>> & allTracks,
 											  int idx_refimg,					// input:	the reference image, whose R=I, t=[0,0,0]'
@@ -202,5 +202,5 @@ int optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		//
 											  double thresh_rpjErr = 1,			// input:	the threshold to determine outliers
 											  double * opts = NULL,				
 											  double * info = NULL
-											  );
+											  );*/
 }

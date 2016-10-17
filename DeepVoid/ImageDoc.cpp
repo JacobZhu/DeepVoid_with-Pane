@@ -85,7 +85,7 @@ void CImageDoc::Serialize(CArchive& ar)
 void CImageDoc::OnFeaturesSift()
 {
 	// TODO: Add your command handler code here
-	if (m_image.empty())
+	/*if (m_image.empty())
 	{
 		return;
 	}
@@ -102,14 +102,14 @@ void CImageDoc::OnFeaturesSift()
 
 	m_pImgView->m_pImage = &m_imgHandled;
 	m_pImgView->m_bShowHandled = TRUE;
-	m_pImgView->Invalidate(TRUE);
+	m_pImgView->Invalidate(TRUE);*/
 }
 
 
 void CImageDoc::OnFeaturesSurf()
 {
 	// TODO: Add your command handler code here
-	if (m_image.empty())
+	/*if (m_image.empty())
 	{
 		return;
 	}
@@ -126,7 +126,7 @@ void CImageDoc::OnFeaturesSurf()
 
 	m_pImgView->m_pImage = &m_imgHandled;
 	m_pImgView->m_bShowHandled = TRUE;
-	m_pImgView->Invalidate(TRUE);
+	m_pImgView->Invalidate(TRUE);*/
 }
 
 

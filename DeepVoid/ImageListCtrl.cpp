@@ -162,7 +162,8 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 		CvSize size;
 		size.width = img_w;	size.height = img_h;
 		IplImage * imgTmp = cvCreateImage(size, 8, img_c);
-		image.copyTo(cv::Mat(imgTmp));
+//		image.copyTo(cv::Mat(imgTmp));
+		image.copyTo(cv::cvarrToMat(imgTmp)); // 20160316, cv::Mat(const IplImage * img) is removed in opencv 3.x, use cv::cvarrToMat instead.
 
 		Bitmap * pImage = new Bitmap(bmi, imgTmp->imageData);
 

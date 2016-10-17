@@ -87,7 +87,7 @@ void j_ext_rotvec(double * p,			// rv1, rv2, rv3 and tx, ty, tz
 
 
 // ÓÅ»¯µÚ 2 ·ùÊÓÍ¼Ïà¶ÔÓÚµÚ 1 ·ùÊÓÍ¼µÄÍâ²ÎÊıÒÔ¼°¿Õ¼äµãÔÚµÚ 1 ·ùÊÓÍ¼×ø±êÏµÖĞµÄ×ø±ê
-void optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,				// ÊäÈë¼æÊä³ö£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
+/*void optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,				// ÊäÈë¼æÊä³ö£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
 										 const CMatrix & mImgPts1,		// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿Õ¼äµãÔÚ 1 ºÅÊÓÍ¼ÖĞµÄÍ¼Ïñ×ø±ê
 										 const CMatrix & mImgPts2,		// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿Õ¼äµãÔÚ 2 ºÅÊÓÍ¼ÖĞµÄÍ¼Ïñ×ø±ê
 										 const CMatrix & mK1,			// ÊäÈë£º3¡Á3»ò3¡Á4µÄ¾ØÕó£¬1 ºÅÊÓÍ¼µÄÄÚ²ÎÊı¾ØÕó
@@ -107,11 +107,11 @@ void optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,				// ÊäÈë¼æÊä³ö£º4¡
 										 double * info = NULL,			// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
 										 CMatrix & mCovar = CMatrix(0),	// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
 										 int * iterNum = NULL			// Êä³ö£ºµü´ú´ÎÊı
-										 );
+										 );*/
 
 // ÒÑÖªÏñ»úÄÚ²ÎÊı¼°Ïñ²îÏµÊı£¬ÀûÓÃ levmar ´úÂë¿âµÄº¯ÊıÓÅ»¯Ïñ»úµÄÍâ²ÎÊı ×ËÌ¬ÓÉĞı×ªÏòÁ¿±íÊ¾£¬ tx, ty, tz£¬Ò²¾ÍÊÇËµÍ¬Ê±ÓÅ»¯Ïñ»ú×ËÌ¬½ÇºÍ¹âĞÄÎ»ÖÃ£¬¹²6¸ö´ıÓÅ»¯²ÎÊı
 // ÒªÇó 3 ¸öÒÔÉÏ¿ØÖÆµã²ÎÓëÓÅ»¯
-void optim_levmar_ext_rotvec(const vector<Point3d> & objPts,	// ÊäÈë£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
+/*void optim_levmar_ext_rotvec(const vector<Point3d> & objPts,	// ÊäÈë£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
 							 const vector<Point2d> & imgPts,	// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÍ¼Ïñ×ø±ê
 							 const Matx33d & mK,				// ÊäÈë£º3¡Á3»ò3¡Á4µÄ¾ØÕó£¬Ïñ»úµÄ³õÊ¼ÄÚ²ÎÊı¾ØÕó
 							 Matx33d & mR,						// ÊäÈë¼æÊä³ö£º4¡Á4µÄÏñ»ú³õÊ¼Íâ²ÎÊı¾ØÕó
@@ -128,9 +128,9 @@ void optim_levmar_ext_rotvec(const vector<Point3d> & objPts,	// ÊäÈë£º4¡ÁnµÄ¾ØÕó
 							 double * info = NULL,				// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
 							 CMatrix & mCovar = CMatrix(0),     // Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
 							 int * iterNum = NULL				// Êä³ö£ºµü´ú´ÎÊı
-							 );
+							 );*/
 
-void PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,									// input: 3*n matrix, the distortion free normalized image coordinates on reference image
+/*void PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,									// input: 3*n matrix, the distortion free normalized image coordinates on reference image
 	                        const CMatrix & mImgPts2,									// input: 3*n matrix, the distortion free normalized image coordinates on the other image
 							CMatrix & mRT,												// output:4*4 matrix, the output relative orientation
 							double bx = 1,												// input: default fixed value for X coordinate of the other image's optical center in reference
@@ -143,7 +143,7 @@ void PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,									// input: 3*n matr
 							double * info = NULL,										// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
 							CMatrix & mCovar = CMatrix(0),								// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
 							int * iterNum = NULL										// Êä³ö£ºµü´ú´ÎÊı
-							);
+							);*/
 
 /**************************************************************************************************************************************************/
 

@@ -120,6 +120,8 @@ CDeepVoidApp::CDeepVoidApp()
 	m_deFactor_Zhu = 0.25;
 	m_nRandSamp_Zhu = 5;
 	m_imgUncertainty_Zhu = 0.5;
+
+//	m_wnd3d = viz::Viz3d("3D Window"); // give the 3D visualizer window a name
 }
 
 // The one and only CDeepVoidApp object
@@ -410,204 +412,6 @@ UINT FullRun(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
-	int i;
-
-	int nCam = pApp->m_vCams.size();
-
-	// first, extract all the features in each image
-	for (i=0;i<nCam;i++)
-	{
-		// read corresponding image data into memory first
-		char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(i);
-
-		CString strDir;
-		strDir.Format(_T("%s"), pDir);
-		strDir.Trim();
-
-		Mat img = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
-
-		Mat mask;
-
-		SURF sift;
-
-		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
-		pApp->m_vCams[i].m_feats.type = Feature_SIFT;
-
-		CString strInfo;
-		strInfo.Format("Image %03d extracted %07d features", i, pApp->m_vCams[i].m_feats.key_points.size());
-		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-	}
-
-	for (i=0;i<pApp->m_vCams.size();i++)
-	{
-		pApp->m_vCams[i].fx = 707.244864;
-		pApp->m_vCams[i].fy = 707.135373;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 200.696825;
-		pApp->m_vCams[i].cy = 154.045817;
-
-// 		pApp->m_vCams[i].fx = 1414.489728;
-// 		pApp->m_vCams[i].fy = 1414.270745;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 401.3936505;
-// 		pApp->m_vCams[i].cy = 308.091633;
-
-// 		pApp->m_vCams[i].fx = 3954.7557192818421754;
-// 		pApp->m_vCams[i].fy = 3948.0083629740670403;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 1619.9232700857789951;
-// 		pApp->m_vCams[i].cy = 1151.4558912976590364;
-
-		memset(pApp->m_vCams[i].k, 0, 5*sizeof(double));
-		pApp->m_vCams[i].dist_type = 1;
-	}
-
-	// 	char * pDir = (char *)m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(0);
-	// 	CString strDir;
-	// 	strDir.Format(_T("%s"), pDir);
-	// 	strDir.Trim();
-	// 	Mat img1 = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
-
-	double thresh_match = 5;
-	double thresh_d2epiline = 1;
-	double thresh_matchConf = 0.99;
-	double thresh_stdev_YZ = 0.08;
-	double thresh_reproj_ro = 1;
-	double thresh_pyerr = 0.001;
-	double thresh_reproj_eo = 1;
-	int sba_iter = 10;
-	int thresh_minNum = 3;
-	double thresh_ratio_inliers_EO = 0.75;
-	double thresh_ang = 15;
-
-	double opts[5];
-	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
-	opts[1] = 1.0E-12;	// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
-	opts[2] = 1.0E-12;	// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
-	opts[3] = 1.0E-12;	// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
-	opts[4] = 0;		// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
-
-	CMatrix mRT; vector<CloudPoint> clouds;
-
-	vector<int> status(pApp->m_vCams.size());
-	for (i=0;i<pApp->m_vCams.size();i++)
-	{
-		status[i] = 0;
-	}
-	status[0] = 1;
-
-	for (int k=1;k<pApp->m_vCams.size();k++)
-	{
-		bool bSuc = RelativeOrientation_RANSAC_Features_PIRO(pApp->m_vCams[0], pApp->m_vCams[k], 0, k, mRT, clouds, 
-			thresh_match, thresh_d2epiline, thresh_matchConf, thresh_stdev_YZ, thresh_reproj_ro, thresh_pyerr, thresh_ang);
-
-		if (bSuc)
-		{
-			for (int i=0;i<3;i++)
-			{
-				for (int j=0;j<3;j++)
-				{
-					pApp->m_vCams[0].R[i*3+j] = 0;
-					pApp->m_vCams[k].R[i*3+j] = mRT(i+1,j+1);
-				}
-			}
-
-			pApp->m_vCams[0].R[0]=pApp->m_vCams[0].R[4]=pApp->m_vCams[0].R[8]=1;
-			pApp->m_vCams[0].t[0]=pApp->m_vCams[0].t[1]=pApp->m_vCams[0].t[2]=0;
-
-			pApp->m_vCams[k].t[0]=mRT(1,4);
-			pApp->m_vCams[k].t[1]=mRT(2,4);
-			pApp->m_vCams[k].t[2]=mRT(3,4);
-
-			CString strInfo;
-			strInfo.Format("Relative orientation of image %03d finished, number of cloud points are %d", k, clouds.size());
-			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-
-			status[k] = 1;
-
-			break;
-		}
-	}
-
-	double info[10];
-
-	try
-	{
-		ExteriorOrientation_PnP_RANSAC_All(pApp->m_vCams, status, clouds,
-			thresh_match, thresh_d2epiline, thresh_matchConf, thresh_reproj_eo, thresh_ratio_inliers_EO);
-	}
-	catch (cv::Exception & e)
-	{
-		CString str;
-		str = e.msg.c_str();
-		AfxMessageBox(str);
-	}
-
-// 	for (int k=2;k<pApp->m_vCams.size();k++)
-// 	{
-// 		bool bSuc = ExteriorOrientation_PnP_RANSAC(pApp->m_vCams, k-1, k, clouds, 
-// 			thresh_match, thresh_d2epiline, thresh_matchConf, thresh_reproj_eo, thresh_ratio_inliers_EO);
-// 
-// 		if (bSuc)
-// 		{
-// 			CString strInfo;
-// 			strInfo.Format("Exterior orientation of image %03d finished, number of cloud points are %d", k, clouds.size());
-// 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 
-// 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
-// 			int nnn = optim_sba_levmar_XYZ_ext_rotvec(clouds, pApp->m_vCams, sba_iter, opts, info);
-// 			double rrr = sqrt(info[1]/nnn);
-// 			strInfo.Format("SBA ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[5], info[6]);
-// 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-// 		}
-// 		else
-// 		{
-// 			break;
-// 		}
-// 	}
-
-	FILE * file = fopen("D:\\result_linear.txt", "w");
-	for (i=0;i<clouds.size();i++)
-	{
-		int R = 0;
-		int G = 255;
-		int B = 0;
-		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", clouds[i].m_pt.x, clouds[i].m_pt.y, clouds[i].m_pt.z, R, G, B);
-	}
-	fclose(file);
-
-	// delete all the cloud points that can only be seen by two images
-	vector<CloudPoint> clouds_valid;
-	for (i=0;i<clouds.size();i++)
-	{
-		if (clouds[i].m_vImgInfos.size()>=thresh_minNum)
-		{
-			clouds_valid.push_back(clouds[i]);
-		}
-	}
-
-	CString strInfo;
-	strInfo.Format("number of valid cloud points are %d", clouds_valid.size());
-	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-
-	clouds = clouds_valid;
-
-	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
-	int nnn = optim_sba_levmar_XYZ_ext_rotvec(clouds, pApp->m_vCams, 2048, NULL, info);
-	double rrr = sqrt(info[1]/nnn);
-	strInfo.Format("SBA ends, err: %lf, iter: %04.0f, code: %01.0f", rrr, info[5], info[6]);
-	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-	
-	file = fopen("D:\\result_SBA.txt", "w");
-	for (i=0;i<clouds.size();i++)
-	{
-		int R = 255;
-		int G = 255;
-		int B = 0;
-		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", clouds[i].m_pt.x, clouds[i].m_pt.y, clouds[i].m_pt.z, R, G, B);
-	}
-	fclose(file);
-
 	return TRUE;
 }
 
@@ -652,17 +456,26 @@ UINT SfM(LPVOID param)
 
 		imgWidth = img.cols;
 		imgHeight = img.rows;
+				
+		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
+		// create a feature class
+		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+//		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SURF::create();
+//		cv::Ptr<Feature2D> f2d = cv::ORB::create();
 
+		// detect features and compute descriptors
 		Mat mask;
+		f2d->detectAndCompute(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 
-		SIFT sift;
+//		SIFT sift;
 //		SURF sift;
+//
+//		/*const double contrast = sift.get("contrastThreshold");*/
+//		/*std::string str_contrastThreshold = sift.paramHelp("contrastThreshold");*/
+//		sift.set("contrastThreshold",0.01);
+//
+//		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 
-		/*const double contrast = sift.get("contrastThreshold");*/
-		/*std::string str_contrastThreshold = sift.paramHelp("contrastThreshold");*/
-		sift.set("contrastThreshold",0.01);
-
-		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 		pApp->m_vCams[i].m_feats.type = Feature_SIFT;
 
 		KeyPoint kpt_pre;
@@ -2161,7 +1974,7 @@ UINT SfM(LPVOID param)
 		nDisp = (nDisp + 15) & ~15; // make sure nDisp can be divisible by 16
 		
 		// setting SGBM
-		StereoSGBM sgbm;
+		/*StereoSGBM sgbm;
 
 		sgbm.preFilterCap = 63;
 		sgbm.SADWindowSize = 1;
@@ -2181,7 +1994,7 @@ UINT SfM(LPVOID param)
 
 		if (!isVerticalStereo)
 		{
-			/*sgbm(rimg1, rimg2, disp);*/
+//			sgbm(rimg1, rimg2, disp);
 			sgbm(rimg1_gray, rimg2_gray, disp);
 		}
 		else
@@ -2247,7 +2060,7 @@ UINT SfM(LPVOID param)
 				fprintf(fp, "%lf;%lf;%lf;%d;%d;%d\n", mWrdPt(0), mWrdPt(1), mWrdPt(2), R, G, B);
 			}
 		}
-		fclose(fp);
+		fclose(fp);*/
 	}
 	
 	return TRUE;
@@ -6673,7 +6486,7 @@ void CDeepVoidApp::OnZhoudata()
 void CDeepVoidApp::OnFeaturematching()
 {
 	// TODO: Add your command handler code here
-	int i,j;
+	/*int i,j;
 
 	// read in the images
 	Mat img0 = imread("E:\\Test Data\\zhoulangming-20141213\\no sock smaller set\\A_003.bmp", CV_LOAD_IMAGE_UNCHANGED);
@@ -6877,7 +6690,7 @@ void CDeepVoidApp::OnFeaturematching()
 	vector<DMatch> matches_good;
 	for(i=0;i<matches_raw.size();i++)
 	{
-		if(matches_raw[i].distance</*max_dist*/20*min_dist)
+		if(matches_raw[i].distance<20*min_dist)
 		{
 			matches_good.push_back(matches_raw[i]);
 		}
@@ -6887,7 +6700,7 @@ void CDeepVoidApp::OnFeaturematching()
 	vector<Point2f> points0(matches_one2one.size());
 	vector<Point2f> points1(matches_one2one.size());
 
-	// initialize the points here ... */
+	// initialize the points here ... 
 	for(i=0;i<matches_one2one.size();i++)
 	{
 		points0[i] = feats0.key_points[matches_one2one[i].queryIdx].pt;
@@ -6903,8 +6716,8 @@ void CDeepVoidApp::OnFeaturematching()
 
 	Matx33d fundamental_matrix;
 	
-	fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC/*, 3.0, 0.99*/);
-//	fundamental_matrix = findFundamentalMat(points0_t, points1_t, status, FM_RANSAC, 0.1/*, 0.99*/);
+//	fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC);
+//	fundamental_matrix = findFundamentalMat(points0_t, points1_t, status, FM_RANSAC, 0.1);
 
 	vector<DMatch> matches_RANSAC;
 	vector<Point2d> vImgPts0, vImgPts1;
@@ -6932,7 +6745,7 @@ void CDeepVoidApp::OnFeaturematching()
 // 	vector<Point2f> points0(matches_good.size());
 // 	vector<Point2f> points1(matches_good.size());
 // 
-// 	// initialize the points here ... */
+// 	// initialize the points here ...
 // 	for(i=0;i<matches_good.size();i++)
 // 	{
 // 		points0[i] = feats0.key_points[matches_good[i].queryIdx].pt;
@@ -6967,7 +6780,7 @@ void CDeepVoidApp::OnFeaturematching()
 	imwrite("E:\\matches\\matches_good.bmp", disp_matches_good);
 	imwrite("E:\\matches\\matches_one2one.bmp", disp_matches_one2one);
 	imwrite("E:\\matches\\matches_RANSAC.bmp", disp_matches_RANSAC);
-	imwrite("E:\\matches\\matches_final.bmp", disp_matches_final);
+	imwrite("E:\\matches\\matches_final.bmp", disp_matches_final);*/
 }
 
 
@@ -10078,7 +9891,7 @@ UINT Featuretrackingexp(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
-	int i,j,k,ii,jj;
+	/*int i,j,k,ii,jj;
 
 	CString strInfo;
 
@@ -10347,7 +10160,7 @@ UINT Featuretrackingexp(LPVOID param)
 // 
 // 	file111 = fopen("E:\\paper\\PhD Thesis\\实验结果复现\\特征跟踪算法对比实验结果复现\\time record - my own.txt", "a");
 // 	fprintf(file111, "%d	%lf\n", vImages.size(), t2);
-// 	fclose(file111);
+// 	fclose(file111);*/
 
 	return TRUE;
 }
@@ -10362,7 +10175,7 @@ UINT SfMEXP(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
-	int i,j,k,ii,jj;
+	/*int i,j,k,ii,jj;
 
 	CString strInfo;
 
@@ -10863,7 +10676,7 @@ UINT SfMEXP(LPVOID param)
 		CString strtmp;
 		strFile.Format("cam%02d.txt", i);
 		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
-	}
+	}*/
 		
 	return TRUE;
 }
@@ -10902,6 +10715,8 @@ void CDeepVoidApp::OnDsbasimuObsnum()
 	AfxBeginThread(DSBA_Simu_increaseObservations, this, THREAD_PRIORITY_NORMAL);
 }
 
+viz::Viz3d wrd3d("world window");
+
 UINT NetworkOrientation(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
@@ -10936,16 +10751,25 @@ UINT NetworkOrientation(LPVOID param)
 		imgWidth = img.cols;
 		imgHeight = img.rows;
 
+		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
+		// create a feature class
+		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+//		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SURF::create();
+//		cv::Ptr<Feature2D> f2d = cv::ORB::create();
+
+		// detect features and compute descriptors
 		Mat mask;
+		f2d->detectAndCompute(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 
-		SIFT sift;
+//		SIFT sift;
 //		SURF sift;
+//
+//		/*const double contrast = sift.get("contrastThreshold");*/
+//		/*std::string str_contrastThreshold = sift.paramHelp("contrastThreshold");*/
+//		sift.set("contrastThreshold",0.01);
+//
+//		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 
-		/*const double contrast = sift.get("contrastThreshold");*/
-		/*std::string str_contrastThreshold = sift.paramHelp("contrastThreshold");*/
-		sift.set("contrastThreshold",0.01);
-
-		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 		pApp->m_vCams[i].m_feats.type = Feature_SIFT;
 
 		KeyPoint kpt_pre;
@@ -10991,33 +10815,34 @@ UINT NetworkOrientation(LPVOID param)
 
 	for (int i=0;i<pApp->m_vCams.size();i++)
 	{
-		pApp->m_vCams[i].fx = 707.244864;
-		pApp->m_vCams[i].fy = 707.135373;
+/* 		pApp->m_vCams[i].fx = 707.244864;
+ 		pApp->m_vCams[i].fy = 707.135373;
+ 		pApp->m_vCams[i].s  = 0;
+ 		pApp->m_vCams[i].cx = 200.696825;
+ 		pApp->m_vCams[i].cy = 154.045817;
+ 
+ 		pApp->m_vCams[i].m_K(0,0) = 707.244864;
+ 		pApp->m_vCams[i].m_K(1,1) = 707.135373;
+ 		pApp->m_vCams[i].m_K(0,1) = 0;
+ 		pApp->m_vCams[i].m_K(0,2) = 200.696825;
+ 		pApp->m_vCams[i].m_K(1,2) = 154.045817;
+ 		pApp->m_vCams[i].m_K(2,2) = 1;
+ 		pApp->m_vCams[i].m_bCalibed = true; */
+
+/*		pApp->m_vCams[i].fx = 1414.489728;
+		pApp->m_vCams[i].fy = 1414.270745;
 		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 200.696825;
-		pApp->m_vCams[i].cy = 154.045817;
+		pApp->m_vCams[i].cx = 401.3936505;
+		pApp->m_vCams[i].cy = 308.091633;
 
-		pApp->m_vCams[i].m_K(0,0) = 707.244864;
-		pApp->m_vCams[i].m_K(1,1) = 707.135373;
+		pApp->m_vCams[i].m_K(0,0) = 1414.489728;
+		pApp->m_vCams[i].m_K(1,1) = 1414.270745;
 		pApp->m_vCams[i].m_K(0,1) = 0;
-		pApp->m_vCams[i].m_K(0,2) = 200.696825;
-		pApp->m_vCams[i].m_K(1,2) = 154.045817;
+		pApp->m_vCams[i].m_K(0,2) = 401.3936505;
+		pApp->m_vCams[i].m_K(1,2) = 308.091633;
 		pApp->m_vCams[i].m_K(2,2) = 1;
-		pApp->m_vCams[i].m_bCalibed = true;
+		pApp->m_vCams[i].m_bCalibed = true;*/
 
-// 		pApp->m_vCams[i].fx = 1414.489728;
-// 		pApp->m_vCams[i].fy = 1414.270745;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 401.3936505;
-// 		pApp->m_vCams[i].cy = 308.091633;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 1414.489728;
-// 		pApp->m_vCams[i].m_K(1,1) = 1414.270745;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 401.3936505;
-// 		pApp->m_vCams[i].m_K(1,2) = 308.091633;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20151125 沙盘重建
 // 		pApp->m_vCams[i].fx = 557.072909185350450;
@@ -11050,19 +10875,19 @@ UINT NetworkOrientation(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20151206 橘子洲毛泽东像
-// 		pApp->m_vCams[i].fx = 849.812399662762910;
-// 		pApp->m_vCams[i].fy = 849.028798494762330;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 401.558250358447480;
-// 		pApp->m_vCams[i].cy = 273.689303692577480;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
-// 		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
-// 		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
+ 		pApp->m_vCams[i].fx = 849.812399662762910;
+ 		pApp->m_vCams[i].fy = 849.028798494762330;
+ 		pApp->m_vCams[i].s  = 0;
+ 		pApp->m_vCams[i].cx = 401.558250358447480;
+ 		pApp->m_vCams[i].cy = 273.689303692577480;
+ 
+ 		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
+ 		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
+ 		pApp->m_vCams[i].m_K(0,1) = 0;
+ 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
+ 		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
+ 		pApp->m_vCams[i].m_K(2,2) = 1;
+ 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -11300,7 +11125,7 @@ UINT NetworkOrientation(LPVOID param)
 
 			map_pointcloud = map_pointcloud_tmp; // 正式录用所有生成的物点
 
-			strInfo.Format("Relative orientation between image %03d and %03d finished, number of cloud points are %d", i, j, map_pointcloud.size());
+			strInfo.Format("Relative orientation between image %03d and %03d succeeded, number of cloud points are %d", i, j, map_pointcloud.size());
 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			status[i] = 1;
@@ -11338,6 +11163,8 @@ UINT NetworkOrientation(LPVOID param)
 	vector<CloudPoint> cloud_old;
 
 	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2);
+
+	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 2);
 
 	vector<SfM_ZZK::pair_ij> imgRank;
 	RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
@@ -11413,6 +11240,7 @@ UINT NetworkOrientation(LPVOID param)
 			try
 			{
 				SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);	
+				SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
 			}
 			catch (cv::Exception & e)
 			{
@@ -11484,6 +11312,7 @@ UINT NetworkOrientation(LPVOID param)
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
 	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);
+	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
 
 	// 输出像机定向
 	// save all cameras' parameters
@@ -11530,18 +11359,66 @@ UINT DenseReconstruction(LPVOID param)
 void CDeepVoidApp::On3dreconstructionParametersettings()
 {
 	// TODO: Add your command handler code here
-}
 
+	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+}
 
 void CDeepVoidApp::On3dreconstructionNetworkorientationandsparsereconstruction()
 {
 	// TODO: Add your command handler code here
 	AfxBeginThread(NetworkOrientation, this, THREAD_PRIORITY_NORMAL);
-}
 
+	m_wnd3d = viz::Viz3d("3D Window");
+	m_wnd3d.spinOnce();
+}
 
 void CDeepVoidApp::On3dreconstructionDensereconstruction()
 {
 	// TODO: Add your command handler code here
-	AfxBeginThread(DenseReconstruction, this, THREAD_PRIORITY_NORMAL);
+//	AfxBeginThread(DenseReconstruction, this, THREAD_PRIORITY_NORMAL);
+
+	m_wnd3d.spinOnce();
+
+	wrd3d.showWidget("Coordinate Widget", viz::WCoordinateSystem());
+
+	/// Let's assume camera has the following properties
+	Point3d cam_pos(2.0f, 0.0f, 0.0f), cam_focal_point(3.0f, 0.0f, 0.0f), cam_y_dir(-2.0f, -1.0f, 0.0f);
+
+	/// We can get the pose of the cam using makeCameraPose
+	Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
+
+	Mat image = imread("C:\\Users\\DeepV\\Pictures\\DSC_1557_edited.JPG", CV_LOAD_IMAGE_UNCHANGED);
+
+	double width = image.cols;
+	double height = image.rows;
+
+	Matx33d K;
+	K(0, 0) = K(1, 1) = 7500;
+	K(0, 2) = (width - 1)*0.5;
+	K(1, 2) = (height - 1)*0.5;
+	K(2, 2) = 1;
+
+	viz::WCameraPosition cpw(0.5); // Coordinate axes
+	viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.223599), 0.5); // Camera frustum
+	viz::WCameraPosition cpw_image(K,image);
+	wrd3d.showWidget("CPW", cpw, cam_pose);
+//	wrd3d.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose); 
+	wrd3d.showWidget("CPW_FRUSTUM", cpw_image, cam_pose);
+
+	Mat XYZs(1, 5, CV_64FC3);
+	XYZs.at<Vec3d>(0, 0).val[0] = 0;	XYZs.at<Vec3d>(0, 0).val[1] = 1;	XYZs.at<Vec3d>(0, 0).val[2] = 1;
+	XYZs.at<Vec3d>(0, 1).val[0] = 0;	XYZs.at<Vec3d>(0, 1).val[1] = 0;	XYZs.at<Vec3d>(0, 1).val[2] = 1;
+	XYZs.at<Vec3d>(0, 2).val[0] = 1;	XYZs.at<Vec3d>(0, 2).val[1] = 1;	XYZs.at<Vec3d>(0, 2).val[2] = 2;
+	XYZs.at<Vec3d>(0, 3).val[0] = 2;	XYZs.at<Vec3d>(0, 3).val[1] = 2;	XYZs.at<Vec3d>(0, 3).val[2] = 1;
+	XYZs.at<Vec3d>(0, 4).val[0] = 2;	XYZs.at<Vec3d>(0, 4).val[1] = 3;	XYZs.at<Vec3d>(0, 4).val[2] = 0;
+	viz::WCloud cld(XYZs);
+	wrd3d.showWidget("cloud", cld);
+
+	image.release();
+
+//	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+
+	wrd3d.spinOnce();
+
+//	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
 }

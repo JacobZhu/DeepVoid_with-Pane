@@ -1359,6 +1359,15 @@ void OutputPointCloud(CString strFile,							// input:	输出文件路径
 					  int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
 					  );
 
+// 20160405，把当前的点云和图像参数画于Viz3d窗口中
+void Draw3DScene(viz::Viz3d & wnd3d,						// output:	3D显示的窗口
+				 viz::WCloud & cld,
+				 const PointCloud & map_pointcloud,		    // input:	点云
+				 const vector<DeepVoid::cam_data> & cams,	// input:	所有图像参数
+				 const MultiTracks & map_tracks,			// input:	所有的特征轨迹
+				 int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
+				 );
+
 // 20151112,统计每个点云点被观测次数的直方图
 double BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,	// output:	点云
 									  const MultiTracks & map_tracks,		// input:	所有的特征轨迹

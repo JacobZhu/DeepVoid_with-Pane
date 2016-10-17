@@ -9,7 +9,15 @@
 #include <vector>
 #include <queue>
 #include <deque>
+#include <set> // 20160317
+
+// 20160313
+#ifndef _SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS
+#define _SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS
+#endif
+
 #include <hash_set>
+
 #include <map> // 20150508
 #include <algorithm>
 #include <iostream>
@@ -20,8 +28,8 @@
 #include "DeepVoid Codes/DeepVoid_Calib3D.h"
 
 // zhaokunz, 20140305, add levmar and sba lib
-#include "levmar and sba/levmar.h"
-#include "levmar and sba/sba.h"
+// #include "levmar and sba/levmar.h"
+// #include "levmar and sba/sba.h"
 
 #include "DeepVoid Codes/DeepVoid_Levmar_Wrapper.h"
 #include "DeepVoid Codes/DeepVoid_SBA_Wrapper.h"

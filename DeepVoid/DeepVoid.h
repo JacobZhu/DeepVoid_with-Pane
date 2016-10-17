@@ -59,6 +59,9 @@ public:
 	int m_nRandSamp_Zhu;
 	double m_imgUncertainty_Zhu;
 
+	viz::Viz3d m_wnd3d; // 20160403, 3D visualizer window
+	viz::WCloud m_ptcloud = viz::WCloud(Mat(1,1,CV_64FC3));
+
 // operations
 public:
 	CDocument * CreateDocument(CMultiDocTemplate * pTemplate, CFrameWnd * pWnd = NULL);

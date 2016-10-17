@@ -48,7 +48,8 @@ using namespace DeepVoid;
 #pragma comment(lib, "gdiplus.lib")
 using namespace Gdiplus;
 
-#include <vld.h>
+// 20160313
+//#include <vld.h>
 
 
 

@@ -8,8 +8,11 @@
 // #include "opencv/cv.h"
 // #include "opencv/highgui.h"
 // #include "opencv/cvaux.hpp"
-#include "opencv2/opencv.hpp"
-#include "opencv2/nonfree/nonfree.hpp"
+#include "opencv2\opencv.hpp"
+// #include "opencv2/nonfree/nonfree.hpp"
+#include "opencv2\xfeatures2d\nonfree.hpp"
+#include "opencv2\viz\vizcore.hpp"
+
 using namespace std;
 using namespace cv;
 

@@ -12349,6 +12349,101 @@ void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	输出文件路径
 	fclose(file);
 }
 
+// 20160405，把当前的点云和图像参数画于Viz3d窗口中
+void SfM_ZZK::Draw3DScene(viz::Viz3d & wnd3d,						// output:	3D显示的窗口
+	                      viz::WCloud & cld,
+						  const PointCloud & map_pointcloud,		// input:	点云
+						  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像参数
+						  const MultiTracks & map_tracks,			// input:	所有的特征轨迹
+						  int n_minInilier /*= 2*/					// input:	至少得有该个数图像观测到该点
+						  )
+{
+	// 要显示出来的点云点及其颜色
+	vector<Point3d> pts_output;
+	vector<Point3i> colors_output;
+
+	// 统计看哪些点满足要求可以显示
+	for (auto iter_wrdpt = map_pointcloud.begin(); iter_wrdpt != map_pointcloud.end(); ++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		double sumR = 0;
+		double sumG = 0;
+		double sumB = 0;
+
+		int count = 0;
+
+		for (auto iter_imgpt = iter_found_track->second.begin(); iter_imgpt != iter_found_track->second.end(); ++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second;
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			const cam_data & cam = cams[I];
+
+			sumR += cam.m_feats.rgbs[i][2];
+			sumG += cam.m_feats.rgbs[i][1];
+			sumB += cam.m_feats.rgbs[i][0];
+
+			++count;
+		}
+
+		if (count<n_minInilier)
+		{
+			continue;
+		}
+
+		int R = (int)sumR / count;
+		int G = (int)sumG / count;
+		int B = (int)sumB / count;
+
+		Point3i color;
+		color.x = R;
+		color.y = G;
+		color.z = B;
+
+		pts_output.push_back(iter_wrdpt->second.m_pt);
+		colors_output.push_back(color);
+	}
+
+	int n_pts_output = pts_output.size();
+
+	Mat XYZs(1, n_pts_output, CV_64FC3), RGBs(1, n_pts_output, CV_8UC3);
+
+	for (int i = 0; i < n_pts_output; ++i)
+	{
+		Point3d XYZ = pts_output[i];
+		Point3i RGB = colors_output[i];
+
+		XYZs.at<Vec3d>(i).val[0] = XYZ.x;
+		XYZs.at<Vec3d>(i).val[1] = XYZ.y;
+		XYZs.at<Vec3d>(i).val[2] = XYZ.z;
+
+		RGBs.at<Vec3b>(i).val[0] = RGB.z;
+		RGBs.at<Vec3b>(i).val[1] = RGB.y;
+		RGBs.at<Vec3b>(i).val[2] = RGB.x;
+	}
+
+//	viz::WCloud cld_new(XYZs, RGBs);
+
+	cld = viz::WCloud(XYZs, RGBs);
+
+	wnd3d.showWidget("cloud", cld);
+
+//	wnd3d.spinOnce();
+
+//	viz::Viz3d wnd3dnew = viz::getWindowByName("3D Window");
+//	wnd3dnew.showWidget("cloud", cld);
+//	wnd3dnew.spinOnce();
+}
+
 // 20151112,统计每个点云点被观测次数的直方图
 double SfM_ZZK::BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,	// output:	点云
 											   const MultiTracks & map_tracks,		// input:	所有的特征轨迹

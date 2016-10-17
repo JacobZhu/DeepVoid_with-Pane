@@ -53,7 +53,8 @@ BOOL DeepVoid::DisplayImage(CDC * pDC,									// pointer to CDC
 		CvSize size;
 		size.width = img_w;	size.height = img_h;
 		IplImage * imgTmp = cvCreateImage(size, 8, img_c);
-		img.copyTo(cv::Mat(imgTmp));
+//		img.copyTo(cv::Mat(imgTmp));
+		img.copyTo(cv::cvarrToMat(imgTmp)); // 20160316, cv::Mat(const IplImage * img) is removed in opencv 3.x, use cv::cvarrToMat instead.
 
 		::StretchDIBits(pDC->m_hDC, tl_x, tl_y, rect_w, rect_h,
 			0, 0, img_w, img_h, imgTmp->imageData, bmi, DIB_RGB_COLORS, SRCCOPY);
@@ -3577,7 +3578,8 @@ void DeepVoid::SaveCameraData(CString path, const cam_data & cam)
 	{
 		for (j=0;j<3;j++)
 		{
-			strtmp.Format("%.12f	", cam.m_R(i*3+j));
+//			strtmp.Format("%.12f	", cam.m_R(i*3+j));
+			strtmp.Format("%.12f	", cam.m_R(i,j)); // 20160317, CV_StaticAssert(m == 1 || n == 1, "Single index indexation requires matrix to be a column or a row");
 			str += strtmp;
 		}
 		str += "\n";

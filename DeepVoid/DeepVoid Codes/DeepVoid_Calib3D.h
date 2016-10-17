@@ -264,14 +264,14 @@ void symmetryTest(const vector<DMatch> & matches01,		// input:	matches generated
 // true one using method described in <Multiple View Geometry> by Richard Hartley, this function
 // do not do bundle adjustment after [R|t] obtained, only the linear solution
 // this function returns the final fundamental 3*3 matrix
-CMatrix RelativeOrientation_RANSAC_Features_Linear(const cam_data & cam1,		// input:	all the information about the image 1
+/*CMatrix RelativeOrientation_RANSAC_Features_Linear(const cam_data & cam1,		// input:	all the information about the image 1
 												   const cam_data & cam2,		// input:	all the information about the image 2
 												   CMatrix & mP,				// output:	3*4 matrix, the relative orientation of these two images [R|t]
 												   vector<CloudPoint> & clouds,	// output:	the reconstructed cloud points in reference camera frame, which is the first image
 												   double param1 = 3,			// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
 												   double param2 = 3,			// input:	the distance threshold between point and epiline, used in RANSAC stage
 												   double param3 = 0.99			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
-												   );
+												   );*/
 
 // given a essential matrix, find the true one using method described in <Multiple View Geometry> by Richard Hartley
 // void DisambiguateRT_givenE(const vector<Point2f> & imgPts1,					// input:	normalized image coordinates
@@ -350,7 +350,7 @@ bool ExteriorOrientation_PnP_RANSAC_Round(vector<cam_data> & vCams,		// input&ou
 										  double param5 = 0.75			// input:	the allowed minimum ratio of inliers within all reconstructed matches
 										  );
 
-void ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// input&output:	all the images
+/*void ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// input&output:	all the images
 										vector<int> & status,			// input&output:	if status[i] = 0, means that vCams[i] is still not oriented yet
 										vector<CloudPoint> & clouds,	// input&output:	the reconstructed cloud points in reference camera frame, which is the first image	 
 										double param1 = 3,				// input:	defining "good" matches (i.e. whose distance is less than param1*min_dist) in feature matching stage
@@ -358,7 +358,7 @@ void ExteriorOrientation_PnP_RANSAC_All(vector<cam_data> & vCams,		// input&outp
 										double param3 = 0.99,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
 										double param4 = 1,				// input:	the allowed level of reprojection error, used for RANSAC to determine outlier
 										double param5 = 0.75			// input:	the allowed minimum ratio of inliers within all reconstructed matches
-										);
+										);*/
 
 // Photogrammetric Iterative Relative Orientation (PIRO) Related ////////////////////////////////////////////////////////////////////////
 
@@ -508,7 +508,7 @@ double PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured distortion fr
 			   double fEps = 1.0E-12			// input:	threshold
 			   );
 
-bool RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,			// input:	all the information about the image 1
+/*bool RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,			// input:	all the information about the image 1
 											  const cam_data & cam2,			// input:	all the information about the image 2
 											  int idx_cam1,						// input:	the index of the first camera
 											  int idx_cam2,						// input:	the index of the second camera
@@ -521,11 +521,11 @@ bool RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,			// input:
 											  double thresh_reprojErr = 1,		// input:	the threshold of the reprojection error in pixels
 											  double thresh_pyErr = 0.001,		// input:	the threshold of the y-parallax error
 											  double thresh_ang = 30			// input:	the threshold of angle between optical axes
-											  );
+											  );*/
 
 // this PIRO func conduct ro with given matches
 // and the feature points in both cam_data are supposed to be distortion free
-bool RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_data & cam1,			// input:	all the information about the image 1
+/*bool RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_data & cam1,			// input:	all the information about the image 1
 														   const cam_data & cam2,			// input:	all the information about the image 2
 														   int idx_cam1,					// input:	the index of the first camera
 														   int idx_cam2,					// input:	the index of the second camera
@@ -536,7 +536,7 @@ bool RelativeOrientation_RANSAC_Features_PIRO_givenMatches(const cam_data & cam1
 														   double thresh_reprojErr = 1,		// input:	the threshold of the reprojection error in pixels
 														   double thresh_pyErr = 0.001,		// input:	the threshold of the y-parallax error
 														   double thresh_ang = 30			// input:	the threshold of angle between optical axes
-														   );
+														   );*/
 
 // 20150115, zhaokunz, this PIRO func conduct ro with given matches
 // and the feature points in both cam_data are supposed to be distortion free
@@ -2944,6 +2944,14 @@ void OutputPointCloud(CString strFile,
 					  const vector<cam_data> & cams,
 					  vector<CloudPoint> & cloud
 					  );
+
+// 20160329，从旋转矩阵 R 和平移向量 t 输出图像光心、光轴上一点以及 Y 轴方向于世界坐标系中的坐标
+void get_pos_focalpt_ydir(const Matx33d & R,		// input: rotation matrix
+						  const Matx31d & t,		// input: translation vector
+						  Point3d & pos,			// output: optical center in world coordinate system
+						  Point3d & focal_point,	// output: world coordinates of a point on Z-axis
+	                      Point3d & y_dir			// output: world vector of the Y-axis
+	                      );
 
 //////////////////////////////////////////////////////////////////////////
 

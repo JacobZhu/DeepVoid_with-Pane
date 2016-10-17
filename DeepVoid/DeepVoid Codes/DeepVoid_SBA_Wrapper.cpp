@@ -252,19 +252,19 @@ void DeepVoid::jacob_ext_rotvec_str(int j,				// current index of image
 
 // 该函数封装了 Sparse Bundle Adjustment 库的光束法平差函数
 // 返回所有重投影像点个数
-int DeepVoid::optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+/*int DeepVoid::optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 											 vector<cam_data> & cams,			// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
 
-											 int itermax /*= 1024*/,			// 输入：最大迭代次数
+											 int itermax,			// 输入：最大迭代次数
 
-											 double * opts /*= NULL*/,			// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+											 double * opts,			// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
 																				// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
 																				// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
 																				// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
 																				// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
 																				// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
 
-											 double * info /*= NULL*/			// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+											 double * info 			// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
 																				// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
 																				// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
 																				// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
@@ -445,24 +445,24 @@ int DeepVoid::optim_sba_levmar_XYZ_ext_euler(vector<CloudPoint> & cloudPts,		// 
 	delete [] x;
 
 	return vImgPts_vmask.size();
-}
+}*/
 
 // 该函数封装了 Sparse Bundle Adjustment 库的光束法平差函数
 // 返回所有重投影像点个数
-int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+/*int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 											  vector<cam_data> & cams,			// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
 											  int idx_refimg,					// input:	the reference image, whose R=I, and t =[0,0,0]'
 
-											  int itermax /*= 1024*/,			// 输入：最大迭代次数
+											  int itermax,			// 输入：最大迭代次数
 
-											  double * opts /*= NULL*/,			// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+											  double * opts ,			// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
 																				// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
 																				// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
 																				// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
 																				// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
 																				// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
 
-											  double * info /*= NULL*/			// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+											  double * info 			// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
 																				// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
 																				// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
 																				// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
@@ -650,7 +650,7 @@ int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(vector<CloudPoint> & cloudPts,	// 
 	delete [] x;
 
 	return vImgPts_vmask.size();
-}
+}*/
 
 // 该函数封装了 Sparse Bundle Adjustment 库的光束法平差函数
 // 返回所有重投影像点个数
@@ -1176,14 +1176,14 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 }
 
 // iteratively run sba multiple times, until no outliers are detected
-int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+/*int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 														vector<cam_data> & cams,			// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
 														const vector<vector<Point2i>> & allTracks,
 														int idx_refimg,					// input:	the reference image, whose R=I, t=[0,0,0]'
-														int itermax /*= 1024*/,				// 输入：最大迭代次数
-														double thresh_rpjErr /*= 1*/,			// input:	the threshold to determine outliers
-														double * opts /*= NULL*/,				
-														double * info /*= NULL*/
+														int itermax,				// 输入：最大迭代次数
+														double thresh_rpjErr,			// input:	the threshold to determine outliers
+														double * opts,				
+														double * info
 														)
 {
 	Matx33d mK, mR, mKR;
@@ -1294,4 +1294,4 @@ int DeepVoid::optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & clo
 	}
 
 	return nImgPts;
-}
+}*/

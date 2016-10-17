@@ -87,12 +87,6 @@
     <ClInclude Include="DeepVoid Codes\DeepVoid_Universe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="DeepVoid Codes\DeepVoid_StereoVision.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -112,6 +106,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="DeepVoid Codes\DeepVoid_Derivatives.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -158,12 +158,6 @@
     <ClCompile Include="DeepVoid Codes\DeepVoid_DataType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="DeepVoid Codes\DeepVoid_StereoVision.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -183,6 +177,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DeepVoid Codes\DeepVoid_Derivatives.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

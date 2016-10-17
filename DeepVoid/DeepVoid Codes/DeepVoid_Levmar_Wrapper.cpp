@@ -398,7 +398,7 @@ void DeepVoid::j_ext_rotvec(double * p,			// rv1, rv2, rv3 and tx, ty, tz
 }
 
 // ÓÅ»¯µÚ 2 ·ùÊÓÍ¼Ïà¶ÔÓÚµÚ 1 ·ùÊÓÍ¼µÄÍâ²ÎÊıÒÔ¼°¿Õ¼äµãÔÚµÚ 1 ·ùÊÓÍ¼×ø±êÏµÖĞµÄ×ø±ê
-void DeepVoid::optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,					// ÊäÈë¼æÊä³ö£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
+/*void DeepVoid::optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,					// ÊäÈë¼æÊä³ö£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
 												   const CMatrix & mImgPts1,			// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿Õ¼äµãÔÚ 1 ºÅÊÓÍ¼ÖĞµÄÍ¼Ïñ×ø±ê
 												   const CMatrix & mImgPts2,			// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿Õ¼äµãÔÚ 2 ºÅÊÓÍ¼ÖĞµÄÍ¼Ïñ×ø±ê
 												   const CMatrix & mK1,					// ÊäÈë£º3¡Á3»ò3¡Á4µÄ¾ØÕó£¬1 ºÅÊÓÍ¼µÄÄÚ²ÎÊı¾ØÕó
@@ -409,15 +409,15 @@ void DeepVoid::optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,					// ÊäÈ
 												   int   distType1,						// ÊäÈë£º1 ºÅÊÓÍ¼µÄÏñ²îÀàĞÍ£¬Ñ¡ÔñÊÇ Weng's (0) »¹ÊÇ D.C.Brown's (1)£¬¶¼ÊÇ 5 ¸öÏñ²îÏµÊı
 												   int   distType2,						// ÊäÈë£º2 ºÅÊÓÍ¼µÄÏñ²îÀàĞÍ£¬Ñ¡ÔñÊÇ Weng's (0) »¹ÊÇ D.C.Brown's (1)£¬¶¼ÊÇ 5 ¸öÏñ²îÏµÊı
 												   int   maxIter,						// ÊäÈë£º×î´óµü´ú´ÎÊı
-												   double * opts /*= NULL*/,			// ÊäÈë£º5 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
+												   double * opts ,			// ÊäÈë£º5 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
 																						// opts[0]£¬levmar ÓÅ»¯·½·¨ÖĞÒªÓÃµ½µÄ²ÎÊı u µÄ³õÊ¼³ß¶ÈÒò×Ó£¬Ä¬ÈÏÎª 1.0E-3
 																						// opts[1]£¬µ±Ä¿±êº¯Êı¶Ô¸÷´ıÓÅ»¯²ÎÊıµÄ×î´óµ¼ÊıĞ¡ÓÚµÈÓÚ¸ÃÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																						// opts[2]£¬µ±´ıÓÅ»¯²ÎÊı 2 ·¶ÊıµÄÏà¶Ô±ä»¯Á¿Ğ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																						// opts[3]£¬µ±Îó²îÊ¸Á¿µÄ 2 ·¶ÊıĞ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																						// opts[4]£¬²ÉÓÃÓĞÏŞ²î·Ö¹À¼ÆÑÅ¸ó±È¾ØÕóµÄÊ±ºòÒªÓÃµ½µÄ²½³¤²ÎÊı£¬µ±¸Ã²ÎÊıĞ¡ÓÚ 0 Ê±£¬ÑÅ¸ó±È¾ØÕóÊ½²ÉÓÃÖĞĞÄ²î·ÖÀ´¹À¼ÆµÄ£¬ÕâÑù¸ü×¼È·£¬µ«»á¸üÂıĞ©£¬Ä¬ÈÏÎªÕıµÄÇé¿öÏÂ£¬ÊÇ²ÉÓÃÇ°Ïò²î·Ö¹À¼ÆµÄ£¬Ä¬ÈÏÎª 1.0E-06
-												   double * info /*= NULL*/,			// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
-												   CMatrix & mCovar /*= CMatrix(0)*/,	// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
-												   int * iterNum /*= NULL*/				// Êä³ö£ºµü´ú´ÎÊı
+												   double * info ,			// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
+												   CMatrix & mCovar ,	// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
+												   int * iterNum 				// Êä³ö£ºµü´ú´ÎÊı
 												   )
 {
 	int n = mWrdPts.m_nCol; // ¿Õ¼äµã¸öÊı
@@ -513,11 +513,11 @@ void DeepVoid::optim_levmar_relative_XYZ_ext_euler(CMatrix & mWrdPts,					// ÊäÈ
 	delete [] p;
 	delete [] x;
 	delete [] covar;
-}
+}*/
 
 // ÒÑÖªÏñ»úÄÚ²ÎÊı¼°Ïñ²îÏµÊı£¬ÀûÓÃ levmar ´úÂë¿âµÄº¯ÊıÓÅ»¯Ïñ»úµÄÍâ²ÎÊı ×ËÌ¬ÓÉĞı×ªÏòÁ¿±íÊ¾£¬ tx, ty, tz£¬Ò²¾ÍÊÇËµÍ¬Ê±ÓÅ»¯Ïñ»ú×ËÌ¬½ÇºÍ¹âĞÄÎ»ÖÃ£¬¹²6¸ö´ıÓÅ»¯²ÎÊı
 // ÒªÇó 3 ¸öÒÔÉÏ¿ØÖÆµã²ÎÓëÓÅ»¯
-void DeepVoid::optim_levmar_ext_rotvec(const vector<Point3d> & objPts,		// ÊäÈë£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
+/*void DeepVoid::optim_levmar_ext_rotvec(const vector<Point3d> & objPts,		// ÊäÈë£º4¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÈıÎ¬×ø±ê 
 									   const vector<Point2d> & imgPts,		// ÊäÈë£º3¡Án»ò2¡ÁnµÄ¾ØÕó£¬¿ØÖÆµãµÄÍ¼Ïñ×ø±ê
 									   const Matx33d & mK,					// ÊäÈë£º3¡Á3»ò3¡Á4µÄ¾ØÕó£¬Ïñ»úµÄ³õÊ¼ÄÚ²ÎÊı¾ØÕó
 									   Matx33d & mR,						// ÊäÈë¼æÊä³ö£º4¡Á4µÄÏñ»ú³õÊ¼Íâ²ÎÊı¾ØÕó
@@ -525,15 +525,15 @@ void DeepVoid::optim_levmar_ext_rotvec(const vector<Point3d> & objPts,		// ÊäÈë£
 									   const CMatrix & mDist,				// ÊäÈë£º5¡Á1µÄÏñ»ú³õÊ¼Ïñ²îÏµÊı
 									   int   distType,						// ÊäÈë£ºÏñ²îÀàĞÍ£¬Ñ¡ÔñÊÇ Weng's (0) »¹ÊÇ D.C.Brown's (1)£¬¶¼ÊÇ 5 ¸öÏñ²îÏµÊı
 									   int   maxIter,						// ÊäÈë£º×î´óµü´ú´ÎÊı
-									   double * opts /*= NULL*/,			// ÊäÈë£º5 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
+									   double * opts ,			// ÊäÈë£º5 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
 																			// opts[0]£¬levmar ÓÅ»¯·½·¨ÖĞÒªÓÃµ½µÄ²ÎÊı u µÄ³õÊ¼³ß¶ÈÒò×Ó£¬Ä¬ÈÏÎª 1.0E-3
 																			// opts[1]£¬µ±Ä¿±êº¯Êı¶Ô¸÷´ıÓÅ»¯²ÎÊıµÄ×î´óµ¼ÊıĞ¡ÓÚµÈÓÚ¸ÃÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																			// opts[2]£¬µ±´ıÓÅ»¯²ÎÊı 2 ·¶ÊıµÄÏà¶Ô±ä»¯Á¿Ğ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																			// opts[3]£¬µ±Îó²îÊ¸Á¿µÄ 2 ·¶ÊıĞ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																			// opts[4]£¬²ÉÓÃÓĞÏŞ²î·Ö¹À¼ÆÑÅ¸ó±È¾ØÕóµÄÊ±ºòÒªÓÃµ½µÄ²½³¤²ÎÊı£¬µ±¸Ã²ÎÊıĞ¡ÓÚ 0 Ê±£¬ÑÅ¸ó±È¾ØÕóÊ½²ÉÓÃÖĞĞÄ²î·ÖÀ´¹À¼ÆµÄ£¬ÕâÑù¸ü×¼È·£¬µ«»á¸üÂıĞ©£¬Ä¬ÈÏÎªÕıµÄÇé¿öÏÂ£¬ÊÇ²ÉÓÃÇ°Ïò²î·Ö¹À¼ÆµÄ£¬Ä¬ÈÏÎª 1.0E-06
-									   double * info /*= NULL*/,			// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
-									   CMatrix & mCovar /*= CMatrix(0)*/,   // Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
-									   int * iterNum /*= NULL*/				// Êä³ö£ºµü´ú´ÎÊı
+									   double * info ,			// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
+									   CMatrix & mCovar ,   // Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
+									   int * iterNum 				// Êä³ö£ºµü´ú´ÎÊı
 									   )
 {
 	// ÏÈ·Ö½â³ö 3 ¸öÅ·À­½Ç³õÖµ
@@ -622,21 +622,21 @@ void DeepVoid::optim_levmar_ext_rotvec(const vector<Point3d> & objPts,		// ÊäÈë£
 	delete [] p;
 	delete [] x;
 	delete [] covar;
-}
+}*/
 
-void DeepVoid::PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,				// input: 3*n matrix, the distortion free normalized image coordinates on reference image
+/*void DeepVoid::PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,				// input: 3*n matrix, the distortion free normalized image coordinates on reference image
 									  const CMatrix & mImgPts2,				// input: 3*n matrix, the distortion free normalized image coordinates on the other image
 							          CMatrix & mRT,						// output:4*4 matrix, the output relative orientation
-									  double bx /*= 1*/,					// input: default fixed value for X coordinate of the other image's optical center in reference
-									  int   maxIter/*= 128*/,				// input£ºmax iteration
-									  double * opts/* = NULL*/,				// ÊäÈë£º4 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
+									  double bx ,					// input: default fixed value for X coordinate of the other image's optical center in reference
+									  int   maxIter,				// input£ºmax iteration
+									  double * opts,				// ÊäÈë£º4 Î¬µÄÏòÁ¿£¬ÓÃÀ´¿ØÖÆÓÅ»¯¹ı³ÌµÄ²ÎÊı£¬Èç¹ûÊäÈë NULL Ôò²ÉÓÃÄ¬ÈÏ²ÎÊı£¬ÆäÖĞ
 																			// opts[0]£¬levmar ÓÅ»¯·½·¨ÖĞÒªÓÃµ½µÄ²ÎÊı u µÄ³õÊ¼³ß¶ÈÒò×Ó£¬Ä¬ÈÏÎª 1.0E-3
 																			// opts[1]£¬µ±Ä¿±êº¯Êı¶Ô¸÷´ıÓÅ»¯²ÎÊıµÄ×î´óµ¼ÊıĞ¡ÓÚµÈÓÚ¸ÃÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																			// opts[2]£¬µ±´ıÓÅ»¯²ÎÊı 2 ·¶ÊıµÄÏà¶Ô±ä»¯Á¿Ğ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
 																			// opts[3]£¬µ±Îó²îÊ¸Á¿µÄ 2 ·¶ÊıĞ¡ÓÚ¸ÃãĞÖµÊ±ÓÅ»¯½áÊø£¬Ä¬ÈÏÎª 1.0E-17
-									  double * info /*= NULL*/,				// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
-									  CMatrix & mCovar /*= CMatrix(0)*/,	// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
-									  int * iterNum /*= NULL*/				// Êä³ö£ºµü´ú´ÎÊı
+									  double * info ,				// Êä³ö£º10 Î¬µÄÏòÁ¿£¬ÓÃÀ´Êä³öÓÅ»¯¹ı³ÌµÄÏà¹ØĞÅÏ¢£¬¾ßÌåÃ¿¸öÊä³öÔªËØµÄ½âÊÍ¿ÉÒÔ²Î¿¼Ïà¹ØµÄĞÅÏ¢½â¶Áº¯Êı
+									  CMatrix & mCovar ,	// Êä³ö£º¸÷¹À¼Æ²ÎÊıÖ®¼äµÄĞ­·½²î¾ØÕó
+									  int * iterNum 				// Êä³ö£ºµü´ú´ÎÊı
 									  )
 {
 	int i,j;
@@ -706,4 +706,4 @@ void DeepVoid::PIRO_Y_Z_AXAYAZ_levmar(const CMatrix & mImgPts1,				// input: 3*n
 	delete [] p;
 	delete [] x;
 	delete [] covar;
-}
+}*/
