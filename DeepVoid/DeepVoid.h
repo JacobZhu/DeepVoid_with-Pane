@@ -62,6 +62,17 @@ public:
 	viz::Viz3d m_wnd3d; // 20160403, 3D visualizer window
 	viz::WCloud m_ptcloud = viz::WCloud(Mat(1,1,CV_64FC3));
 
+	// 20161029, the calibration of the camera used to do MVS
+	double m_fx, m_fy, m_s, m_cx, m_cy;
+	double m_k1, m_k2, m_k3, m_k4, m_k5;
+	int m_distType;
+	CString m_pathImageCalibration;
+
+	CString m_strOut;
+	vector<CString> m_vImgPaths;
+	vector<vector<int>> m_vIdxSupports;
+	vector<CloudPoint> m_cloud_old;
+
 // operations
 public:
 	CDocument * CreateDocument(CMultiDocTemplate * pTemplate, CFrameWnd * pWnd = NULL);

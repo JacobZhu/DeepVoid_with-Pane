@@ -815,7 +815,7 @@ void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	// 输入:	所
 						 const SfM_ZZK::PairWiseMatches & map_matches,	// 输入：	所有图像对的特征匹配
 						 const SfM_ZZK::MultiTracks & map_tracks,		// 输入：	找到的所有特征轨迹
 						 vector<vector<int>> & vIdxSupports,			// 输出：	确定的每个图像的支持图索引
-						 int nSpt = 2,									// 输入：	每幅图像关联的支持图的个数
+						 int nSpt = 2,									// 输入：	期望每幅图像关联的支持图的个数
 						 double ang_desired = 45						// 输入：	期望的交会角度值
 						 );
 

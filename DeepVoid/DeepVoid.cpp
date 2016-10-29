@@ -122,6 +122,13 @@ CDeepVoidApp::CDeepVoidApp()
 	m_imgUncertainty_Zhu = 0.5;
 
 //	m_wnd3d = viz::Viz3d("3D Window"); // give the 3D visualizer window a name
+
+	m_fx = m_fy = m_s = m_cx = m_cy = 0;
+	m_k1 = m_k2 = m_k3 = m_k4 = m_k5 = 0;
+	m_distType = 1; // D.C.Brown's
+	m_pathImageCalibration = "";
+
+	m_strOut = "";
 }
 
 // The one and only CDeepVoidApp object
@@ -10728,7 +10735,9 @@ UINT NetworkOrientation(LPVOID param)
 	// zhaokunz, 20140404, store every image into memory
 	vector<Mat> vImages;
 
-	vector<CString> vImgPaths;
+//	vector<CString> vImgPaths;
+
+	pApp->m_vImgPaths.clear(); // 20161029
 
 	int imgWidth, imgHeight;
 
@@ -10744,7 +10753,8 @@ UINT NetworkOrientation(LPVOID param)
 
 		Mat img = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
 
-		vImgPaths.push_back(strDir);
+//		vImgPaths.push_back(strDir);
+		pApp->m_vImgPaths.push_back(strDir);
 
 		vImages.push_back(img); // store every image
 
@@ -10875,19 +10885,28 @@ UINT NetworkOrientation(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20151206 橘子洲毛泽东像
- 		pApp->m_vCams[i].fx = 849.812399662762910;
- 		pApp->m_vCams[i].fy = 849.028798494762330;
- 		pApp->m_vCams[i].s  = 0;
- 		pApp->m_vCams[i].cx = 401.558250358447480;
- 		pApp->m_vCams[i].cy = 273.689303692577480;
- 
- 		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
- 		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
- 		pApp->m_vCams[i].m_K(0,1) = 0;
- 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
- 		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
- 		pApp->m_vCams[i].m_K(2,2) = 1;
- 		pApp->m_vCams[i].m_bCalibed = true;
+// 		pApp->m_vCams[i].fx = 849.812399662762910;
+//		pApp->m_vCams[i].fy = 849.028798494762330;
+// 		pApp->m_vCams[i].s  = 0;
+// 		pApp->m_vCams[i].cx = 401.558250358447480;
+// 		pApp->m_vCams[i].cy = 273.689303692577480;
+// 
+// 		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
+// 		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
+// 		pApp->m_vCams[i].m_K(0,1) = 0;
+// 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
+//		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
+// 		pApp->m_vCams[i].m_K(2,2) = 1;
+// 		pApp->m_vCams[i].m_bCalibed = true;
+
+		// 20161029
+		pApp->m_vCams[i].fx = pApp->m_vCams[i].m_K(0, 0) = pApp->m_fx;
+		pApp->m_vCams[i].fy = pApp->m_vCams[i].m_K(1, 1) = pApp->m_fy;
+		pApp->m_vCams[i].s  = pApp->m_vCams[i].m_K(0, 1) = pApp->m_s;
+		pApp->m_vCams[i].cx = pApp->m_vCams[i].m_K(0, 2) = pApp->m_cx;
+		pApp->m_vCams[i].cy = pApp->m_vCams[i].m_K(1, 2) = pApp->m_cy;
+		pApp->m_vCams[i].m_K(2, 2) = 1;
+		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -10952,8 +10971,16 @@ UINT NetworkOrientation(LPVOID param)
 // 		pApp->m_vCams[i].cx = 1619.9232700857789951;
 // 		pApp->m_vCams[i].cy = 1151.4558912976590364;
 
-		memset(pApp->m_vCams[i].k, 0, 5*sizeof(double));
-		pApp->m_vCams[i].dist_type = 1;
+//		memset(pApp->m_vCams[i].k, 0, 5*sizeof(double));
+//		pApp->m_vCams[i].dist_type = 1;
+
+		// 20161029
+		pApp->m_vCams[i].k[0] = pApp->m_k1;
+		pApp->m_vCams[i].k[1] = pApp->m_k2;
+		pApp->m_vCams[i].k[2] = pApp->m_k3;
+		pApp->m_vCams[i].k[3] = pApp->m_k4;
+		pApp->m_vCams[i].k[4] = pApp->m_k5;
+		pApp->m_vCams[i].dist_type = pApp->m_distType;
 	}
 
 	// remove distortions and set the distortion coefficients to be all zeros
@@ -11157,14 +11184,15 @@ UINT NetworkOrientation(LPVOID param)
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	CString strOut;
-	strOut.Format("E:\\all\\");
+//	CString strOut;
+//	strOut.Format("E:\\results\\");
+	pApp->m_strOut.Format("E:\\results\\");
 
-	vector<CloudPoint> cloud_old;
+//	vector<CloudPoint> cloud_old;
 
-	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2);
+	SfM_ZZK::OutputPointCloud(pApp->m_strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,pApp->m_cloud_old,2);
 
-	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 2);
+//	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 2);
 
 	vector<SfM_ZZK::pair_ij> imgRank;
 	RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
@@ -11239,8 +11267,8 @@ UINT NetworkOrientation(LPVOID param)
 			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
 			try
 			{
-				SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);	
-				SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
+				SfM_ZZK::OutputPointCloud(pApp->m_strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,pApp->m_cloud_old,3);
+//				SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
 			}
 			catch (cv::Exception & e)
 			{
@@ -11301,7 +11329,7 @@ UINT NetworkOrientation(LPVOID param)
 	std::map<int,int> hist_cloudpoint_inlier;
 	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(map_pointcloud,map_tracks,hist_cloudpoint_inlier);
 
-	FILE * file = fopen("E:\\all\\hist.txt", "w");
+	FILE * file = fopen("E:\\results\\hist.txt", "w");
 	for (auto iter_hist=hist_cloudpoint_inlier.begin();iter_hist!=hist_cloudpoint_inlier.end();++iter_hist)
 	{
 		fprintf(file,"%d	%d\n", iter_hist->first, iter_hist->second);
@@ -11311,8 +11339,8 @@ UINT NetworkOrientation(LPVOID param)
 
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
-	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);
-	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
+	SfM_ZZK::OutputPointCloud(pApp->m_strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,pApp->m_cloud_old,3);
+//	SfM_ZZK::Draw3DScene(pApp->m_wnd3d, pApp->m_ptcloud, map_pointcloud, pApp->m_vCams, map_tracks, 3);
 
 	// 输出像机定向
 	// save all cameras' parameters
@@ -11323,8 +11351,8 @@ UINT NetworkOrientation(LPVOID param)
 //		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
 	}
 
-	vector<vector<int>> vIdxSupports;
-	ScoreMatchingImages(map_pointcloud, pApp->m_vCams, map_pairwise_matches, map_tracks, vIdxSupports, nSptImgs_desired, 10);
+//	vector<vector<int>> vIdxSupports;
+	ScoreMatchingImages(map_pointcloud, pApp->m_vCams, map_pairwise_matches, map_tracks, pApp->m_vIdxSupports, nSptImgs_desired, 10);
 
 	return TRUE;
 }
@@ -11345,12 +11373,12 @@ UINT DenseReconstruction(LPVOID param)
 
 	vector<Mat> vSilhouettes;
 
-	CString strOut;
+	/*CString strOut;
 	vector<CString> vImgPaths;
 	vector<vector<int>> vIdxSupports;
-	vector<CloudPoint> cloud_old;
+	vector<CloudPoint> cloud_old;*/
 
-	MVDE_package_150206(strOut,pApp->m_vCams,vImgPaths,vSilhouettes,vIdxSupports,cloud_old,vDepths,vHxs,vHys,vScores,vVisis,
+	MVDE_package_150206(pApp->m_strOut,pApp->m_vCams,pApp->m_vImgPaths,vSilhouettes,pApp->m_vIdxSupports,pApp->m_cloud_old,vDepths,vHxs,vHys,vScores,vVisis,
 		wndSize,thresh_norm,nPatchMatchIter,factor,nRandSamp,90,0.95,1.5,0.01,img_sigma,2,1,0.01,0.02,5);
 
 	return TRUE;
@@ -11360,7 +11388,35 @@ void CDeepVoidApp::On3dreconstructionParametersettings()
 {
 	// TODO: Add your command handler code here
 
-	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+//	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+
+	CDlgStereoFiles dlgFiles;
+	dlgFiles.m_pathParam0 = m_pathImageCalibration;
+	dlgFiles.m_nPixDownSample = m_nPixDownSample;
+	
+	if (IDOK == dlgFiles.DoModal())
+	{
+		m_pathImageCalibration = dlgFiles.m_pathParam0;
+		
+		if (m_pathImageCalibration == "")
+		{
+			// 说明没有输入参数
+			return;
+		}
+
+		// 有参数的话，就读入参数
+		FILE * file = fopen(m_pathImageCalibration, "r");
+		if (!file)
+		{
+			AfxMessageBox("fail to read in parameters of image0");
+			return;
+		}
+		
+		fscanf(file, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", 
+			&m_fx, &m_fy, &m_cx, &m_cy, &m_s, &m_k1, &m_k2, &m_k3, &m_k4, &m_k5);
+				
+		fclose(file);
+	}
 }
 
 void CDeepVoidApp::On3dreconstructionNetworkorientationandsparsereconstruction()
@@ -11368,57 +11424,57 @@ void CDeepVoidApp::On3dreconstructionNetworkorientationandsparsereconstruction()
 	// TODO: Add your command handler code here
 	AfxBeginThread(NetworkOrientation, this, THREAD_PRIORITY_NORMAL);
 
-	m_wnd3d = viz::Viz3d("3D Window");
-	m_wnd3d.spinOnce();
+//	m_wnd3d = viz::Viz3d("3D Window");
+//	m_wnd3d.spinOnce();
 }
 
 void CDeepVoidApp::On3dreconstructionDensereconstruction()
 {
 	// TODO: Add your command handler code here
-//	AfxBeginThread(DenseReconstruction, this, THREAD_PRIORITY_NORMAL);
+	AfxBeginThread(DenseReconstruction, this, THREAD_PRIORITY_NORMAL);
 
-	m_wnd3d.spinOnce();
-
-	wrd3d.showWidget("Coordinate Widget", viz::WCoordinateSystem());
-
-	/// Let's assume camera has the following properties
-	Point3d cam_pos(2.0f, 0.0f, 0.0f), cam_focal_point(3.0f, 0.0f, 0.0f), cam_y_dir(-2.0f, -1.0f, 0.0f);
-
-	/// We can get the pose of the cam using makeCameraPose
-	Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
-
-	Mat image = imread("C:\\Users\\DeepV\\Pictures\\DSC_1557_edited.JPG", CV_LOAD_IMAGE_UNCHANGED);
-
-	double width = image.cols;
-	double height = image.rows;
-
-	Matx33d K;
-	K(0, 0) = K(1, 1) = 7500;
-	K(0, 2) = (width - 1)*0.5;
-	K(1, 2) = (height - 1)*0.5;
-	K(2, 2) = 1;
-
-	viz::WCameraPosition cpw(0.5); // Coordinate axes
-	viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.223599), 0.5); // Camera frustum
-	viz::WCameraPosition cpw_image(K,image);
-	wrd3d.showWidget("CPW", cpw, cam_pose);
-//	wrd3d.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose); 
-	wrd3d.showWidget("CPW_FRUSTUM", cpw_image, cam_pose);
-
-	Mat XYZs(1, 5, CV_64FC3);
-	XYZs.at<Vec3d>(0, 0).val[0] = 0;	XYZs.at<Vec3d>(0, 0).val[1] = 1;	XYZs.at<Vec3d>(0, 0).val[2] = 1;
-	XYZs.at<Vec3d>(0, 1).val[0] = 0;	XYZs.at<Vec3d>(0, 1).val[1] = 0;	XYZs.at<Vec3d>(0, 1).val[2] = 1;
-	XYZs.at<Vec3d>(0, 2).val[0] = 1;	XYZs.at<Vec3d>(0, 2).val[1] = 1;	XYZs.at<Vec3d>(0, 2).val[2] = 2;
-	XYZs.at<Vec3d>(0, 3).val[0] = 2;	XYZs.at<Vec3d>(0, 3).val[1] = 2;	XYZs.at<Vec3d>(0, 3).val[2] = 1;
-	XYZs.at<Vec3d>(0, 4).val[0] = 2;	XYZs.at<Vec3d>(0, 4).val[1] = 3;	XYZs.at<Vec3d>(0, 4).val[2] = 0;
-	viz::WCloud cld(XYZs);
-	wrd3d.showWidget("cloud", cld);
-
-	image.release();
-
-//	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
-
-	wrd3d.spinOnce();
-
-//	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+//	m_wnd3d.spinOnce();
+//
+//	wrd3d.showWidget("Coordinate Widget", viz::WCoordinateSystem());
+//
+//	/// Let's assume camera has the following properties
+//	Point3d cam_pos(2.0f, 0.0f, 0.0f), cam_focal_point(3.0f, 0.0f, 0.0f), cam_y_dir(-2.0f, -1.0f, 0.0f);
+//
+//	/// We can get the pose of the cam using makeCameraPose
+//	Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
+//
+//	Mat image = imread("C:\\Users\\DeepV\\Pictures\\DSC_1557_edited.JPG", CV_LOAD_IMAGE_UNCHANGED);
+//
+//	double width = image.cols;
+//	double height = image.rows;
+//
+//	Matx33d K;
+//	K(0, 0) = K(1, 1) = 7500;
+//	K(0, 2) = (width - 1)*0.5;
+//	K(1, 2) = (height - 1)*0.5;
+//	K(2, 2) = 1;
+//
+//	viz::WCameraPosition cpw(0.5); // Coordinate axes
+//	viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.223599), 0.5); // Camera frustum
+//	viz::WCameraPosition cpw_image(K,image);
+//	wrd3d.showWidget("CPW", cpw, cam_pose);
+////	wrd3d.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose); 
+//	wrd3d.showWidget("CPW_FRUSTUM", cpw_image, cam_pose);
+//
+//	Mat XYZs(1, 5, CV_64FC3);
+//	XYZs.at<Vec3d>(0, 0).val[0] = 0;	XYZs.at<Vec3d>(0, 0).val[1] = 1;	XYZs.at<Vec3d>(0, 0).val[2] = 1;
+//	XYZs.at<Vec3d>(0, 1).val[0] = 0;	XYZs.at<Vec3d>(0, 1).val[1] = 0;	XYZs.at<Vec3d>(0, 1).val[2] = 1;
+//	XYZs.at<Vec3d>(0, 2).val[0] = 1;	XYZs.at<Vec3d>(0, 2).val[1] = 1;	XYZs.at<Vec3d>(0, 2).val[2] = 2;
+//	XYZs.at<Vec3d>(0, 3).val[0] = 2;	XYZs.at<Vec3d>(0, 3).val[1] = 2;	XYZs.at<Vec3d>(0, 3).val[2] = 1;
+//	XYZs.at<Vec3d>(0, 4).val[0] = 2;	XYZs.at<Vec3d>(0, 4).val[1] = 3;	XYZs.at<Vec3d>(0, 4).val[2] = 0;
+//	viz::WCloud cld(XYZs);
+//	wrd3d.showWidget("cloud", cld);
+//
+//	image.release();
+//
+////	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+//
+//	wrd3d.spinOnce();
+//
+////	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
 }

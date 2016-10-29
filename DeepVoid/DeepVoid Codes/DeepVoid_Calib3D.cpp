@@ -7690,7 +7690,7 @@ void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	/
 								   const SfM_ZZK::PairWiseMatches & map_matches,// 输入：	所有图像对的特征匹配
 								   const SfM_ZZK::MultiTracks & map_tracks,		// 输入：	找到的所有特征轨迹
 								   vector<vector<int>> & vIdxSupports,			// 输出：	确定的每个图像的支持图索引
-								   int nSpt /*= 2*/,							// 输入：	每幅图像关联的支持图的个数
+								   int nSpt /*= 2*/,							// 输入：	期望每幅图像关联的支持图的个数
 								   double ang_desired /*= 45*/					// 输入：	期望的交会角度值
 								   )
 {
@@ -7826,7 +7826,11 @@ void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	/
 		// 按权重值降序排列
 		sort(vec_i_a_b.begin(), vec_i_a_b.end(), [](const pair_i_a_b & a, const pair_i_a_b & b){return a.second.first>b.second.first;});
 		
-		for (int j=0;j<nSpt;++j)
+		// 20161029, 如果实际能和一个图配上的图像只有1个，那么如果强行要为该图找到2个或者更多的支持图显然是不太合理的
+		int n_vec = vec_i_a_b.size();
+		int nSpt_actual = n_vec < nSpt ? n_vec : nSpt;
+		
+		for (int j=0;j<nSpt_actual/*nSpt*/;++j)
 		{
 			vIdxSpt.push_back(vec_i_a_b[j].first);
 		}
@@ -34300,6 +34304,7 @@ void DeepVoid::MVDE_package_150206(const CString & path_output,				// input:	the
 			for (kk=0;kk<n_spt;kk++)
 			{
 				int idx_spt = vIdxSupports[k][kk];
+
 				vKs_spt.push_back(vKs[idx_spt]);
 				vRs_spt.push_back(vRs[idx_spt]);
 				vts_spt.push_back(vts[idx_spt]);
