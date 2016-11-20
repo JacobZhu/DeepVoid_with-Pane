@@ -34601,6 +34601,36 @@ void DeepVoid::MVDE_package_150206(const CString & path_output,				// input:	the
 	}
 }
 
+// 20161030, using SGM
+void DeepVoid::MVDE_SGM(const CString & path_output,				// input:	the path of output file folder
+					    const vector<cam_data> & vCams,				// input:	all images' orientations
+					    const vector<CString> & vPaths_imgs,		// input:	file paths of all input images
+					    const vector<Mat> & vSilhouettes,			// input:	Silhouettes of all images
+					    const vector<vector<int>> & vIdxSupports,	// input:	all images' support images' index
+					    const vector<CloudPoint> & vClouds,			// input:	point cloud
+					    int size /*= 5*/,							// input:	the window size of the image patch, should be odd number
+					    double angLimit /*= 80*/,					// input:	the angular range limit of the normal of every object point, in angle, not radian
+					    int maxIter/* = 4*/,						// input:	maximum iteration
+					    double factor /*= 0.5*/,
+					    int nRandSamp /*= 6*/,
+					    double thresh_ang /*= 90*/,					// input:	the normal angle constraint, if this value is 360, then no constraint at all
+					    double thresh_ncc /*= 0.95*/,				// input:	the ncc threshold after patchmatch, ncc value is supposed to be very high if it's matched correctly after patchmatch
+					    double P1 /*= 1.5*/,
+					    double P2 /*= 0.1*/,
+					    double thresh_imgpt_sigma /*= 1*/,
+					    int nLevel /*= 4*/,							// input:	number of pyramid levels
+					    int idxOutLevel /*= 0*/,					// input:	output final results at pyramid level idxOutLevel, default is level 0, i.e. the highest resolution level
+					    double thresh_ratio /*= 0.001*/,
+					    double thresh_WH_Ratio_removeSmall/* = 0.02*/,// input:	
+					    int maxIter_optim/* = 128*/,
+					    double xEps /*= 1.0E-8*/,					// input: threshold
+					    double fEps /*= 1.0E-6*/,					// input: threshold
+					    bool bMPGCFinal /*= true*/					// input: use MPGC optimized or directly Most likely results
+					    )
+{
+
+}
+
 // 20140827, conduct patchmatch for reference image with every support image at each time without view propagation
 void DeepVoid::PatchMatch_Binocular(const vector<Matx33d> & vKs,				// input:	all interior matrix
 								    const vector<Matx33d> & vRs,				// input:	all rotation matrix

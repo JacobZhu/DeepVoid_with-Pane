@@ -43,15 +43,17 @@ void DeepVoid::QuadCurveFit(double * x, double * f,					// 输入：所有采样点的 x 
 }
 
 // compute the matching cost, proposed by S. Birchfield and C. Tomasi, for a single pixel.
-double DeepVoid::ComputeMatchingCostforOnePixel_BT(int x, int y,	// the coordinates in base image of the checked pixel
-												   int d,			// the disparity to be checked
-												   int w, int h,	// the width and height of stereo images
-												   BYTE ** imgb,	// h*w, the rectified grayscale base image
-											 	   BYTE ** imgm		// h*w, the rectified grayscale matching image
-												   ) 
+// disparity is along x-axis
+double DeepVoid::ComputeMatchingCostforOnePixel_x_BT(int x, int y,	// the coordinates in base image of the checked pixel
+												     int d,			// the disparity to be checked
+												     int w, int h,	// the width and height of stereo images
+												     BYTE ** imgb,	// h*w, the rectified grayscale base image
+											 	     BYTE ** imgm	// h*w, the rectified grayscale matching image
+												     ) 
 {
 	// if the point to be checked xm = x-d is out of border of the matching image,
 	// the matching cost is designated with an invalid number, e.g. negative number
+	// if d>0, then xm is on the left of x, otherwise, on the right of x
 	int xm = x-d;
 
 	if (xm <= 0 || xm >= (w-1) || x <= 0 || x >= (w-1))
@@ -64,8 +66,10 @@ double DeepVoid::ComputeMatchingCostforOnePixel_BT(int x, int y,	// the coordina
 	double fm_l = (double)imgm[y][xm-1];
 	double fm_r = (double)imgm[y][xm+1];
 
-	double fm_l_2 = (fm+fm_l)/2;
-	double fm_r_2 = (fm+fm_r)/2;
+	/*double fm_l_2 = (fm+fm_l)/2;
+	double fm_r_2 = (fm+fm_r)/2;*/
+	double fm_l_2 = (fm + fm_l) * 0.5;
+	double fm_r_2 = (fm + fm_r) * 0.5;
 
 	double pfm[3]; int idx[3];
 	pfm[0] = fm; pfm[1] = fm_l_2; pfm[2] = fm_r_2;  
@@ -79,8 +83,10 @@ double DeepVoid::ComputeMatchingCostforOnePixel_BT(int x, int y,	// the coordina
 	double fb_l = double(imgb[y][x-1]);
 	double fb_r = double(imgb[y][x+1]);
 
-	double fb_l_2 = (fb+fb_l)/2;
-	double fb_r_2 = (fb+fb_r)/2;
+	/*double fb_l_2 = (fb+fb_l)/2;
+	double fb_r_2 = (fb+fb_r)/2;*/
+	double fb_l_2 = (fb + fb_l) * 0.5;
+	double fb_r_2 = (fb + fb_r) * 0.5;
 
 	double pfb[3];
 	pfb[0] = fb; pfb[1] = fb_l_2; pfb[2] = fb_r_2;
@@ -115,13 +121,79 @@ double DeepVoid::ComputeMatchingCostforOnePixel_BT(int x, int y,	// the coordina
 	return ffm;
 }
 
+// compute the matching cost, proposed by S. Birchfield and C. Tomasi, for a single pixel.
+// disparity is along y-axis
+double DeepVoid::ComputeMatchingCostforOnePixel_y_BT(int x, int y,		// input: the coordinates in base image of the checked pixel
+												     int d,				// input: the disparity to be checked
+												     int w, int h,		// input: the width and height of stereo images
+												     BYTE ** imgb,		// input: h*w, the rectified grayscale base image
+												     BYTE ** imgm		// input: h*w, the rectified grayscale matching image
+												     )
+{
+	// if the point to be checked ym = y-d is out of border of the matching image,
+	// the matching cost is designated with an invalid number, e.g. negative number
+	// if d>0, then ym is on the top of y, otherwise, on the bottom of y
+	int ym = y - d;
+
+	if (ym <= 0 || ym >= (h - 1) || y <= 0 || y >= (h - 1))
+	{
+		return -1;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	double fm = (double)imgm[ym][x];
+	double fm_l = (double)imgm[ym-1][x];
+	double fm_r = (double)imgm[ym+1][x];
+
+	double fm_l_2 = (fm + fm_l) * 0.5;
+	double fm_r_2 = (fm + fm_r) * 0.5;
+
+	double pfm[3]; int idx[3];
+	pfm[0] = fm; pfm[1] = fm_l_2; pfm[2] = fm_r_2;
+	Sort_Bubble(pfm, 3, idx);
+	double fmmin = pfm[0];
+	double fmmax = pfm[2];
+	//////////////////////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////////////////////
+	double fb = double(imgb[y][x]);
+	double fb_l = double(imgb[y-1][x]);
+	double fb_r = double(imgb[y+1][x]);
+
+	double fb_l_2 = (fb + fb_l) * 0.5;
+	double fb_r_2 = (fb + fb_r) * 0.5;
+
+	double pfb[3];
+	pfb[0] = fb; pfb[1] = fb_l_2; pfb[2] = fb_r_2;
+	Sort_Bubble(pfb, 3, idx);
+	double fbmin = pfb[0];
+	double fbmax = pfb[2];
+	//////////////////////////////////////////////////////////////////////////
+
+	// in this way
+	pfm[0] = 0; pfm[1] = fb - fmmax; pfm[2] = fmmin - fb;
+	Sort_Bubble(pfm, 3, idx);
+	double ffm = pfm[2]; // got to be non-negative
+
+	pfb[0] = 0; pfb[1] = fm - fbmax; pfb[2] = fbmin - fm;
+	Sort_Bubble(pfb, 3, idx);
+	double ffb = pfb[2]; // got to be non-negative
+
+	if (ffb <= ffm)
+	{
+		return ffb;
+	}
+
+	return ffm;
+}
+
 // Generate the Disparity Space Image (DSI) based on the pixelwise matching
 // cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
 void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of stereo images
 							  BYTE ** imgb,			// input: h*w, the rectified grayscale base image
 							  BYTE ** imgm,			// input: h*w, the rectified grayscale matching image
-							  int dmin,				// input: scalar, the minimal disparity
-							  int dmax,				// input: scalar, the maximal disparity
+							  int dmin,				// input: scalar, the minimal disparity, can be negative
+							  int dmax,				// input: scalar, the maximal disparity, can be negative
 							  double *** DSI,		// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
 							  bool bMB /*= false*/	// input: is matching in the reverse direction, i.e. matching image is treated as base image and vice versa
 							  )
@@ -140,7 +212,7 @@ void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of 
 			{
 				for (k=dmin;k<=dmax;k++)
 				{
-					DSI[k-dmin][i][j] = ComputeMatchingCostforOnePixel_BT(j, i, k, w, h, imgb, imgm);
+					DSI[k-dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, k, w, h, imgb, imgm);
 				}
 			}
 		}
@@ -156,7 +228,89 @@ void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of 
 			{
 				for (k=dmin;k<=dmax;k++)
 				{
-					DSI[k-dmin][i][j] = ComputeMatchingCostforOnePixel_BT(j, i, -k, w, h, imgb, imgm);
+					DSI[k-dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, -k, w, h, imgb, imgm);
+				}
+			}
+		}
+	}
+}
+
+// 20161115, four directions: 0:left to right. 1:right to left. 2:up to bottom. 3:bottom to up
+// Generate the Disparity Space Image (DSI) based on the pixelwise matching
+// cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
+void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of stereo images
+							  BYTE ** imgb,			// input: h*w, the rectified grayscale base image
+							  BYTE ** imgm,			// input: h*w, the rectified grayscale matching image
+							  int dmin,				// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+							  int dmax,				// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+							  double *** DSI,		// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+							  int dir /*= 0*/		// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+							  )
+{
+	// l2r
+	if (0==dir)
+	{
+		for (int i = 0; i<h; i++)
+		{
+			/*CString strInfo;
+			strInfo.Format("generate DSI for row %04d", i);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = dmin; k <= dmax; k++)
+				{
+					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, k, w, h, imgb, imgm);
+				}
+			}
+		}
+	}
+	// r2l
+	else if (1==dir)
+	{
+		for (int i = 0; i<h; i++)
+		{
+			/*CString strInfo;
+			strInfo.Format("generate DSI for row %04d", i);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = dmin; k <= dmax; k++)
+				{
+					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, -k, w, h, imgm, imgb);
+				}
+			}
+		}
+	}
+	// u2b
+	else if (2 == dir)
+	{
+		for (int i = 0; i<h; i++)
+		{
+			/*CString strInfo;
+			strInfo.Format("generate DSI for row %04d", i);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = dmin; k <= dmax; k++)
+				{
+					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, k, w, h, imgb, imgm);
+				}
+			}
+		}
+	}
+	// b2u
+	else
+	{
+		for (int i = 0; i<h; i++)
+		{
+			/*CString strInfo;
+			strInfo.Format("generate DSI for row %04d", i);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = dmin; k <= dmax; k++)
+				{
+					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, -k, w, h, imgm, imgb);
 				}
 			}
 		}
@@ -597,7 +751,7 @@ void DeepVoid::SemiGlobalMatching(int w, int h,				// input: the width and heigh
 	}
 
 	// generate the DSI based on some certain matching cost measure
-	GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI);
+	GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI, false);
 
 	SemiGlobalMatching_givenDSI(w, h, imgb, imgm, dmin, dmax, DSI, P1, P2, DI, nDir, bSubPix);
 
@@ -673,6 +827,193 @@ void DeepVoid::SemiGlobalMatching(int w, int h,				// input: the width and heigh
 		delete [] DSI[i];
 	}
 	delete [] DSI;
+}
+
+
+// 20161117, new version of SGM, can handle both horizontal and vertical image layout, and can also handle negative disparity.
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void DeepVoid::SemiGlobalMatching(int w, int h,						// input: the width and height of stereo images
+								  BYTE ** imgb,						// input: h*w, the rectified grayscale base image
+								  BYTE ** imgm,						// input: h*w, the rectified grayscale matching image
+								  int dmin,							// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+								  int dmax,							// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+								  double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+								  double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+								  double ** DI,						// output:h*w, the disparity image
+								  bool bVertical /*= false*/,		// input: if the image layout is vertical or not
+								  SGM_PATHS nDir/* = SGM_PATHS_8*/,	// input: the amount of scanlines*/
+								  int constcCheck /*= -1*/,			// input: if matching is conducted reversely, i.e. treat the match image as a base image and vice versa.
+								  bool bSubPix /*= true*/			// input: if sub pixel interpolation for sub pixel disparities is applied
+								  )
+{
+	// number of disparities
+	int nd = dmax - dmin + 1;
+
+	// initialize DSI matrix, which is h*w*nd
+	int imgSize = w*h;
+	double *** DSI = new double **[nd];
+	for (int i = 0; i < nd; i++)
+	{
+		DSI[i] = new double *[h];
+		DSI[i][0] = new double[imgSize];
+		memset(DSI[i][0], 0, imgSize * sizeof(double));
+		for (int j = 1; j < h; j++)
+		{
+			DSI[i][j] = DSI[i][j - 1] + w;
+		}
+	}
+
+	// generate the DSI based on some certain matching cost measure
+	if (!bVertical) // honrizontal image layout
+	{
+		GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI, 0);
+	}
+	else // vertical image layout
+	{
+		GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI, 2);
+	}
+
+	SemiGlobalMatching_givenDSI(w, h, dmin, dmax, DSI, P1, P2, DI, nDir, bSubPix);
+
+	// if this var is nonnegative, then uniqueness constraint is enforced by consistency check to determine occlusions and false matches
+	if (constcCheck >= 0)
+	{
+		// a new disparity image for matching image
+		double ** DI_m = new double *[h];
+		DI_m[0] = new double[imgSize];
+		memset(DI_m[0], 0, imgSize * sizeof(double));
+		for (int i = 1; i < h; i++)
+		{
+			DI_m[i] = DI_m[i - 1] + w;
+		}
+
+		// generate the reverse matching cost DSI
+		if (!bVertical) // honrizontal image layout
+		{
+			GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI, 1);
+		}
+		else // vertical image layout
+		{
+			GenerateDSI_BT(w, h, imgb, imgm, dmin, dmax, DSI, 3);
+		}
+
+		// run semi global matching again for matching image
+		SemiGlobalMatching_givenDSI(w, h, dmin, dmax, DSI, P1, P2, DI_m, nDir, bSubPix);
+
+		// determine which pixels are occluded which are mismatched
+		bool bOccluded;
+		int dp, q;
+
+		if (!bVertical) // horizontal image layout
+		{
+			for (int i = 0; i < h; i++)
+			{
+				for (int j = 0; j < w; j++)
+				{
+					double original_dp = DI[i][j];
+
+					if (isnan(original_dp)) // if the computed disparity is invalid then continue
+					{
+						continue;
+					}
+
+					dp = FTOI(original_dp); // round the subpixel disparity
+
+					q = j - dp; // the corresponding point in matching image
+
+					if (q<0 || q>(w-1) || abs(dp - FTOI(DI_m[i][q])) > constcCheck) // if this is satisfied means that (i,j) is a occluded point or a mismatched point
+					{
+						bOccluded = true;
+						for (int k = dmin; k <= dmax; k++)
+						{
+							int qq = j - k;
+
+							if (qq<0 || qq>(w-1)) // cross the width image border
+							{
+								break;
+							}
+							double d_tmp = DI_m[i][qq];
+							if (fabs(d_tmp - k) < 1.0E-6)
+							{
+								// according to Hirshmuller, if the epipolar line of a mismatched point intersect the disparity function Dm 
+								// whereas the epipolar line of a occluded point does not intersect the disparity function Dm
+								bOccluded = false;
+								break;
+							}
+						}
+						if (bOccluded)
+						{
+							DI[i][j] = NAN; // occluded
+						}
+						else
+						{
+							DI[i][j] = INFINITY; // mismatched
+						}
+					}
+				}
+			}
+		} 
+		else // vertical image layout
+		{
+			for (int i = 0; i < h; i++)
+			{
+				for (int j = 0; j < w; j++)
+				{
+					double original_dp = DI[i][j];
+
+					if (isnan(original_dp)) // if the computed disparity is invalid then continue
+					{
+						continue;
+					}
+
+					dp = FTOI(original_dp); // round the subpixel disparity
+
+					q = i - dp; // the corresponding point in matching image
+
+					if (q<0 || q>(h-1) || abs(dp - FTOI(DI_m[q][j])) > constcCheck) // if this is satisfied means that (i,j) is a occluded point or a mismatched point
+					{
+						bOccluded = true;
+						for (int k = dmin; k <= dmax; k++)
+						{
+							int qq = i-k;
+
+							if (qq<0 || qq>(h-1)) // cross the height image border
+							{
+								break;
+							}
+							double d_tmp = DI_m[qq][j];
+							if (fabs(d_tmp - k) < 1.0E-6)
+							{
+								// according to Hirshmuller, if the epipolar line of a mismatched point intersect the disparity function Dm 
+								// whereas the epipolar line of a occluded point does not intersect the disparity function Dm
+								bOccluded = false;
+								break;
+							}
+						}
+						if (bOccluded)
+						{
+							DI[i][j] = NAN; // occluded
+						}
+						else
+						{
+							DI[i][j] = INFINITY; // mismatched
+						}
+					}
+				}
+			}
+		}
+		
+		delete[] DI_m[0];
+		delete[] DI_m;
+	}
+
+	// release
+	for (int i = 0; i < nd; i++)
+	{
+		delete[] DSI[i][0];
+		delete[] DSI[i];
+	}
+	delete[] DSI;
 }
 
 // Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
@@ -1093,6 +1434,423 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 	delete [] S_dirs;
 
 	delete [] Lr_1;
+}
+
+// 20161116, no images are concerned, only the DSI
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width and height of stereo images
+										   int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+										   int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+										   double *** DSI,					// input: h*w*nd, the disparity space image containing all the matching cost for all pixels
+										   double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+										   double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+										   double ** DI,					// output:h*w, the disparity image
+										   SGM_PATHS nDir /*= SGM_PATHS_8*/,// input: the amount of scanlines*/
+										   bool bSubPix /*= true*/			// input: if sub pixel interpolation for sub pixel disparities is applied
+										   )
+{
+	// compute all disparity levels
+	int nd = dmax - dmin + 1;
+	int * alld = new int[nd];
+	for (int i = 0; i<nd; i++)
+	{
+		alld[i] = dmin + i;
+	}
+
+	// initialize C_dir matrix, which is h*w*nd, it's the 3D aggregated costs along each direction 
+	// initialize S_dirs matrix, which is h*w*nd, it's the sum of all the 3D aggregated costs along all direction
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("apply new memory");
+	int imgSize = w*h;
+	double *** C_dir = new double **[nd];
+	double *** S_dirs = new double **[nd];
+	for (int i = 0; i < nd; i++)
+	{
+		C_dir[i] = new double *[h];
+		S_dirs[i] = new double *[h];
+
+		C_dir[i][0] = new double[imgSize];
+		S_dirs[i][0] = new double[imgSize];
+
+		memset(C_dir[i][0], 0, imgSize * sizeof(double));
+		memset(S_dirs[i][0], 0, imgSize * sizeof(double));
+
+		for (int j = 1; j < h; j++)
+		{
+			C_dir[i][j] = C_dir[i][j - 1] + w;
+			S_dirs[i][j] = S_dirs[i][j - 1] + w;
+		}
+	}
+
+	// Lr_1
+	double * Lr_1 = new double[nd];
+
+	// aggregate along 8 directions or 16 directions
+	if (SGM_PATHS_8 == nDir)
+	{
+		/*------------ 01 direction --------------------------------------------------------------------------*/
+		// dir = [1, 0] i.e. along positive direction of x-axis or the 0 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
+		for (int i = 0; i<h; i++) // left image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+
+		for (int j = 1; j<w; j++)
+		{
+			for (int i = 0; i<h; i++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i][j - 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 02 direction --------------------------------------------------------------------------*/
+		// dir = [-1, 0] i.e. along negative direction of x-axis or the 180 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
+		for (int i = 0; i<h; i++) // right image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+
+		for (int j = w - 2; j>-1; j--)
+		{
+			for (int i = 0; i<h; i++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i][j + 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 03 direction --------------------------------------------------------------------------*/
+		// dir = [0, 1] i.e. along positive direction of y-axis or the -90 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 03 starts");
+		for (int k = 0; k<nd; k++) // top image border
+		{
+			for (int j = 0; j<w; j++)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int i = 1; i<h; i++)
+		{
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i - 1][j];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 04 direction --------------------------------------------------------------------------*/
+		// dir = [0, -1] i.e. along negative direction of y-axis or the 90 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 04 starts");
+		for (int k = 0; k<nd; k++) // bottom image border
+		{
+			for (int j = 0; j<w; j++)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int i = h - 2; i>-1; i--)
+		{
+			for (int j = 0; j<w; j++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i + 1][j];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 05 direction --------------------------------------------------------------------------*/
+		// dir = [1, 1] i.e. along the -45 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 05 starts");
+		for (int i = 0; i<h; i++) // left image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k<nd; k++) // top image border
+		{
+			for (int j = 1; j<w; j++)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int i = 1; i<h; i++)
+		{
+			for (int j = 1; j<w; j++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i - 1][j - 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 06 direction --------------------------------------------------------------------------*/
+		// dir = [-1, -1] i.e. along the 135 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 06 starts");
+		for (int i = 0; i<h; i++) // right image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k<nd; k++) // bottom image border
+		{
+			for (int j = 0; j<w - 1; j++)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int i = h - 2; i>-1; i--)
+		{
+			for (int j = w - 2; j>-1; j--)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i + 1][j + 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 07 direction --------------------------------------------------------------------------*/
+		// dir = [1, -1] i.e. along the 45 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 07 starts");
+		for (int i = 0; i<h; i++) // left image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k<nd; k++) // bottom image border
+		{
+			for (int j = 1; j<w; j++)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int i = h - 2; i>-1; i--)
+		{
+			for (int j = 1; j<w; j++)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i + 1][j - 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 08 direction --------------------------------------------------------------------------*/
+		// dir = [-1, 1] i.e. along the -135 direction
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 08 starts");
+		for (int i = 0; i<h; i++) // right image border
+		{
+			for (int k = 0; k<nd; k++)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k<nd; k++) // top image border
+		{
+			for (int j = 0; j<w - 1; j++)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int i = 1; i<h; i++)
+		{
+			for (int j = w - 2; j>-1; j--)
+			{
+				for (int k = 0; k<nd; k++)
+				{
+					Lr_1[k] = C_dir[k][i - 1][j + 1];
+				}
+				
+				CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+				for (int k = 0; k<nd; k++)
+				{
+					C_dir[k][i][j] = Lr_1[k];
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+	}
+	else
+	{
+
+	}
+
+	BOOL bFoundNonneg = FALSE; // if the nonnegative value is found
+	double min_S_p;
+	int minIdx_S_p;
+
+	for (int i = 0; i<h; i++)
+	{
+		for (int j = 0; j<w; j++)
+		{
+			bFoundNonneg = FALSE;
+			for (int k = 0; k<nd; k++)
+			{
+				if (S_dirs[k][i][j]<0)
+				{
+					continue;
+				}
+
+				if (!bFoundNonneg)
+				{
+					min_S_p = S_dirs[k][i][j];
+					minIdx_S_p = k;
+					bFoundNonneg = TRUE;
+				}
+				else
+				{
+					if (S_dirs[k][i][j] < min_S_p)
+					{
+						min_S_p = S_dirs[k][i][j];
+						minIdx_S_p = k;
+					}
+				}
+			}
+
+			if (!bFoundNonneg)
+			{
+				/*DI[i][j] = -1;*/
+				DI[i][j] = NAN; // 20161116, no valid disparity for this pixel is found
+				continue;
+			}
+
+			if (!bSubPix || minIdx_S_p == 0 || minIdx_S_p == nd - 1 || S_dirs[minIdx_S_p - 1][i][j]<0 || S_dirs[minIdx_S_p + 1][i][j]<0)
+			{
+				DI[i][j] = alld[minIdx_S_p];
+			}
+			else // interpolate the subpixel position of the disparity using quadratic curve fitting
+			{
+				double x[3], f[3];
+				x[0] = alld[minIdx_S_p - 1]; f[0] = S_dirs[minIdx_S_p - 1][i][j];
+				x[1] = alld[minIdx_S_p];   f[1] = S_dirs[minIdx_S_p][i][j];
+				x[2] = alld[minIdx_S_p + 1]; f[2] = S_dirs[minIdx_S_p + 1][i][j];
+
+				double a0, a1, a2;
+				QuadCurveFit(x, f, 3, a0, a1, a2);
+
+				double d_sub = -0.5*a1 / a2;
+
+				DI[i][j] = d_sub;
+			}
+		}
+	}
+
+	// release memory
+	delete[] alld;
+
+	for (int i = 0; i < nd; i++)
+	{
+		delete[] C_dir[i][0];
+		delete[] C_dir[i];
+
+		delete[] S_dirs[i][0];
+		delete[] S_dirs[i];
+	}
+	delete[] C_dir;
+	delete[] S_dirs;
+
+	delete[] Lr_1;
 }
 
 // convert a int matrix to a image
@@ -1813,19 +2571,15 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 {
 	mDI = Mat(mImgB.rows, mImgB.cols, CV_32FC1);
 
-	int imgWidth, imgHeight;
+	int imgWidth = mImgB.cols;
+	int imgHeight = mImgB.rows;
 
-	if (!bVertical)
-	{
-		imgHeight = mImgB.rows;
-		imgWidth = mImgB.cols;
-	} 
-	else // if the stereo layout is vertical then transpose the stereo images
-	{
-		imgHeight = mImgB.cols;
-		imgWidth = mImgB.rows;
-	}
-
+// 	if (bVertical)// if the stereo layout is vertical then transpose the stereo images
+// 	{
+// 		imgHeight = mImgB.cols;
+// 		imgWidth = mImgB.rows;
+// 	}
+	
 	int imgSize = imgHeight * imgWidth;
 
 	BYTE ** pImgB = new BYTE * [imgHeight];
@@ -1853,8 +2607,8 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 		pDI[i] = pDI[i - 1] + imgWidth;
 	}
 
-	if (!bVertical)
-	{
+// 	if (!bVertical)
+// 	{
 		for (i=0;i<imgHeight;i++)
 		{
 			for (j=0;j<imgWidth;j++)
@@ -1866,31 +2620,32 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 				pImgM[i][j] = gray;
 			}
 		}
-	} 
-	else
-	{
-		for (i=0;i<imgHeight;i++)
-		{
-			for (j=0;j<imgWidth;j++)
-			{
-				uchar gray = mImgB.at<uchar>(j,i);
-				pImgB[i][j] = gray;
-
-				gray = mImgM.at<uchar>(j,i);
-				pImgM[i][j] = gray;
-			}
-		}
-	}
+//	} 
+// 	else
+// 	{
+// 		for (i=0;i<imgHeight;i++)
+// 		{
+// 			for (j=0;j<imgWidth;j++)
+// 			{
+// 				uchar gray = mImgB.at<uchar>(j,i);
+// 				pImgB[i][j] = gray;
+// 
+// 				gray = mImgM.at<uchar>(j,i);
+// 				pImgM[i][j] = gray;
+// 			}
+// 		}
+// 	}
 	
 	// Start SGM for the base image
-	SemiGlobalMatching(imgWidth, imgHeight, pImgB, pImgM, dmin, dmax, P1, P2, pDI, nDir, constcCheck, bSubPix);
+//	SemiGlobalMatching(imgWidth, imgHeight, pImgB, pImgM, dmin, dmax, P1, P2, pDI, nDir, constcCheck, bSubPix);
+	SemiGlobalMatching(imgWidth, imgHeight, pImgB, pImgM, dmin, dmax, P1, P2, pDI, bVertical, nDir, constcCheck, bSubPix);
 
 	Mat mDisparity(mImgB.rows, mImgB.cols, CV_8UC3);
 
 	double factor = 255.0/(dmax-dmin);
 
-	if (!bVertical)
-	{
+// 	if (!bVertical)
+// 	{
 		for (i=0;i<imgHeight;i++)
 		{
 			for (j=0;j<imgWidth;j++)
@@ -1898,12 +2653,14 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 				double d = pDI[i][j];
 				mDI.at<float>(i,j) = d;
 
-				if (d<-1.5) // d=-2, mismatched
+//				if (d<-1.5) // d=-2, mismatched
+				if (isinf(d)) // d=-2, mismatched
 				{
 					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 255; // red
 //					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // black
 				} 
-				else if (d<=0) // d=-1, occluded
+//				else if (d<=0) // d=-1, occluded
+				else if (isnan(d)) // d=-1, occluded
 				{
 					mDisparity.at<Vec3b>(i,j)[0] = 255; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // blue
 //					mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // black
@@ -1914,36 +2671,38 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 				}
 			}
 		}
-	} 
-	else
-	{
-		for (i=0;i<imgHeight;i++)
-		{
-			for (j=0;j<imgWidth;j++)
-			{
-				double d = pDI[i][j];
-				mDI.at<float>(j,i) = d;
-
-				if (d<-1.5) // d=-2, mismatched
-				{
-					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 255; // red
-//					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
-				} 
-				else if (d<=0) // d=-1, occluded
-				{
-					mDisparity.at<Vec3b>(j,i)[0] = 255; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // blue
-//					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
-				}
-				else // valid disparity
-				{
-					mDisparity.at<Vec3b>(j,i)[0] = mDisparity.at<Vec3b>(j,i)[1] = mDisparity.at<Vec3b>(j,i)[2] = FTOI((d-dmin)*factor);
-				}
-			}
-		}
-	}
+// 	} 
+// 	else
+// 	{
+// 		for (i=0;i<imgHeight;i++)
+// 		{
+// 			for (j=0;j<imgWidth;j++)
+// 			{
+// 				double d = pDI[i][j];
+// 				mDI.at<float>(j,i) = d;
+// 
+// //				if (d<-1.5) // d=-2, mismatched
+// 				if (isinf(d)) // d=-2, mismatched
+// 				{
+// 					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 255; // red
+// //					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
+// 				} 
+// //				else if (d<=0) // d=-1, occluded
+// 				else if (isnan(d)) // d=-1, occluded
+// 				{
+// 					mDisparity.at<Vec3b>(j,i)[0] = 255; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // blue
+// //					mDisparity.at<Vec3b>(j,i)[0] = 0; mDisparity.at<Vec3b>(j,i)[1] = 0; mDisparity.at<Vec3b>(j,i)[2] = 0; // black
+// 				}
+// 				else // valid disparity
+// 				{
+// 					mDisparity.at<Vec3b>(j,i)[0] = mDisparity.at<Vec3b>(j,i)[1] = mDisparity.at<Vec3b>(j,i)[2] = FTOI((d-dmin)*factor);
+// 				}
+// 			}
+// 		}
+// 	}
 	
 //	imwrite("C:\\Users\\DeepVoid\\Desktop\\disparity by SGM (ZZK).bmp", mDisparity);
-	imwrite("D:\\stereo\\disparity by SGM (ZZK).bmp", mDisparity);
+	imwrite("E:\\results\\disparity by SGM (ZZK).bmp", mDisparity);
 
 	// set the baseline and focal length
 // 	double b = 0.283401295273638;

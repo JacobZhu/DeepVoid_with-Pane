@@ -7032,8 +7032,8 @@ void CDeepVoidApp::OnStereo()
 				cvtColor(img1, img1_gray, CV_RGB2GRAY);
 			}
 
-			imwrite("D:\\stereo\\img0.jpg", img0);
-			imwrite("D:\\stereo\\img1.jpg", img1);
+			imwrite("E:\\results\\img0.jpg", img0);
+			imwrite("E:\\results\\img1.jpg", img1);
 
 			// choose different stereo methods //////////////////////////////////////////////////////////////////////////
 			CDlgStereoMethods dlgMethods;
@@ -7082,7 +7082,7 @@ void CDeepVoidApp::OnStereo()
 						SemiGlobalMatching(img0_gray,img1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
 							false,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
 
-						SaveMat2File_float("D:\\stereo\\disparity by SGM (ZZK).txt",mDI);
+						SaveMat2File_float("E:\\results\\disparity by SGM (ZZK).txt",mDI);
 					}
 				}
 				else if (1==m_idxStereoMethod) // SGM OpenCV version
@@ -7245,8 +7245,8 @@ void CDeepVoidApp::OnStereo()
 		W_1 = 1.0/XYZW(3);
 		pt3d_n.m_pt.x = XYZW(0)*W_1; pt3d_n.m_pt.y = XYZW(1)*W_1; pt3d_n.m_pt.z = XYZW(2)*W_1;
 
-		imwrite("D:\\stereo\\rimg0.jpg", rimg0);
-		imwrite("D:\\stereo\\rimg1.jpg", rimg1);
+		imwrite("E:\\results\\rimg0.jpg", rimg0);
+		imwrite("E:\\results\\rimg1.jpg", rimg1);
 
 		// choose different stereo methods //////////////////////////////////////////////////////////////////////////
 		CDlgStereoMethods dlgMethods;
@@ -7296,13 +7296,14 @@ void CDeepVoidApp::OnStereo()
 						isVerticalStereo,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
 
 //					FILE * fp = fopen("C:\\Users\\DeepVoid\\Desktop\\point cloud by SGM (ZZK).txt", "w");
-					FILE * fp = fopen("D:\\stereo\\point cloud by SGM (ZZK).txt", "w");
+					FILE * fp = fopen("E:\\results\\point cloud by SGM (ZZK).txt", "w");
 					for(int y = 0; y < mDI.rows; y++)
 					{
 						for(int x = 0; x < mDI.cols; x++)
 						{
 							double d = mDI.at<float>(y,x);
-							if (d<=0)
+//							if (d<=0)
+							if (isnan(d) || isinf(d)) // if occluded or mismatched
 							{
 								continue;
 							}
@@ -7387,7 +7388,7 @@ void CDeepVoidApp::OnStereo()
 					Mat mDisparityImg(rimg0.rows, rimg0.cols, CV_8UC3), mNormImg(rimg0.rows, rimg0.cols, CV_8UC3);
 
 //					FILE * file_pointcloud = fopen("C:\\Users\\DeepVoid\\Desktop\\point cloud by Zhu method.txt", "w");
-					FILE * file_pointcloud = fopen("D:\\stereo\\point cloud by Zhu method.txt", "w");
+					FILE * file_pointcloud = fopen("E:\\results\\point cloud by Zhu method.txt", "w");
 
 					// Êä³ö½á¹û
 					for (int i=0;i<rimg0.rows;++i)
@@ -7478,8 +7479,8 @@ void CDeepVoidApp::OnStereo()
 
 // 					imwrite("C:\\Users\\DeepVoid\\Desktop\\disparity by Zhu method.bmp", mDisparityImg);
 // 					imwrite("C:\\Users\\DeepVoid\\Desktop\\normal by Zhu method.bmp", mNormImg);
-					imwrite("D:\\stereo\\disparity by Zhu method.bmp", mDisparityImg);
-					imwrite("D:\\stereo\\normal by Zhu method.bmp", mNormImg);
+					imwrite("E:\\results\\disparity by Zhu method.bmp", mDisparityImg);
+					imwrite("E:\\results\\normal by Zhu method.bmp", mNormImg);
 				}
 			} 
 			else

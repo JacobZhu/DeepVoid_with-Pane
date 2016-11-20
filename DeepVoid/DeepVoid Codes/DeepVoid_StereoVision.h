@@ -16,22 +16,44 @@ void QuadCurveFit(double * x, double * f,					 // 输入：所有采样点的 x 和 f 值
 				  );
 
 // compute the matching cost, proposed by S. Birchfield and C. Tomasi, for a single pixel.
-double ComputeMatchingCostforOnePixel_BT(int x, int y,		// input: the coordinates in base image of the checked pixel
-										 int d,				// input: the disparity to be checked
-										 int w, int h,		// input: the width and height of stereo images
-										 BYTE ** imgb,		// input: h*w, the rectified grayscale base image
-										 BYTE ** imgm		// input: h*w, the rectified grayscale matching image
-										 );
+// disparity is along x-axis
+double ComputeMatchingCostforOnePixel_x_BT(int x, int y,		// input: the coordinates in base image of the checked pixel
+										   int d,				// input: the disparity to be checked
+										   int w, int h,		// input: the width and height of stereo images
+										   BYTE ** imgb,		// input: h*w, the rectified grayscale base image
+										   BYTE ** imgm			// input: h*w, the rectified grayscale matching image
+										   );
+
+// compute the matching cost, proposed by S. Birchfield and C. Tomasi, for a single pixel.
+// disparity is along y-axis
+double ComputeMatchingCostforOnePixel_y_BT(int x, int y,		// input: the coordinates in base image of the checked pixel
+										   int d,				// input: the disparity to be checked
+										   int w, int h,		// input: the width and height of stereo images
+										   BYTE ** imgb,		// input: h*w, the rectified grayscale base image
+										   BYTE ** imgm			// input: h*w, the rectified grayscale matching image
+										   );
 
 // Generate the Disparity Space Image (DSI) based on the pixelwise matching
 // cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
 void GenerateDSI_BT(int w, int h,			// input: the width and height of stereo images
 					BYTE ** imgb,			// input: h*w, the rectified grayscale base image
 					BYTE ** imgm,			// input: h*w, the rectified grayscale matching image
-					int dmin,				// input: scalar, the minimal disparity
-					int dmax,				// input: scalar, the maximal disparity
+					int dmin,				// input: scalar, the minimal disparity, can be negative
+					int dmax,				// input: scalar, the maximal disparity, can be negative
 					double *** DSI,			// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
 					bool bMB = false		// input: is matching in the reverse direction, i.e. matching image is treated as base image and vice versa
+					);
+
+// 20161115, four directions: 0:left to right. 1:right to left. 2:up to bottom. 3:bottom to up
+// Generate the Disparity Space Image (DSI) based on the pixelwise matching
+// cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
+void GenerateDSI_BT(int w, int h,			// input: the width and height of stereo images
+					BYTE ** imgb,			// input: h*w, the rectified grayscale base image
+					BYTE ** imgm,			// input: h*w, the rectified grayscale matching image
+					int dmin,				// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+					int dmax,				// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+					double *** DSI,			// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+					int dir = 0				// 0:l2r. 1:r2l. 2:u2b. 3:b2u
 					);
 
 // Cost aggregation along one path for one given pixel based on scanline
@@ -98,12 +120,41 @@ void SemiGlobalMatching(int w, int h,					// input: the width and height of ster
 						bool bSubPix = true				// input: if sub pixel interpolation for sub pixel disparities is applied
 						);
 
+// 20161117, new version of SGM, can handle both horizontal and vertical image layout, and can also handle negative disparity.
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void SemiGlobalMatching(int w, int h,					// input: the width and height of stereo images
+						BYTE ** imgb,					// input: h*w, the rectified grayscale base image
+						BYTE ** imgm,					// input: h*w, the rectified grayscale matching image
+						int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+						int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+						double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+						double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+						double ** DI,					// output:h*w, the disparity image
+						bool bVertical = false,			// input: if the image layout is vertical or not
+						SGM_PATHS nDir = SGM_PATHS_8,	// input: the amount of scanlines*/
+						int constcCheck = -1,			// input: if matching is conducted reversely, i.e. treat the match image as a base image and vice versa.
+						bool bSubPix = true				// input: if sub pixel interpolation for sub pixel disparities is applied
+						);
+
 // Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
 void SemiGlobalMatching_givenDSI(int w, int h,					// input: the width and height of stereo images
 								 BYTE ** imgb,					// input: h*w, the rectified grayscale base image
 								 BYTE ** imgm,					// input: h*w, the rectified grayscale matching image
 								 int dmin,						// input: scalar, the minimal disparity
 								 int dmax,						// input: scalar, the maximal disparity
+								 double *** DSI,				// input: h*w*nd, the disparity space image containing all the matching cost for all pixels
+								 double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+								 double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+								 double ** DI,					// output:h*w, the disparity image
+								 SGM_PATHS nDir = SGM_PATHS_8,	// input: the amount of scanlines*/
+								 bool bSubPix = true			// input: if sub pixel interpolation for sub pixel disparities is applied
+								 );
+
+// 20161116, no images are concerned, only the DSI
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void SemiGlobalMatching_givenDSI(int w, int h,					// input: the width and height of stereo images
+								 int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+								 int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
 								 double *** DSI,				// input: h*w*nd, the disparity space image containing all the matching cost for all pixels
 								 double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
 								 double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
