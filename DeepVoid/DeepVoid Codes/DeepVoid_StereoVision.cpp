@@ -1485,8 +1485,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 	double * Lr_1 = new double[nd];
 
 	// aggregate along 8 directions or 16 directions
-	if (SGM_PATHS_8 == nDir)
-	{
+// 	if (SGM_PATHS_8 == nDir)
+// 	{
 		/*------------ 01 direction --------------------------------------------------------------------------*/
 		// dir = [1, 0] i.e. along positive direction of x-axis or the 0 direction
 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
@@ -1770,10 +1770,499 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
-	}
-	else
-	{
+// 	}
+// 	else
+// 	{
+// 
+// 	}
 
+	if (SGM_PATHS_16 == nDir)
+	{
+		/*------------ 09 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转22.5°的方向，应该是从正上方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转22.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 09 starts");
+		for (int i = 0; i < h; ++i) // right image border
+		{
+			for (int k = 0; k < nd; ++k)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k < nd; ++k) // top image border
+		{
+			for (int j = 0; j < w - 1; ++j)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int i=1; i<h; ++i)
+		{
+			if (i%2==1) // when i is odd, all pixels in row i consider pixels being top to them
+			{
+				for (int j=0; j<w; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			} 
+			else // when i is even, all pixels in row i consider pixels being top right to them
+			{
+				for (int j=0; j<w-1; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j + 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 10 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转67.5°的方向，应该是从正右方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转67.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 10 starts");
+		for (int i = 0; i < h; ++i) // right image border
+		{
+			for (int k = 0; k < nd; ++k)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k < nd; ++k) // top image border
+		{
+			for (int j = 0; j < w - 1; ++j)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int dj=2; dj<=w; ++dj)
+		{
+			int j = w - dj; // the actual column index
+
+			if (dj%2==0) // when dj is even, all pixels in col j=w-dj consider pixels being right to them
+			{
+				for (int i=0; i<h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i][j+1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			} 
+			else // when dj is odd, all pixels in col j=w-dj consider pixels being top right to them
+			{
+				for (int i=1; i<h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j + 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+ 
+ 		/*------------ 11 direction --------------------------------------------------------------------------*/
+ 		// 看表，十二点开始顺时针转112.5°的方向，应该是从正右方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转112.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 11 starts");
+
+		for (int i = 0; i < h; ++i) // right image border
+		{
+			for (int k = 0; k < nd; ++k)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k < nd; ++k) // bottom image border
+		{
+			for (int j = 0; j < w - 1; ++j)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int dj = 2; dj <= w; ++dj)
+		{
+			int j = w - dj; // the actual column index
+
+			if (dj % 2 == 0) // when dj is even, all pixels in col j=w-dj consider pixels being right to them
+			{
+				for (int i = 0; i < h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i][j + 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+			else // when dj is odd, all pixels in col j=w-dj consider pixels being bottom right to them
+			{
+				for (int i = 0; i < h-1; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i + 1][j + 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 12 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转157.5°的方向，应该是从正下方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转157.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 12 starts");
+
+		for (int i = 0; i < h; ++i) // right image border
+		{
+			for (int k = 0; k < nd; ++k)
+			{
+				C_dir[k][i][w - 1] = DSI[k][i][w - 1];
+			}
+		}
+		for (int k = 0; k < nd; ++k) // bottom image border
+		{
+			for (int j = 0; j < w - 1; ++j)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int di = 2; di <= h; ++di)
+		{
+			int i = h - di; // the actual column index
+
+			if (di % 2 == 0) // when di is even, all pixels in row i=h-di consider pixels being bottom to them
+			{
+				for (int j = 0; j < w; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i+1][j];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+			else // when di is odd, all pixels in row i=h-di consider pixels being bottom right to them
+			{
+				for (int j = 0; j < w - 1; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i + 1][j + 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 13 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转202.5°的方向，应该是从正下方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转202.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 13 starts");
+
+		for (int i = 0; i<h; ++i) // left image border
+		{
+			for (int k = 0; k<nd; ++k)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k<nd; ++k) // bottom image border
+		{
+			for (int j = 1; j<w; ++j)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int di = 2; di <= h; ++di)
+		{
+			int i = h - di; // the actual column index
+
+			if (di % 2 == 0) // when di is even, all pixels in row i=h-di consider pixels being bottom to them
+			{
+				for (int j = 0; j < w; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i + 1][j];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+			else // when di is odd, all pixels in row i=h-di consider pixels being bottom left to them
+			{
+				for (int j = 1; j < w - 1; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i + 1][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 14 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转247.5°的方向，应该是从正左方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转247.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 14 starts");
+
+		for (int i = 0; i < h; ++i) // left image border
+		{
+			for (int k = 0; k < nd; ++k)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k < nd; ++k) // bottom image border
+		{
+			for (int j = 1; j < w; ++j)
+			{
+				C_dir[k][h - 1][j] = DSI[k][h - 1][j];
+			}
+		}
+
+		for (int j=1; j<w; ++j)
+		{
+			if (j%2==1) // when j is odd, all pixels in col j consider pixels being left to them
+			{
+				for (int i = 0; i < h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			} 
+			else // when j is even, all pixels in col j consider pixels being bottom left to them
+			{
+				for (int i = 0; i < h-1; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i + 1][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 15 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转292.5°的方向，应该是从正左方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转292.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 15 starts");
+
+		for (int i = 0; i<h; ++i) // left image border
+		{
+			for (int k = 0; k<nd; ++k)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k<nd; ++k) // top image border
+		{
+			for (int j = 1; j<w; ++j)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int j = 1; j < w; ++j)
+		{
+			if (j % 2 == 1) // when j is odd, all pixels in col j consider pixels being left to them
+			{
+				for (int i = 0; i < h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+			else // when j is even, all pixels in col j consider pixels being top left to them
+			{
+				for (int i = 1; i < h; ++i)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
+
+		/*------------ 16 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转337.5°的方向，应该是从正上方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转337.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 16 starts");
+
+		for (int i = 0; i<h; ++i) // left image border
+		{
+			for (int k = 0; k<nd; ++k)
+			{
+				C_dir[k][i][0] = DSI[k][i][0];
+			}
+		}
+		for (int k = 0; k<nd; ++k) // top image border
+		{
+			for (int j = 1; j<w; ++j)
+			{
+				C_dir[k][0][j] = DSI[k][0][j];
+			}
+		}
+
+		for (int i=1; i<h; ++i)
+		{
+			if (i%2==1) // when i is odd, all pixels in row i consider pixels being top to them
+			{
+				for (int j=0; j<w; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			} 
+			else // when i is even, all pixels in row i consider pixels being top left to them
+			{
+				for (int j=1; j<w; ++j)
+				{
+					for (int k = 0; k < nd; ++k)
+					{
+						Lr_1[k] = C_dir[k][i - 1][j - 1];
+					}
+
+					CostAggalongOnePathforOnePixel_Step(j, i, nd, DSI, Lr_1, P1, P2);
+
+					for (int k = 0; k < nd; ++k)
+					{
+						C_dir[k][i][j] = Lr_1[k];
+					}
+				}
+			}
+		}
+
+		// add the 3D aggregated cost to the sum
+		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
 	}
 
 	BOOL bFoundNonneg = FALSE; // if the nonnegative value is found
