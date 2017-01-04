@@ -191,4 +191,9 @@
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="DeepVoid Codes\DeepVoid_CUDA.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
+  </ItemGroup>
 </Project>

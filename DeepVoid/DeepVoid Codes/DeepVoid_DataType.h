@@ -13,6 +13,97 @@
 #include "opencv2\xfeatures2d\nonfree.hpp"
 #include "opencv2\viz\vizcore.hpp"
 
+extern "C" void
+CUDA_GenerateDSI_BT(int w, int h,					// input: the width and height of stereo images
+					const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
+					const unsigned char * h_imgm,	// input: h*w, the rectified grayscale matching image
+					int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+					int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+					double * h_DSI,					// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+					int w_block,					// input: how many expected threads per row in a thread block
+					int h_block,					// input: how many expected threads per colomn in a thread block
+					int dir	= 0						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+					);
+
+extern "C" void
+CUDA_GenerateDSI(int w, int h,					// input: the width and height of stereo images
+				 int hw, int hh,				// input: the half width and half height of the support window
+				 const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
+				 const unsigned char * h_imgm,	// input: h*w, the rectified grayscale matching image
+				 int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+				 int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+				 double * h_DSI,				// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+				 int w_block,					// input: how many expected threads per row in a thread block
+				 int h_block,					// input: how many expected threads per colomn in a thread block
+				 int dir = 0,					// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+				 int costType = 0               // input: 0:BT,  1:ncc, 2:opencvncc
+				 );
+
+extern "C" void
+CUDA_CostAggregation_OneDir(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
+							const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
+							double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
+							double P1,					// input: constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+							double P2,					// input: a larger constant penalty for all larger disparity changes
+							int n_block,				// input: how many expected threads in a thread block
+							int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+							);
+
+extern "C" void
+CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
+								const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
+								double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
+								double P1,					// input: constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+								double P2,					// input: a larger constant penalty for all larger disparity changes
+								int n_block,				// input: how many expected threads in a thread block
+								int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+								);
+
+extern "C" void
+CUDA_AddVec_double(double * h_A,		// input & output: A[i] += B[i]
+				   const double * h_B,	// input: 
+				   int n,				// input: number of elements
+				   int nThreads			// input: number of threads in a thread block
+				   );
+
+extern "C" void
+CUDA_transpose_uchar(unsigned char * h_B,		// output:B = A'
+					 const unsigned char * h_A,	// input: A 
+					 int w, int h,				// input: width and height of A
+					 int nThreads				// input: m, the tile or thread block is m*m
+					 );
+
+extern "C" void
+CUDA_transpose_tile_uchar(unsigned char * h_B,			// output:B = A'
+						  const unsigned char * h_A,	// input: A 
+						  int w, int h,					// input: width and height of A
+						  int nThreads					// input: m, the tile or thread block is m*m
+						  );
+
+// 20170102, 3D thread block
+extern "C" void
+CUDA_GenerateDSI_new(int w, int h,					// input: the width and height of stereo images
+					 int hw, int hh,				// input: the half width and half height of the support window
+					 const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
+					 const unsigned char * h_imgm,	// input: h*w, the rectified grayscale matching image
+					 int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+					 int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+					 double * h_DSI,				// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+					 int w_block,					// input: how many expected threads per row in a thread block
+					 int h_block,					// input: how many expected threads per colomn in a thread block
+					 int k_block,					// input: how many expected threads per pillar in a thread block
+					 int nTile,						// input: m, the transpose tile or thread block is m*m
+					 int dir = 0,					// input: 0:l2r. 1:r2l. 2:u2b. 3:b2u
+					 int costType = 0               // input: 0:BT,  1:ncc, 2:opencvncc
+					 );
+
+//extern "C" void
+//forCUDA_ShowInfo(const char * info)
+//{
+//	CString str(info);
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(str);
+//}
+
 using namespace std;
 using namespace cv;
 

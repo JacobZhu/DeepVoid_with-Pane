@@ -7292,8 +7292,17 @@ void CDeepVoidApp::OnStereo()
 					}
 
 					Mat mDI;
-					SemiGlobalMatching(rimg0_gray,rimg1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
-						isVerticalStereo,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
+
+					m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("SGM starts!");
+
+ 					/*SemiGlobalMatching(rimg0_gray,rimg1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
+ 						isVerticalStereo,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);*/
+
+					// CUDA version
+					SemiGlobalMatching_CUDA(rimg0_gray, rimg1_gray, m_minDisparity, m_maxDisparity, m_P1_ZZKSGM, m_P2_ZZKSGM, mDI,
+						isVerticalStereo, paths, m_threshConstCheck_ZZKSGM, bSubPixRefine, 5, 5, 1, 32);
+
+					m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("SGM ends!");
 
 //					FILE * fp = fopen("C:\\Users\\DeepVoid\\Desktop\\point cloud by SGM (ZZK).txt", "w");
 					FILE * fp = fopen("E:\\results\\point cloud by SGM (ZZK).txt", "w");
@@ -11434,48 +11443,48 @@ void CDeepVoidApp::On3dreconstructionDensereconstruction()
 	// TODO: Add your command handler code here
 	AfxBeginThread(DenseReconstruction, this, THREAD_PRIORITY_NORMAL);
 
-//	m_wnd3d.spinOnce();
-//
-//	wrd3d.showWidget("Coordinate Widget", viz::WCoordinateSystem());
-//
-//	/// Let's assume camera has the following properties
-//	Point3d cam_pos(2.0f, 0.0f, 0.0f), cam_focal_point(3.0f, 0.0f, 0.0f), cam_y_dir(-2.0f, -1.0f, 0.0f);
-//
-//	/// We can get the pose of the cam using makeCameraPose
-//	Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
-//
-//	Mat image = imread("C:\\Users\\DeepV\\Pictures\\DSC_1557_edited.JPG", CV_LOAD_IMAGE_UNCHANGED);
-//
-//	double width = image.cols;
-//	double height = image.rows;
-//
-//	Matx33d K;
-//	K(0, 0) = K(1, 1) = 7500;
-//	K(0, 2) = (width - 1)*0.5;
-//	K(1, 2) = (height - 1)*0.5;
-//	K(2, 2) = 1;
-//
-//	viz::WCameraPosition cpw(0.5); // Coordinate axes
-//	viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.223599), 0.5); // Camera frustum
-//	viz::WCameraPosition cpw_image(K,image);
-//	wrd3d.showWidget("CPW", cpw, cam_pose);
-////	wrd3d.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose); 
-//	wrd3d.showWidget("CPW_FRUSTUM", cpw_image, cam_pose);
-//
-//	Mat XYZs(1, 5, CV_64FC3);
-//	XYZs.at<Vec3d>(0, 0).val[0] = 0;	XYZs.at<Vec3d>(0, 0).val[1] = 1;	XYZs.at<Vec3d>(0, 0).val[2] = 1;
-//	XYZs.at<Vec3d>(0, 1).val[0] = 0;	XYZs.at<Vec3d>(0, 1).val[1] = 0;	XYZs.at<Vec3d>(0, 1).val[2] = 1;
-//	XYZs.at<Vec3d>(0, 2).val[0] = 1;	XYZs.at<Vec3d>(0, 2).val[1] = 1;	XYZs.at<Vec3d>(0, 2).val[2] = 2;
-//	XYZs.at<Vec3d>(0, 3).val[0] = 2;	XYZs.at<Vec3d>(0, 3).val[1] = 2;	XYZs.at<Vec3d>(0, 3).val[2] = 1;
-//	XYZs.at<Vec3d>(0, 4).val[0] = 2;	XYZs.at<Vec3d>(0, 4).val[1] = 3;	XYZs.at<Vec3d>(0, 4).val[2] = 0;
-//	viz::WCloud cld(XYZs);
-//	wrd3d.showWidget("cloud", cld);
-//
-//	image.release();
-//
-////	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
-//
-//	wrd3d.spinOnce();
-//
-////	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+// 	m_wnd3d.spinOnce();
+// 
+// 	wrd3d.showWidget("Coordinate Widget", viz::WCoordinateSystem());
+// 
+// 	/// Let's assume camera has the following properties
+// 	Point3d cam_pos(2.0f, 0.0f, 0.0f), cam_focal_point(3.0f, 0.0f, 0.0f), cam_y_dir(-2.0f, -1.0f, 0.0f);
+// 
+// 	/// We can get the pose of the cam using makeCameraPose
+// 	Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
+// 
+// 	Mat image = imread("C:\\Users\\DeepV\\Pictures\\DSC_1557_edited.JPG", CV_LOAD_IMAGE_UNCHANGED);
+// 
+// 	double width = image.cols;
+// 	double height = image.rows;
+// 
+// 	Matx33d K;
+// 	K(0, 0) = K(1, 1) = 7500;
+// 	K(0, 2) = (width - 1)*0.5;
+// 	K(1, 2) = (height - 1)*0.5;
+// 	K(2, 2) = 1;
+// 
+// 	viz::WCameraPosition cpw(0.5); // Coordinate axes
+// 	viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.223599), 0.5); // Camera frustum
+// 	viz::WCameraPosition cpw_image(K,image);
+// 	wrd3d.showWidget("CPW", cpw, cam_pose);
+// //	wrd3d.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose); 
+// 	wrd3d.showWidget("CPW_FRUSTUM", cpw_image, cam_pose);
+// 
+// 	Mat XYZs(1, 5, CV_64FC3);
+// 	XYZs.at<Vec3d>(0, 0).val[0] = 0;	XYZs.at<Vec3d>(0, 0).val[1] = 1;	XYZs.at<Vec3d>(0, 0).val[2] = 1;
+// 	XYZs.at<Vec3d>(0, 1).val[0] = 0;	XYZs.at<Vec3d>(0, 1).val[1] = 0;	XYZs.at<Vec3d>(0, 1).val[2] = 1;
+// 	XYZs.at<Vec3d>(0, 2).val[0] = 1;	XYZs.at<Vec3d>(0, 2).val[1] = 1;	XYZs.at<Vec3d>(0, 2).val[2] = 2;
+// 	XYZs.at<Vec3d>(0, 3).val[0] = 2;	XYZs.at<Vec3d>(0, 3).val[1] = 2;	XYZs.at<Vec3d>(0, 3).val[2] = 1;
+// 	XYZs.at<Vec3d>(0, 4).val[0] = 2;	XYZs.at<Vec3d>(0, 4).val[1] = 3;	XYZs.at<Vec3d>(0, 4).val[2] = 0;
+// 	viz::WCloud cld(XYZs);
+// 	wrd3d.showWidget("cloud", cld);
+// 
+// 	image.release();
+// 
+// //	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+// 
+// 	wrd3d.spinOnce();
+// 
+// //	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
 }

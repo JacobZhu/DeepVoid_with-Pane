@@ -3,6 +3,66 @@
 #include "DeepVoid.h"
 #include "MainFrm.h"
 
+//extern "C" void
+//CUDA_GenerateDSI_BT(int w, int h,					// input: the width and height of stereo images
+//					const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
+//					const unsigned char * h_imgm,	// input: h*w, the rectified grayscale matching image
+//					int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+//					int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+//					double * h_DSI,					// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+//					int w_block,					// input: how many expected threads per row in a thread block
+//					int h_block,					// input: how many expected threads per colomn in a thread block
+//					int dir	= 0						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+//					);
+//
+//extern "C" void
+//CUDA_GenerateDSI(int w, int h,					// input: the width and height of stereo images
+//				 int hw, int hh,				// input: the half width and half height of the support window
+//				 const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
+//				 const unsigned char * h_imgm,	// input: h*w, the rectified grayscale matching image
+//				 int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+//				 int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+//				 double * h_DSI,				// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+//				 int w_block,					// input: how many expected threads per row in a thread block
+//				 int h_block,					// input: how many expected threads per colomn in a thread block
+//				 int dir = 0,					// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+//				 int costType = 0               // input: 0:BT,  1:ncc, 2:opencvncc
+//				 );
+//
+//extern "C" void
+//CUDA_CostAggregation_OneDir(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
+//							const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
+//							double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
+//							double P1,					// input: constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+//							double P2,					// input: a larger constant penalty for all larger disparity changes
+//							int n_block,				// input: how many expected threads in a thread block
+//							int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+//							);
+//
+//extern "C" void
+//CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
+//								const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
+//								double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
+//								double P1,					// input: constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+//								double P2,					// input: a larger constant penalty for all larger disparity changes
+//								int n_block,				// input: how many expected threads in a thread block
+//								int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+//								);
+//
+//extern "C" void
+//CUDA_AddVec_double(double * h_A,		// input & output: A[i] += B[i]
+//				   const double * h_B,	// input: 
+//				   int n,				// input: number of elements
+//				   int nThreads			// input: number of threads in a thread block
+//				   );
+//
+extern "C" void
+forCUDA_ShowInfo(const char * info)
+{
+	CString str(info);
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(str);
+}
+
 // Quadratic curve fitting
 void DeepVoid::QuadCurveFit(double * x, double * f,					// 输入：所有采样点的 x 和 f 值
 							int n,									// 输入：采样点个数
@@ -187,6 +247,215 @@ double DeepVoid::ComputeMatchingCostforOnePixel_y_BT(int x, int y,		// input: th
 	return ffm;
 }
 
+// compute the matching cost based on normalized cross-correlation (ncc).
+// disparity is along x-axis
+double DeepVoid::ComputeMatchingCostforOnePixel_x_ncc(int x, int y,		// the coordinates in base image of the checked pixel
+													  int d,			// the disparity to be checked
+													  int w, int h,		// the width and height of stereo images
+													  int hw, int hh,	// the half width and half height of the support window
+													  BYTE ** imgb,		// input: h*w, the rectified grayscale base image
+													  BYTE ** imgm		// input: h*w, the rectified grayscale matching image
+													  ) 
+{
+	// if the point to be checked xm = x-d is out of border of the matching image,
+	// the matching cost is designated with an invalid number, e.g. negative number
+	// if d>0, then xm is on the left of x, otherwise, on the right of x
+	int xm = x-d;
+
+	if ((y-hh) < 0 || (y+hh) >= h || (x-hw) < 0 || (x+hw) >= w || (xm-hw) < 0 || (xm+hw) >= w)
+	{
+		return -1;
+	}
+
+	int n = (2 * hh + 1)*(2 * hw + 1);
+	double inv_n = 1.0 / n;
+
+	//////////////////////////////////////////////////////////////////////////
+	// compute the means of each support windows
+	double sum_b = 0;
+	double sum_m = 0;
+
+	for (int i = -hh; i <= hh; ++i)
+	{
+		for (int j = -hw; j <= hw; ++j)
+		{
+			sum_b += imgb[y + i][x + j];
+			sum_m += imgm[y + i][xm + j];
+		}
+	}
+
+	double mean_b = sum_b*inv_n;
+	double mean_m = sum_m*inv_n;
+	//////////////////////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////////////////////
+	// compute the standard deviation and final ncc value
+	double sum_bijmij = 0;
+	double sum_bijbij = 0;
+	double sum_mijmij = 0;
+
+	for (int i = -hh; i <= hh; ++i)
+	{
+		for (int j = -hw; j <= hw; ++j)
+		{
+			double bij = imgb[y + i][x + j] - mean_b;
+			double mij = imgm[y + i][xm + j] - mean_m;
+
+			sum_bijmij += bij*mij;
+			sum_bijbij += bij*bij;
+			sum_mijmij += mij*mij;
+		}
+	}
+
+	double bbmm = sum_bijbij * sum_mijmij;
+
+	double sqrt_bbmm = sqrt(bbmm);
+	double rsqrt_bbmm = 1.0 / sqrt_bbmm;
+
+	if (isinf(rsqrt_bbmm))
+	{
+		// sum_ab is zero, which means either array a or b or both are flat (all elements are the same)
+		return -1;
+	}
+	else
+	{
+		double ncc = 1 - sum_bijmij*rsqrt_bbmm; // 0<=val<=2
+
+		return ncc;
+	}
+	//////////////////////////////////////////////////////////////////////////
+}
+
+// compute the matching cost based on normalized cross-correlation (ncc).
+// disparity is along y-axis
+double DeepVoid::ComputeMatchingCostforOnePixel_y_ncc(int x, int y,		// input: the coordinates in base image of the checked pixel
+													  int d,			// input: the disparity to be checked
+													  int w, int h,		// input: the width and height of stereo images
+													  int hw, int hh,	// the half width and half height of the support window
+													  BYTE ** imgb,		// input: h*w, the rectified grayscale base image
+												      BYTE ** imgm		// input: h*w, the rectified grayscale matching image
+													  )
+{
+	// if the point to be checked ym = y-d is out of border of the matching image,
+	// the matching cost is designated with an invalid number, e.g. negative number
+	// if d>0, then ym is on the top of y, otherwise, on the bottom of y
+	int ym = y - d;
+
+	if ((x - hw) < 0 || (x + hw) >= w || (y - hh) < 0 || (y + hh) >= h || (ym - hh) < 0 || (ym + hh) >= h)
+	{
+		return -1;
+	}
+
+	int n = (2 * hh + 1)*(2 * hw + 1);
+	double inv_n = 1.0 / n;
+
+	//////////////////////////////////////////////////////////////////////////
+	// compute the means of each support windows
+	double sum_b = 0;
+	double sum_m = 0;
+
+	for (int i = -hh; i <= hh; ++i)
+	{
+		for (int j = -hw; j <= hw; ++j)
+		{
+			sum_b += imgb[y + i][x + j];
+			sum_m += imgm[ym + i][x + j];
+		}
+	}
+
+	double mean_b = sum_b*inv_n;
+	double mean_m = sum_m*inv_n;
+	//////////////////////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////////////////////
+	// compute the standard deviation and final ncc value
+	double sum_bijmij = 0;
+	double sum_bijbij = 0;
+	double sum_mijmij = 0;
+
+	for (int i = -hh; i <= hh; ++i)
+	{
+		for (int j = -hw; j <= hw; ++j)
+		{
+			double bij = imgb[y + i][x + j] - mean_b;
+			double mij = imgm[ym + i][x + j] - mean_m;
+
+			sum_bijmij += bij*mij;
+			sum_bijbij += bij*bij;
+			sum_mijmij += mij*mij;
+		}
+	}
+
+	double bbmm = sum_bijbij * sum_mijmij;
+
+	double sqrt_bbmm = sqrt(bbmm);
+	double rsqrt_bbmm = 1.0 / sqrt_bbmm;
+
+	if (isinf(rsqrt_bbmm))
+	{
+		// sum_ab is zero, which means either array a or b or both are flat (all elements are the same)
+		return -1;
+	}
+	else
+	{
+		double ncc = 1 - sum_bijmij*rsqrt_bbmm; // 0<=val<=2
+
+		return ncc;
+	}
+	//////////////////////////////////////////////////////////////////////////
+}
+
+// 20161207, computation of matching cost based on NCC (normalized cross-correlation)
+// return 0<=val<=2, or -1 if either a or b or both are flat (all array elements are the same)
+// ncc(a,b)=ncc(a,kb) (k>0), ncc(a,b)=-ncc(a,kb) (k<0), ncc(a,b)=ncc(a,k+b)
+double DeepVoid::matchingcost_ncc(const double * a, const double * b, int n)
+{
+	double sum_a = 0;
+	double sum_b = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		sum_a += a[i];
+		sum_b += b[i];
+	}
+
+	double inv_n = 1.0 / n;
+
+	double mean_a = sum_a * inv_n;
+	double mean_b = sum_b * inv_n;
+
+	double sum_ai_a_bi_b = 0;
+	double sum_ai_a_ai_a = 0;
+	double sum_bi_b_bi_b = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double ai_a = a[i] - mean_a;
+		double bi_b = b[i] - mean_b;
+
+		sum_ai_a_bi_b += ai_a*bi_b; // sum(ai-a)(bi-b)
+		sum_ai_a_ai_a += ai_a*ai_a; // sum(ai-a)(ai-a), the variance or standard deviation of array a
+		sum_bi_b_bi_b += bi_b*bi_b; // sum(bi-b)(bi-b), the variance or standard deviation of array b
+	}
+
+	double sum_ab = sum_ai_a_ai_a * sum_bi_b_bi_b;
+
+	double sqrt_sum_ab = sqrt(sum_ab);
+	double rsqrt_sum_ab = 1.0 / sqrt_sum_ab;
+
+	if (isinf(rsqrt_sum_ab))
+	{
+		// sum_ab is zero, which means either array a or b or both are flat (all elements are the same)
+		return -1;
+	}
+	else
+	{
+		double ncc = 1 - sum_ai_a_bi_b*rsqrt_sum_ab; // 0<=val<=2
+
+		return ncc;
+	}
+}
+
 // Generate the Disparity Space Image (DSI) based on the pixelwise matching
 // cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
 void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of stereo images
@@ -247,75 +516,168 @@ void DeepVoid::GenerateDSI_BT(int w, int h,			// input: the width and height of 
 							  int dir /*= 0*/		// 0:l2r. 1:r2l. 2:u2b. 3:b2u
 							  )
 {
-	// l2r
-	if (0==dir)
-	{
-		for (int i = 0; i<h; i++)
-		{
-			/*CString strInfo;
-			strInfo.Format("generate DSI for row %04d", i);
-			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
-			for (int j = 0; j<w; j++)
-			{
-				for (int k = dmin; k <= dmax; k++)
-				{
-					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, k, w, h, imgb, imgm);
-				}
-			}
-		}
-	}
-	// r2l
-	else if (1==dir)
-	{
-		for (int i = 0; i<h; i++)
-		{
-			/*CString strInfo;
-			strInfo.Format("generate DSI for row %04d", i);
-			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
-			for (int j = 0; j<w; j++)
-			{
-				for (int k = dmin; k <= dmax; k++)
-				{
-					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, -k, w, h, imgm, imgb);
-				}
-			}
-		}
-	}
-	// u2b
-	else if (2 == dir)
-	{
-		for (int i = 0; i<h; i++)
-		{
-			/*CString strInfo;
-			strInfo.Format("generate DSI for row %04d", i);
-			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
-			for (int j = 0; j<w; j++)
-			{
-				for (int k = dmin; k <= dmax; k++)
-				{
-					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, k, w, h, imgb, imgm);
-				}
-			}
-		}
-	}
-	// b2u
-	else
-	{
-		for (int i = 0; i<h; i++)
-		{
-			/*CString strInfo;
-			strInfo.Format("generate DSI for row %04d", i);
-			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
-			for (int j = 0; j<w; j++)
-			{
-				for (int k = dmin; k <= dmax; k++)
-				{
-					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, -k, w, h, imgm, imgb);
-				}
-			}
-		}
-	}
+	int hw = 13;
+	int hh = 13;
+	
+ 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("GenerateDSI_BT starts");
+ 
+ 	// l2r
+ 	if (0==dir)
+ 	{
+ 		for (int i = 0; i<h; i++)
+ 		{
+ 			/*CString strInfo;
+ 			strInfo.Format("generate DSI for row %04d", i);
+ 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+ 			for (int j = 0; j<w; j++)
+ 			{
+ 				for (int k = dmin; k <= dmax; k++)
+ 				{
+ 					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, k, w, h, imgb, imgm);
+ //					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_ncc(j, i, k, w, h, hw, hh, imgb, imgm);
+ 				}
+ 			}
+ 		}
+ 	}
+ 	// r2l
+ 	else if (1==dir)
+ 	{
+ 		for (int i = 0; i<h; i++)
+ 		{
+ 			/*CString strInfo;
+ 			strInfo.Format("generate DSI for row %04d", i);
+ 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+ 			for (int j = 0; j<w; j++)
+ 			{
+ 				for (int k = dmin; k <= dmax; k++)
+ 				{
+ 					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_BT(j, i, -k, w, h, imgm, imgb);
+ //					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_x_ncc(j, i, -k, w, h, hw, hh, imgm, imgb);
+ 				}
+ 			}
+ 		}
+ 	}
+ 	// u2b
+ 	else if (2 == dir)
+ 	{
+ 		for (int i = 0; i<h; i++)
+ 		{
+ 			/*CString strInfo;
+ 			strInfo.Format("generate DSI for row %04d", i);
+ 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+ 			for (int j = 0; j<w; j++)
+ 			{
+ 				for (int k = dmin; k <= dmax; k++)
+ 				{
+ 					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, k, w, h, imgb, imgm);
+ //					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_ncc(j, i, k, w, h, hw, hh, imgb, imgm);
+ 				}
+ 			}
+ 		}
+ 	}
+ 	// b2u
+ 	else
+ 	{
+ 		for (int i = 0; i<h; i++)
+ 		{
+ 			/*CString strInfo;
+ 			strInfo.Format("generate DSI for row %04d", i);
+ 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);*/
+ 			for (int j = 0; j<w; j++)
+ 			{
+ 				for (int k = dmin; k <= dmax; k++)
+ 				{
+ 					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_BT(j, i, -k, w, h, imgm, imgb);
+ //					DSI[k - dmin][i][j] = ComputeMatchingCostforOnePixel_y_ncc(j, i, -k, w, h, hw, hh, imgm, imgb);
+ 				}
+ 			}
+ 		}
+ 	}
+ 
+ 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("GenerateDSI_BT ends");
+
+
+
+//	int nd = dmax - dmin + 1;
+//	int nPixels = w*h;
+//
+//	int sizeUCHAR = sizeof(unsigned char);
+//	int sizeCHAR = sizeof(char);
+//
+//	unsigned char * h_imgb = (unsigned char*)malloc(nPixels * sizeof(unsigned char));
+//	unsigned char * h_imgm = (unsigned char*)malloc(nPixels * sizeof(unsigned char));
+//	double * h_DSI = (double *)malloc(nPixels * nd * sizeof(double));
+//
+//	for (int i = 0; i < h; ++i)
+//	{
+//		for (int j = 0; j < w; ++j)
+//		{
+//			h_imgb[i*w + j] = (unsigned char)imgb[i][j];
+//			h_imgm[i*w + j] = (unsigned char)imgm[i][j];
+//		}
+//	}
+//
+//	for (int i = 0; i < h; ++i)
+//	{
+//		for (int j = 0; j < w; ++j)
+//		{
+//			for (int k = 0; k < nd; ++k)
+//			{
+//				h_DSI[k*nPixels + i*w + j] = DSI[k][i][j];
+//			}
+//		}
+//	}
+//
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("CUDA_GenerateDSI_BT starts");
+//
+////	CUDA_GenerateDSI_BT(w, h, h_imgb, h_imgm, dmin, dmax, h_DSI, 32, 32, dir);
+//	CUDA_GenerateDSI(w, h, hw, hh, h_imgb, h_imgm, dmin, dmax, h_DSI, 32, 32, dir, 0);
+//
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("CUDA_GenerateDSI_BT ends");
+//
+//	for (int i = 0; i < h; ++i)
+//	{
+//		for (int j = 0; j < w; ++j)
+//		{
+//			for (int k = 0; k < nd; ++k)
+//			{
+//				DSI[k][i][j] = h_DSI[k*nPixels + i*w + j];
+//			}
+//		}
+//	}
+//
+//	free(h_imgb);
+//	free(h_imgm);
+//	free(h_DSI);
 }
+
+//// 20161221, CUDA GPU parallel version
+//// 20161115, four directions: 0:left to right. 1:right to left. 2:up to bottom. 3:bottom to up
+//// Generate the Disparity Space Image (DSI) based on the pixelwise matching
+//// cost proposed in <Depth Discontinuities by Pixel-to-Pixel Stereo> by S. Birchfield and C. Tomasi
+//void DeepVoid::GenerateDSI_BT_CUDA(int w, int h,				// input: the width and height of stereo images
+//								   const unsigned char * imgb,	// input: h*w, the rectified grayscale base image
+//								   const unsigned char * imgm,	// input: h*w, the rectified grayscale matching image
+//								   int dmin,					// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+//								   int dmax,					// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+//								   double * DSI,				// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+//								   int hw /*= 1*/,				// input: the half width of the support window for cost computation
+//								   int hh /*= 1*/,				// input: the half height of the support window for cost computation
+//								   int costType /*= 0*/,		// input: the cost type, 0:BT, 1:ncc
+//								   int dir /*= 0*/,				// 0:l2r. 1:r2l. 2:u2b. 3:b2u
+//								   int w_threads /*= 32*/,		// input: the number of threads per row of the thread block
+//								   int h_threads /*= 32*/		// input: the number of threads per column of the thread block
+//								   )
+//{
+//	int nd = dmax - dmin + 1;
+//	int nPixels = w*h;
+//
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("CUDA_GenerateDSI_BT starts");
+//
+//	CUDA_GenerateDSI(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, w_threads, h_threads, dir, costType);
+//
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("CUDA_GenerateDSI_BT ends");
+//}
 
 // Cost aggregation along one path for one given pixel based on scanline
 // optimizaiton or dynamic programming?
@@ -1016,6 +1378,188 @@ void DeepVoid::SemiGlobalMatching(int w, int h,						// input: the width and hei
 	delete[] DSI;
 }
 
+// 20161221, CUDA GPU parallel version
+// 20161117, new version of SGM, can handle both horizontal and vertical image layout, and can also handle negative disparity.
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void DeepVoid::SemiGlobalMatching_CUDA(int w, int h,					// input: the width and height of stereo images
+									   const unsigned char * imgb,		// input: h*w, the rectified grayscale base image
+									   const unsigned char * imgm,		// input: h*w, the rectified grayscale matching image
+									   int dmin,						// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+									   int dmax,						// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+									   double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+									   double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+									   double * DI,						// output:h*w, the disparity image
+									   bool bVertical /*= false*/,		// input: if the image layout is vertical or not
+									   SGM_PATHS nDir /*= SGM_PATHS_8*/,// input: the amount of scanlines*/
+									   int constcCheck /*= -1*/,		// input: if matching is conducted reversely, i.e. treat the match image as a base image and vice versa.
+									   bool bSubPix, /*= true*/			// input: if sub pixel interpolation for sub pixel disparities is applied
+									   int hw /*= 1*/,					// input: the half width of the support window for computation of cost
+									   int hh /*= 1*/,					// input: the half height of the support window for computation of cost
+									   int costType /*= 0*/,			// input: the cost type, 0:BT, 1:ncc
+									   int nThreads_oneDir /*= 32*/		// input: how many threads contained in a vector thread block or in one direction of a 2D or 3D thread block
+									   )
+{
+	// number of disparities
+	int nd = dmax - dmin + 1;
+
+	// initialize DSI matrix, which is h*w*nd
+	int imgSize = w*h;
+	int cubeSize = imgSize*nd;
+
+	double * DSI = new double [cubeSize];
+	memset(DSI, 0, cubeSize * sizeof(double));
+
+	// generate the DSI based on some certain matching cost measure
+	if (!bVertical) // honrizontal image layout
+	{
+//		CUDA_GenerateDSI(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, nThreads_oneDir, nThreads_oneDir, 0, costType);
+		CUDA_GenerateDSI_new(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, 8, 4, 32, 32, 0, costType);
+	}
+	else // vertical image layout
+	{
+//		CUDA_GenerateDSI(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, nThreads_oneDir, nThreads_oneDir, 2, costType);
+		CUDA_GenerateDSI_new(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, 8, 4, 32, 32, 2, costType);
+	}
+
+//	SemiGlobalMatching_givenDSI_CUDA(w, h, dmin, dmax, DSI, P1, P2, DI, nDir, bSubPix, nThreads_oneDir);
+	SemiGlobalMatching_givenDSI_CUDA_new(w, h, dmin, dmax, DSI, P1, P2, DI, nDir, bSubPix, nThreads_oneDir);
+
+	// if this var is nonnegative, then uniqueness constraint is enforced by consistency check to determine occlusions and false matches
+	if (constcCheck >= 0)
+	{
+		// reset all elements of DSI to 0
+		memset(DSI, 0, cubeSize * sizeof(double));
+
+		// a new disparity image for matching image
+		double * DI_m = new double[imgSize];
+		memset(DI_m, 0, imgSize * sizeof(double));
+
+		// generate the reverse matching cost DSI
+		if (!bVertical) // honrizontal image layout
+		{
+//			CUDA_GenerateDSI(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, nThreads_oneDir, nThreads_oneDir, 1, costType);
+			CUDA_GenerateDSI_new(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, 8, 4, 32, 32, 1, costType);
+		}
+		else // vertical image layout
+		{
+//			CUDA_GenerateDSI(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, nThreads_oneDir, nThreads_oneDir, 3, costType);
+			CUDA_GenerateDSI_new(w, h, hw, hh, imgb, imgm, dmin, dmax, DSI, 8, 4, 32, 32, 3, costType);
+		}
+
+		// run semi global matching again for matching image
+//		SemiGlobalMatching_givenDSI_CUDA(w, h, dmin, dmax, DSI, P1, P2, DI_m, nDir, bSubPix, nThreads_oneDir);
+		SemiGlobalMatching_givenDSI_CUDA_new(w, h, dmin, dmax, DSI, P1, P2, DI_m, nDir, bSubPix, nThreads_oneDir);
+
+		// determine which pixels are occluded which are mismatched
+		bool bOccluded;
+		int dp, q;
+
+		if (!bVertical) // horizontal image layout
+		{
+			for (int i = 0; i < h; ++i)
+			{
+				for (int j = 0; j < w; ++j)
+				{
+					double original_dp = DI[i*w + j];
+
+					if (isnan(original_dp)) // if the computed disparity is invalid then continue
+					{
+						continue;
+					}
+
+					dp = FTOI(original_dp); // round the subpixel disparity
+
+					q = j - dp; // the corresponding point in matching image
+
+					if (q<0 || q>(w-1) || abs(dp - FTOI(DI_m[i*w + q])) > constcCheck) // if this is satisfied means that (i,j) is a occluded point or a mismatched point
+					{
+						bOccluded = true;
+						for (int k = dmin; k <= dmax; k++)
+						{
+							int qq = j - k;
+
+							if (qq<0 || qq>(w-1)) // cross the width image border
+							{
+								break;
+							}
+							double d_tmp = DI_m[i*w + qq];
+							if (fabs(d_tmp - k) < 1.0E-6)
+							{
+								// according to Hirshmuller, if the epipolar line of a mismatched point intersect the disparity function Dm 
+								// whereas the epipolar line of a occluded point does not intersect the disparity function Dm
+								bOccluded = false;
+								break;
+							}
+						}
+						if (bOccluded)
+						{
+							DI[i*w + j] = NAN; // occluded
+						}
+						else
+						{
+							DI[i*w + j] = INFINITY; // mismatched
+						}
+					}
+				}
+			}
+		} 
+		else // vertical image layout
+		{
+			for (int i = 0; i < h; ++i)
+			{
+				for (int j = 0; j < w; ++j)
+				{
+					double original_dp = DI[i*w + j];
+
+					if (isnan(original_dp)) // if the computed disparity is invalid then continue
+					{
+						continue;
+					}
+
+					dp = FTOI(original_dp); // round the subpixel disparity
+
+					q = i - dp; // the corresponding point in matching image
+
+					if (q<0 || q>(h-1) || abs(dp - FTOI(DI_m[q*w+j])) > constcCheck) // if this is satisfied means that (i,j) is a occluded point or a mismatched point
+					{
+						bOccluded = true;
+						for (int k = dmin; k <= dmax; k++)
+						{
+							int qq = i-k;
+
+							if (qq<0 || qq>(h-1)) // cross the height image border
+							{
+								break;
+							}
+							double d_tmp = DI_m[qq*w + j];
+							if (fabs(d_tmp - k) < 1.0E-6)
+							{
+								// according to Hirshmuller, if the epipolar line of a mismatched point intersect the disparity function Dm 
+								// whereas the epipolar line of a occluded point does not intersect the disparity function Dm
+								bOccluded = false;
+								break;
+							}
+						}
+						if (bOccluded)
+						{
+							DI[i*w + j] = NAN; // occluded
+						}
+						else
+						{
+							DI[i*w + j] = INFINITY; // mismatched
+						}
+					}
+				}
+			}
+		}
+		
+		delete[] DI_m;
+	}
+
+	// release
+	delete[] DSI;
+}
+
 // Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
 void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width and height of stereo images
 										   BYTE ** imgb,					// input: h*w, the rectified grayscale base image
@@ -1516,9 +2060,11 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 			}
 		}
 
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
-
+		
 		/*------------ 02 direction --------------------------------------------------------------------------*/
 		// dir = [-1, 0] i.e. along negative direction of x-axis or the 180 direction
 		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
@@ -1547,6 +2093,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 				}
 			}
 		}
+
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
 
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
@@ -1580,6 +2128,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 			}
 		}
 
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
 
@@ -1611,6 +2161,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 				}
 			}
 		}
+
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
 
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
@@ -1651,6 +2203,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 			}
 		}
 
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
 
@@ -1689,6 +2243,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 				}
 			}
 		}
+
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
 
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
@@ -1729,6 +2285,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 			}
 		}
 
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
 
@@ -1767,6 +2325,8 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 				}
 			}
 		}
+
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
 
 		// add the 3D aggregated cost to the sum
 		Add3DArrays_double(w, h, nd, S_dirs, C_dir);
@@ -2340,6 +2900,554 @@ void DeepVoid::SemiGlobalMatching_givenDSI(int w, int h,					// input: the width
 	delete[] S_dirs;
 
 	delete[] Lr_1;
+}
+
+// 20161116, no images are concerned, only the DSI
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void DeepVoid::SemiGlobalMatching_givenDSI_CUDA(int w, int h,						// input: the width and height of stereo images
+												int dmin,							// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+												int dmax,							// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+												const double * DSI,					// input: h*w*nd, the disparity space image containing all the matching cost for all pixels
+												double P1,							// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+												double P2,							// input: scalar, a larger constant penalty for all larger disparity changes
+												double * DI,						// output:h*w, the disparity image
+												SGM_PATHS nDir/* = SGM_PATHS_8*/,	// input: the amount of scanlines*/
+												bool bSubPix /*= true*/,			// input: if sub pixel interpolation for sub pixel disparities is applied
+												int nThreads /*= 32*/				// input: the number of threads in a thread block
+												)
+{
+	// compute all disparity levels
+	int nd = dmax - dmin + 1;
+
+	int * alld = new int[nd];
+
+	for (int i = 0; i < nd; i++)
+	{
+		alld[i] = dmin + i;
+	}
+
+	// initialize C_dir matrix, which is h*w*nd, it's the 3D aggregated costs along each direction 
+	// initialize S_dirs matrix, which is h*w*nd, it's the sum of all the 3D aggregated costs along all direction
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("apply new memory");
+
+	int imgSize = w*h;
+	int cubeSize = imgSize * nd;
+
+	double * h_C = new double[cubeSize];
+	double * h_SC = new double[cubeSize];
+
+	memset(h_C, 0, cubeSize * sizeof(double));
+	memset(h_SC, 0, cubeSize * sizeof(double));
+
+	/*------------ 01 direction --------------------------------------------------------------------------*/
+	// dir = [1, 0] i.e. along positive direction of x-axis or the 0 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 0);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 02 direction --------------------------------------------------------------------------*/
+	// dir = [-1, 0] i.e. along negative direction of x-axis or the 180 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 1);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 03 direction --------------------------------------------------------------------------*/
+	// dir = [0, 1] i.e. along positive direction of y-axis or the -90 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 03 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 2);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 04 direction --------------------------------------------------------------------------*/
+	// dir = [0, -1] i.e. along negative direction of y-axis or the 90 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 04 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 3);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 05 direction --------------------------------------------------------------------------*/
+	// dir = [1, 1] i.e. along the -45 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 05 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 4);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 06 direction --------------------------------------------------------------------------*/
+	// dir = [-1, -1] i.e. along the 135 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 06 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 5);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 07 direction --------------------------------------------------------------------------*/
+	// dir = [1, -1] i.e. along the 45 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 07 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 6);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+	/*------------ 08 direction --------------------------------------------------------------------------*/
+	// dir = [-1, 1] i.e. along the -135 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 08 starts");
+	
+	CUDA_CostAggregation_OneDir(w, h, nd, DSI, h_C, P1, P2, nThreads, 7);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+	if (SGM_PATHS_16 == nDir)
+	{
+		/*------------ 09 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转22.5°的方向，应该是从正上方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转22.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 09 starts");
+		
+
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 10 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转67.5°的方向，应该是从正右方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转67.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 10 starts");
+		
+
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 11 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转112.5°的方向，应该是从正右方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转112.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 11 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 12 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转157.5°的方向，应该是从正下方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转157.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 12 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 13 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转202.5°的方向，应该是从正下方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转202.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 13 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 14 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转247.5°的方向，应该是从正左方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转247.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 14 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 15 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转292.5°的方向，应该是从正左方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转292.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 15 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 16 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转337.5°的方向，应该是从正上方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转337.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 16 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+	}
+
+	BOOL bFoundNonneg = FALSE; // if the nonnegative value is found
+	double min_S_p;
+	int minIdx_S_p;
+
+	for (int i = 0; i < h; ++i)
+	{
+		for (int j = 0; j < w; ++j)
+		{
+			bFoundNonneg = FALSE;
+			for (int k = 0; k < nd; ++k)
+			{
+				double val = h_SC[k*imgSize + i*w + j];
+
+				if (val < 0)
+				{
+					continue;
+				}
+
+				if (!bFoundNonneg)
+				{
+					min_S_p = val;
+					minIdx_S_p = k;
+					bFoundNonneg = TRUE;
+				}
+				else
+				{
+					if (val < min_S_p)
+					{
+						min_S_p = val;
+						minIdx_S_p = k;
+					}
+				}
+			}
+
+			if (!bFoundNonneg)
+			{
+				DI[i*w + j] = NAN; // 20161116, no valid disparity for this pixel is found
+				continue;
+			}
+
+			if (!bSubPix || minIdx_S_p == 0 || minIdx_S_p == nd - 1 || h_SC[(minIdx_S_p - 1)*imgSize + i*w + j] < 0 || h_SC[(minIdx_S_p + 1)*imgSize + i*w + j] < 0)
+			{
+				DI[i*w + j] = alld[minIdx_S_p];
+			}
+			else // interpolate the subpixel position of the disparity using quadratic curve fitting
+			{
+				double x[3], f[3];
+				x[0] = alld[minIdx_S_p - 1]; f[0] = h_SC[(minIdx_S_p - 1)*imgSize + i*w + j];
+				x[1] = alld[minIdx_S_p];   f[1] = h_SC[minIdx_S_p*imgSize + i*w + j];
+				x[2] = alld[minIdx_S_p + 1]; f[2] = h_SC[(minIdx_S_p + 1)*imgSize + i*w + j];
+
+				double a0, a1, a2;
+				QuadCurveFit(x, f, 3, a0, a1, a2);
+
+				double d_sub = -0.5*a1 / a2;
+
+				DI[i*w + j] = d_sub;
+			}
+		}
+	}
+
+	// release memory
+	delete[] alld;
+	delete[] h_C;
+	delete[] h_SC;
+}
+
+// 20161116, no images are concerned, only the DSI
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+void DeepVoid::SemiGlobalMatching_givenDSI_CUDA_new(int w, int h,						// input: the width and height of stereo images
+													int dmin,							// input: scalar, the minimal disparity, can be negative, but make sure dmin<dmax
+													int dmax,							// input: scalar, the maximal disparity, can be negative, but make sure dmin<dmax
+													const double * DSI,					// input: h*w*nd, the disparity space image containing all the matching cost for all pixels
+													double P1,							// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+													double P2,							// input: scalar, a larger constant penalty for all larger disparity changes
+													double * DI,						// output:h*w, the disparity image
+													SGM_PATHS nDir/* = SGM_PATHS_8*/,	// input: the amount of scanlines*/
+													bool bSubPix /*= true*/,			// input: if sub pixel interpolation for sub pixel disparities is applied
+													int nThreads /*= 32*/				// input: the number of threads in a thread block
+													)
+{
+	// compute all disparity levels
+	int nd = dmax - dmin + 1;
+
+	int * alld = new int[nd];
+
+	for (int i = 0; i < nd; i++)
+	{
+		alld[i] = dmin + i;
+	}
+
+	// initialize C_dir matrix, which is h*w*nd, it's the 3D aggregated costs along each direction 
+	// initialize S_dirs matrix, which is h*w*nd, it's the sum of all the 3D aggregated costs along all direction
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("apply new memory");
+
+	int imgSize = w*h;
+	int cubeSize = imgSize * nd;
+
+	double * h_C = new double[cubeSize];
+	double * h_SC = new double[cubeSize];
+
+	memset(h_C, 0, cubeSize * sizeof(double));
+	memset(h_SC, 0, cubeSize * sizeof(double));
+
+	/*------------ 01 direction --------------------------------------------------------------------------*/
+	// dir = [1, 0] i.e. along positive direction of x-axis or the 0 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 01 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 0);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 02 direction --------------------------------------------------------------------------*/
+	// dir = [-1, 0] i.e. along negative direction of x-axis or the 180 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 02 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 1);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 03 direction --------------------------------------------------------------------------*/
+	// dir = [0, 1] i.e. along positive direction of y-axis or the -90 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 03 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 2);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 04 direction --------------------------------------------------------------------------*/
+	// dir = [0, -1] i.e. along negative direction of y-axis or the 90 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 04 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 3);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 05 direction --------------------------------------------------------------------------*/
+	// dir = [1, 1] i.e. along the -45 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 05 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 4);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 06 direction --------------------------------------------------------------------------*/
+	// dir = [-1, -1] i.e. along the 135 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 06 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 5);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+
+	/*------------ 07 direction --------------------------------------------------------------------------*/
+	// dir = [1, -1] i.e. along the 45 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 07 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 6);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+	/*------------ 08 direction --------------------------------------------------------------------------*/
+	// dir = [-1, 1] i.e. along the -135 direction
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 08 starts");
+	
+	CUDA_CostAggregation_OneDir_new(w, h, nd, DSI, h_C, P1, P2, nThreads, 7);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("3D array addition starts");
+
+	// add the 3D aggregated cost to the sum
+	CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+	if (SGM_PATHS_16 == nDir)
+	{
+		/*------------ 09 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转22.5°的方向，应该是从正上方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转22.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 09 starts");
+		
+
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 10 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转67.5°的方向，应该是从正右方传和从右上角传交替进行，这两个方向的合成方向正好是十二点顺时针转67.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 10 starts");
+		
+
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 11 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转112.5°的方向，应该是从正右方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转112.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 11 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 12 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转157.5°的方向，应该是从正下方传和从右下角传交替进行，这两个方向的合成方向正好是十二点顺时针转157.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 12 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 13 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转202.5°的方向，应该是从正下方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转202.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 13 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 14 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转247.5°的方向，应该是从正左方传和从左下角传交替进行，这两个方向的合成方向正好是十二点顺时针转247.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 14 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 15 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转292.5°的方向，应该是从正左方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转292.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 15 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+
+		/*------------ 16 direction --------------------------------------------------------------------------*/
+		// 看表，十二点开始顺时针转337.5°的方向，应该是从正上方传和从左上角传交替进行，这两个方向的合成方向正好是十二点顺时针转337.5°
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("scan direction 16 starts");
+
+		
+
+		// add the 3D aggregated cost to the sum
+		CUDA_AddVec_double(h_SC, h_C, cubeSize, nThreads);
+	}
+
+	BOOL bFoundNonneg = FALSE; // if the nonnegative value is found
+	double min_S_p;
+	int minIdx_S_p;
+
+	for (int i = 0; i < h; ++i)
+	{
+		for (int j = 0; j < w; ++j)
+		{
+			int offset = (i*w + j)*nd;
+
+			bFoundNonneg = FALSE;
+			for (int k = 0; k < nd; ++k)
+			{
+				double val = h_SC[offset + k];
+
+				if (val < 0)
+				{
+					continue;
+				}
+
+				if (!bFoundNonneg)
+				{
+					min_S_p = val;
+					minIdx_S_p = k;
+					bFoundNonneg = TRUE;
+				}
+				else
+				{
+					if (val < min_S_p)
+					{
+						min_S_p = val;
+						minIdx_S_p = k;
+					}
+				}
+			}
+
+			if (!bFoundNonneg)
+			{
+				DI[i*w + j] = NAN; // 20161116, no valid disparity for this pixel is found
+				continue;
+			}
+
+			if (!bSubPix || minIdx_S_p == 0 || minIdx_S_p == nd - 1 || h_SC[offset + minIdx_S_p - 1] < 0 || h_SC[offset + minIdx_S_p + 1] < 0)
+			{
+				DI[i*w + j] = alld[minIdx_S_p];
+			}
+			else // interpolate the subpixel position of the disparity using quadratic curve fitting
+			{
+				double x[3], f[3];
+				x[0] = alld[minIdx_S_p - 1]; f[0] = h_SC[offset + minIdx_S_p - 1];
+				x[1] = alld[minIdx_S_p];   f[1] = h_SC[offset + minIdx_S_p];
+				x[2] = alld[minIdx_S_p + 1]; f[2] = h_SC[offset + minIdx_S_p + 1];
+
+				double a0, a1, a2;
+				QuadCurveFit(x, f, 3, a0, a1, a2);
+
+				double d_sub = -0.5*a1 / a2;
+
+				DI[i*w + j] = d_sub;
+			}
+		}
+	}
+
+	// release memory
+	delete[] alld;
+	delete[] h_C;
+	delete[] h_SC;
 }
 
 // convert a int matrix to a image
@@ -3241,4 +4349,85 @@ void DeepVoid::SemiGlobalMatching(const Mat & mImgB,				// input: the epipolar-r
 
 	delete [] pDI[0];
 	delete [] pDI;
+}
+
+// Semi global matching algorithm, implemented based on <Stereo Processing by Semiglobal Matching and Mutual Information> 2008
+// 20150317, input the cv::Mat
+// 20161221, GPU CUDA parallel version
+void DeepVoid::SemiGlobalMatching_CUDA(const Mat & mImgB,				// input: the epipolar-rectified base image, should be graylevel
+									   const Mat & mImgM,				// input: the epipolar-rectified matching image, should be graylevel
+									   int dmin,						// input: scalar, the minimal disparity
+									   int dmax,						// input: scalar, the maximal disparity
+									   double P1,						// input: scalar, constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+									   double P2,						// input: scalar, a larger constant penalty for all larger disparity changes
+									   Mat & mDI,						// output:the disparity image
+									   bool bVertical /*= false*/,		// input: whether the layout is vertical or horizontal 
+									   SGM_PATHS nDir /*= SGM_PATHS_8*/,// input: the amount of scanlines*/
+									   int constcCheck /*= -1*/,		// input: if matching is conducted reversely, i.e. treat the match image as a base image and vice versa.
+									   bool bSubPix /*= true*/,			// input: if sub pixel interpolation for sub pixel disparities is applied
+									   int hw /*= 1*/,					// input: the half width of the support window for computation of cost
+									   int hh /*= 1*/,					// input: the half height of the support window for computation of cost
+									   int costType /*= 0*/,			// input: the cost type, 0:BT, 1:ncc
+									   int nThreads_oneDir /*= 32*/		// input: how many threads contained in a vector thread block or in one direction of a 2D or 3D thread block
+									   )
+{
+	mDI = Mat(mImgB.rows, mImgB.cols, CV_32FC1);
+
+	int w = mImgB.cols;
+	int h = mImgB.rows;
+
+	int imgSize = h * w;
+
+	unsigned char * pImgB = new unsigned char[imgSize];
+	unsigned char * pImgM = new unsigned char[imgSize];
+	double * pDI = new double[imgSize];
+
+	memset(pImgB, 0, imgSize * sizeof(unsigned char));
+	memset(pImgM, 0, imgSize * sizeof(unsigned char));
+	memset(pDI, 0, imgSize * sizeof(double));
+
+	for (int i=0; i<h; ++i)
+	{
+		for (int j=0; j<w; ++j)
+		{
+			pImgB[w*i + j] = mImgB.at<uchar>(i, j);
+			pImgM[w*i + j] = mImgM.at<uchar>(i, j);
+		}
+	}
+
+	// Start SGM for the base image
+	SemiGlobalMatching_CUDA(w, h, pImgB, pImgM, dmin, dmax, P1, P2, pDI, bVertical, nDir, constcCheck, bSubPix, hw, hh, costType, nThreads_oneDir);
+
+	Mat mDisparity(h, w, CV_8UC3);
+
+	double factor = 255.0/(dmax-dmin);
+
+	for (int i=0; i<h; ++i)
+	{
+		for (int j=0; j<w; ++j)
+		{
+			double d = pDI[w*i + j];
+			mDI.at<float>(i,j) = d;
+
+			if (isinf(d)) // d=-2, mismatched
+			{
+				mDisparity.at<Vec3b>(i,j)[0] = 0; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 255; // red
+			} 
+			else if (isnan(d)) // d=-1, occluded
+			{
+				mDisparity.at<Vec3b>(i,j)[0] = 255; mDisparity.at<Vec3b>(i,j)[1] = 0; mDisparity.at<Vec3b>(i,j)[2] = 0; // blue
+			}
+			else // valid disparity
+			{
+				mDisparity.at<Vec3b>(i,j)[0] = mDisparity.at<Vec3b>(i,j)[1] = mDisparity.at<Vec3b>(i,j)[2] = FTOI((d-dmin)*factor);
+			}
+		}
+	}
+
+	imwrite("E:\\results\\disparity by SGM (ZZK).bmp", mDisparity);
+
+	// release memory
+	delete[] pImgB;
+	delete[] pImgM;
+	delete[] pDI;
 }
