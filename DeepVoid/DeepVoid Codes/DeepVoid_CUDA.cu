@@ -1,5 +1,6 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include "curand_kernel.h"
 //#include "helper_cuda.h"
 //#include "stdafx.h"
 //#include "thrust\sort.h"
@@ -11,6 +12,14 @@
 
 extern "C" void
 forCUDA_ShowInfo(const char * info);
+
+extern "C" void
+forCUDA_SaveMatAsImage(const char * info,	// input: output path
+					   const double * mat,	// input: the mat
+					   int w, int h,		// input: the width and height of the mat
+					   double valmin,		// input: the minimum value of the mat
+					   double valmax		// input: the maximum value of the mat
+					   );
 
 
 //namespace DeepVoid_CUDA
@@ -2574,22 +2583,180 @@ kernel_transpose_tile_uchar(int w, int h,				// input: the width and height of t
 	}
 }
 
-// 20170105
-// uniform randomly drawn initialize a array
+// 20170115
+// setup the random states for all the elements in the even 2D field
 __global__ void 
-kernel_randinit_uniform_double(double * A,		// output:the array
-							   int n,			// input: the length of the array
-							   double valmin,	// input: the minimum value
-							   double valmax	// input: the maximum value
-							   )
+kernel_setup_randstates_even(curandState * states,		// output:the array of all the random states
+							 int w, int h, int wo,		// input: the width, height of the even 2D field and the original width of the original image
+							 unsigned long long seed	// input: the seed
+							 )
 {
-	int i = blockDim.x*blockIdx.x + threadIdx.x;
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
 
-	if (i < n)
+	if (i < h && j < w)
 	{
-//		A[i] = ;
+		int id = i*w + j; // the ID of the element in the even field
+
+		// the original indices in the original 2D field
+		int i2 = 2 * i;
+		int j2 = 2 * j;
+
+		int ido = i2*wo + j2; // the ID of the element in the original field
+
+		// Each thread gets same seed, a different sequence number, no offset
+		curand_init(seed, ido, 0, &states[id]);
 	}
 }
+
+// 20170115
+// setup the random states for all the elements in the odd 2D field
+__global__ void 
+kernel_setup_randstates_odd(curandState * states,	// output:the array of all the random states
+							int w, int h, int wo,	// input: the width, height of the odd 2D field and the original width of the original image
+							unsigned long long seed	// input: the seed
+							)
+{
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
+
+	if (i < h && j < w)
+	{
+		int id = i*w + j; // the ID of the element in the odd field
+
+		// the original indices in the original 2D field
+		int i2 = 2 * i + 1;
+		int j2 = 2 * j + 1;
+
+		int ido = i2*wo + j2; // the ID of the element in the original field
+
+		// Each thread gets same seed, a different sequence number, no offset
+		curand_init(seed, ido, 0, &states[id]);
+	}
+}
+
+// 20170119
+// setup the random states for all the elements in the 2D field
+__global__ void 
+kernel_setup_randstates_2d(curandState * states,	// output:the array of all the random states
+						   int w, int h,			// input: the width, height of the 2D field
+						   unsigned long long seed	// input: the seed
+						   )
+{
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
+
+	if (i < h && j < w)
+	{
+		int id = i*w + j; // the ID of the element
+
+		// Each thread gets same seed, a different sequence number, no offset
+		curand_init(seed, id, 0, &states[id]);
+	}
+}
+
+// 20170115
+// uniform randomly drawn initialize a 2D array
+__global__ void 
+kernel_randinit_uniform_double(double * A,			// output:the array
+							   curandState * states,// output:the random states
+							   int w, int h,		// input: the width and height of the 2D array
+							   double valmin,		// input: the minimum value
+							   double valmax		// input: the maximum value
+							   )
+{
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
+
+	if (i < h && j < w)
+	{
+		int id = i*w + j;
+
+		// Copy state to local memory for efficiency
+		curandState localState = states[id];
+
+		double sample = curand_uniform_double(&localState);
+
+		A[id] = (valmax - valmin)*sample + valmin;
+
+		// Copy state back to global memory (update the state)
+		states[id] = localState;
+	}
+}
+
+// 20170115
+// initilize the depth maps, alpha maps and beta maps using random numbers
+__global__ void 
+kernel_PatchMatch_randinit(curandState * states,			// output:the random states
+						   double * depth,					// output:the depth map
+						   double * alpha,					// output:the alpha map
+						   double * beta,					// output:the beta map
+						   int w, int h,					// input: the width and height of the maps
+						   double min_d, double max_d,		// input: the minimum and maximum depth
+						   double min_a, double max_a,		// input: the minimum and maximum alpha
+						   double min_b, double max_b		// input: the minimum and maximum beta
+						   )
+{
+	extern __shared__ unsigned char s_rect[]; // 20170319, the shared memory, adjacent pixels in base image share parts in support window
+
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
+
+	if (i < h && j < w)
+	{
+		int id = i*w + j;
+
+		// Copy state to local memory for efficiency
+		curandState localState = states[id];
+
+		double sample_depth = curand_uniform_double(&localState);
+		double sample_alpha = curand_uniform_double(&localState);
+		double sample_beta  = curand_uniform_double(&localState);
+
+		depth[id] = (max_d - min_d)*sample_depth + min_d;
+		alpha[id] = (max_a - min_a)*sample_alpha + min_a;
+		beta[id]  = (max_b - min_b)*sample_beta  + min_b;
+
+		// Copy state back to global memory (update the state)
+		states[id] = localState;
+	}
+}
+
+// 20170115
+// initilize the depth maps, alpha maps and beta maps using random numbers
+//__global__ void 
+//kernel_PatchMatch_randinit(curandState * states,			// output:the random states
+//						   double * depth,					// output:the depth map
+//						   double * alpha,					// output:the alpha map
+//						   double * beta,					// output:the beta map
+//						   int w, int h,					// input: the width and height of the maps
+//						   double min_d, double max_d,		// input: the minimum and maximum depth
+//						   double min_a, double max_a,		// input: the minimum and maximum alpha
+//						   double min_b, double max_b		// input: the minimum and maximum beta
+//						   )
+//{
+//	int i = blockDim.y*blockIdx.y + threadIdx.y;
+//	int j = blockDim.x*blockIdx.x + threadIdx.x;
+//
+//	if (i < h && j < w)
+//	{
+//		int id = i*w + j;
+//
+//		// Copy state to local memory for efficiency
+//		curandState localState = states[id];
+//
+//		double sample_depth = curand_uniform_double(&localState);
+//		double sample_alpha = curand_uniform_double(&localState);
+//		double sample_beta  = curand_uniform_double(&localState);
+//
+//		depth[id] = (max_d - min_d)*sample_depth + min_d;
+//		alpha[id] = (max_a - min_a)*sample_alpha + min_a;
+//		beta[id]  = (max_b - min_b)*sample_beta  + min_b;
+//
+//		// Copy state back to global memory (update the state)
+//		states[id] = localState;
+//	}
+//}
 
 extern "C" void
 CUDA_GenerateDSI_BT(int w, int h,				// input: the width and height of stereo images
@@ -3393,6 +3560,137 @@ CUDA_transpose_tile_uchar(unsigned char * h_B,			// output:B = A'
 }
 
 // 20170104
+//extern "C" void
+//CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
+//				const unsigned char * h_imgm,	// input: tha matching gray image
+//				int w_b, int h_b,				// input: the width and height of base image
+//				int w_m, int h_m,				// input: the width and height of matching image
+//				double * h_depth,				// output:the estimated depth map of the base image
+//				double * h_alpha,				// output:the estimated surface normal map of the base image
+//				double * h_beta,				// output:the estimated surface normal map of the base image
+//				int nThreads_w,					// input: the number of threads per row of the thread block
+//				int nThreads_h,					// input: the number of threads per column of the thread block
+//				unsigned long long randSeed,	// input: the random seed
+//				double min_d, double max_d,		// input: the minimum and maximum depth
+//				double min_a, double max_a,		// input: the minimum and maximum alpha
+//				double min_b, double max_b		// input: the minimum and maximum beta
+//				)
+//{
+//	int w_odd = w_b / 2; // the width of the odd maps
+//	int h_odd = h_b / 2; // the height of the odd maps
+//
+//	int w_even = w_b - w_odd; // the width of the even maps
+//	int h_even = h_b - h_odd; // the height of the even maps
+//
+//	const unsigned int sizeMemB = sizeof(unsigned char) * w_b * h_b;
+//	const unsigned int sizeMemM = sizeof(unsigned char) * w_m * h_m;
+//
+//	const unsigned int sizeMemEven = sizeof(double) * w_even * h_even;
+//	const unsigned int sizeMemOdd = sizeof(double) * w_odd * h_odd;
+//
+//	// allocate device memory
+//	unsigned char * d_imgb = NULL;
+//	unsigned char * d_imgm = NULL;
+////	double * d_depth = NULL;
+////	double * d_alpha = NULL;
+////	double * d_beta  = NULL;
+//	double * d_depth_even = NULL; double * d_depth_odd = NULL;
+//	double * d_alpha_even = NULL; double * d_alpha_odd = NULL;
+//	double * d_beta_even = NULL;  double * d_beta_odd = NULL;
+//	cudaMalloc((void **)&d_imgb, sizeMemB);
+//	cudaMalloc((void **)&d_imgm, sizeMemM);
+//	cudaMalloc((void **)&d_depth_even, sizeMemEven);
+//	cudaMalloc((void **)&d_depth_odd, sizeMemOdd);
+//	cudaMalloc((void **)&d_alpha_even, sizeMemEven);
+//	cudaMalloc((void **)&d_alpha_odd, sizeMemOdd);
+//	cudaMalloc((void **)&d_beta_even, sizeMemEven);
+//	cudaMalloc((void **)&d_beta_odd, sizeMemOdd);
+//
+//	// copy host memory to device memory
+//	cudaMemcpy(d_imgb, h_imgb, sizeMemB, cudaMemcpyHostToDevice);
+//	cudaMemcpy(d_imgm, h_imgm, sizeMemM, cudaMemcpyHostToDevice);
+//
+//	curandState * devStatesEven; // the curandStates of the even field
+//	curandState * devStatesOdd;  // the curandStates of the odd field
+//
+//	// allocate the random states
+//	cudaMalloc((void **)&devStatesEven, w_even * h_even * sizeof(curandState));
+//	cudaMalloc((void **)&devStatesOdd, w_odd * h_odd * sizeof(curandState));
+//
+//	const unsigned int nBlocks_even_x = ((w_even % nThreads_w) != 0) ? (w_even / nThreads_w + 1) : (w_even / nThreads_w);
+//	const unsigned int nBlocks_even_y = ((h_even % nThreads_h) != 0) ? (h_even / nThreads_h + 1) : (h_even / nThreads_h);
+//
+//	const unsigned int nBlocks_odd_x = ((w_odd % nThreads_w) != 0) ? (w_odd / nThreads_w + 1) : (w_odd / nThreads_w);
+//	const unsigned int nBlocks_odd_y = ((h_odd % nThreads_h) != 0) ? (h_odd / nThreads_h + 1) : (h_odd / nThreads_h);
+//
+//	// determine the dimension of the grid and a block
+//	dim3 block(nThreads_w, nThreads_h, 1);
+//	dim3 grid_even(nBlocks_even_x, nBlocks_even_y, 1);
+//	dim3 grid_odd(nBlocks_odd_x, nBlocks_odd_y, 1);
+//
+//	//double * h_depth_even = new double[w_even*h_even]; double * h_depth_odd = new double[w_odd * h_odd];
+//	//double * h_alpha_even = new double[w_even*h_even]; double * h_alpha_odd = new double[w_odd * h_odd];
+//	//double * h_beta_even = new double[w_even*h_even];  double * h_beta_odd = new double[w_odd * h_odd];
+//
+////	forCUDA_ShowInfo("random starts");
+//
+//	// setup the random states for the even and odd field
+//	kernel_setup_randstates_even<<<grid_even, block>>>(devStatesEven, w_even, h_even, w_b, randSeed);
+//	kernel_setup_randstates_odd<<<grid_odd, block>>>(devStatesOdd, w_odd, h_odd, w_b, randSeed);
+//
+//	// initialize all the parameter maps with uniform random parameters
+//	kernel_PatchMatch_randinit<<<grid_even, block>>>(devStatesEven, d_depth_even, d_alpha_even, d_beta_even, w_even, h_even, min_d, max_d, min_a, max_a, min_b, max_b);
+//	kernel_PatchMatch_randinit<<<grid_odd,  block>>>(devStatesOdd,  d_depth_odd,  d_alpha_odd,  d_beta_odd,  w_odd,  h_odd,  min_d, max_d, min_a, max_a, min_b, max_b);
+//
+//	/*kernel_PatchMatch_randinit<<<grid_even, block>>>(devStatesEven, d_depth_even, d_alpha_even, d_beta_even, w_even, h_even, 20, 100, 10, 360, 0, 60);
+//	kernel_PatchMatch_randinit<<<grid_odd,  block>>>(devStatesOdd,  d_depth_odd,  d_alpha_odd,  d_beta_odd,  w_odd,  h_odd,  20, 100, 10, 360, 0, 60);
+//
+//	cudaMemcpy(h_depth_even, d_depth_even, sizeMemEven, cudaMemcpyDeviceToHost);
+//	cudaMemcpy(h_alpha_even, d_alpha_even, sizeMemEven, cudaMemcpyDeviceToHost);
+//	cudaMemcpy(h_beta_even, d_beta_even, sizeMemEven, cudaMemcpyDeviceToHost);
+//	cudaMemcpy(h_depth_odd, d_depth_odd, sizeMemOdd, cudaMemcpyDeviceToHost);
+//	cudaMemcpy(h_alpha_odd, d_alpha_odd, sizeMemOdd, cudaMemcpyDeviceToHost);
+//	cudaMemcpy(h_beta_odd, d_beta_odd, sizeMemOdd, cudaMemcpyDeviceToHost);
+//
+//	forCUDA_ShowInfo("random ends");
+//
+//	forCUDA_SaveMatAsImage("E:\\results\\depth_even.png", h_depth_even, w_even, h_even, 20, 100);
+//	forCUDA_SaveMatAsImage("E:\\results\\alpha_even.png", h_alpha_even, w_even, h_even, 10, 360);
+//	forCUDA_SaveMatAsImage("E:\\results\\beta_even.png", h_beta_even, w_even, h_even, 0, 60);
+//	forCUDA_SaveMatAsImage("E:\\results\\depth_odd.png", h_depth_odd, w_odd, h_odd, 20, 100);
+//	forCUDA_SaveMatAsImage("E:\\results\\alpha_odd.png", h_alpha_odd, w_odd, h_odd, 10, 360);
+//	forCUDA_SaveMatAsImage("E:\\results\\beta_odd.png", h_beta_odd, w_odd, h_odd, 0, 60);
+//
+//	delete[] h_depth_even;
+//	delete[] h_alpha_even;
+//	delete[] h_beta_even;
+//	delete[] h_depth_odd;
+//	delete[] h_alpha_odd;
+//	delete[] h_beta_odd;*/
+//
+////	forCUDA_ShowInfo("kernel_transpose_tile_uchar starts");
+//	
+//	// run cuda kernel
+////	kernel_transpose_tile_uchar<<<grid, block>>>(w, h, d_B, d_A);
+//
+////	cudaMemcpy(h_B, d_B, sizeMem, cudaMemcpyDeviceToHost);
+//
+////	forCUDA_ShowInfo("kernel_transpose_tile_uchar ends");
+//
+//	cudaFree(d_imgb);
+//	cudaFree(d_imgm);
+//	cudaFree(d_depth_even);
+//	cudaFree(d_depth_odd);
+//	cudaFree(d_alpha_even);
+//	cudaFree(d_alpha_odd);
+//	cudaFree(d_beta_even);
+//	cudaFree(d_beta_odd);
+//
+//	cudaFree(devStatesEven);
+//	cudaFree(devStatesOdd);
+//}
+
+// 20170119
 extern "C" void
 CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 				const unsigned char * h_imgm,	// input: tha matching gray image
@@ -3402,71 +3700,85 @@ CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 				double * h_alpha,				// output:the estimated surface normal map of the base image
 				double * h_beta,				// output:the estimated surface normal map of the base image
 				int nThreads_w,					// input: the number of threads per row of the thread block
-				int nThreads_h					// input: the number of threads per column of the thread block
+				int nThreads_h,					// input: the number of threads per column of the thread block
+				unsigned long long randSeed,	// input: the random seed
+				double min_d, double max_d,		// input: the minimum and maximum depth
+				double min_a, double max_a,		// input: the minimum and maximum alpha
+				double min_b, double max_b		// input: the minimum and maximum beta
 				)
 {
-	int w_odd = w_b / 2; // the width of the odd maps
-	int h_odd = h_b / 2; // the height of the odd maps
+	// determine the width and height of the parallel grid
+	int w_grid = ((w_b % 2) != 0) ? ((w_b + 1) / 2) : (w_b / 2);
+	int h_grid = h_b;
 
-	int w_even = w_b - w_odd; // the width of the even maps
-	int h_even = h_b - h_odd; // the height of the even maps
+	int nPix = w_b*h_b;
 
-	const unsigned int sizeMemB = sizeof(unsigned char) * w_b * h_b;
-	const unsigned int sizeMemM = sizeof(unsigned char) * w_m * h_m;
+	int sizeMemB = sizeof(unsigned char) * nPix;
+	int sizeMemM = sizeof(unsigned char) * w_m * h_m;
 
-	const unsigned int sizeMemEven = sizeof(double) * w_even * h_even;
-	const unsigned int sizeMemOdd = sizeof(double) * w_odd * h_odd;
+	int sizeMemMaps = sizeof(double) * nPix;
 
 	// allocate device memory
 	unsigned char * d_imgb = NULL;
 	unsigned char * d_imgm = NULL;
-//	double * d_depth = NULL;
-//	double * d_alpha = NULL;
-//	double * d_beta  = NULL;
-	double * d_depth_even = NULL; double * d_depth_odd = NULL;
-	double * d_alpha_even = NULL; double * d_alpha_odd = NULL;
-	double * d_beta_even = NULL;  double * d_beta_odd = NULL;
+	double * d_depth = NULL;
+	double * d_alpha = NULL;
+	double * d_beta  = NULL;
 	cudaMalloc((void **)&d_imgb, sizeMemB);
 	cudaMalloc((void **)&d_imgm, sizeMemM);
-	cudaMalloc((void **)&d_depth_even, sizeMemEven);
-	cudaMalloc((void **)&d_depth_odd, sizeMemOdd);
-	cudaMalloc((void **)&d_alpha_even, sizeMemEven);
-	cudaMalloc((void **)&d_alpha_odd, sizeMemOdd);
-	cudaMalloc((void **)&d_beta_even, sizeMemEven);
-	cudaMalloc((void **)&d_beta_odd, sizeMemOdd);
+	cudaMalloc((void **)&d_depth, sizeMemMaps);
+	cudaMalloc((void **)&d_alpha, sizeMemMaps);
+	cudaMalloc((void **)&d_beta, sizeMemMaps);
 
 	// copy host memory to device memory
 	cudaMemcpy(d_imgb, h_imgb, sizeMemB, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_imgm, h_imgm, sizeMemM, cudaMemcpyHostToDevice);
 
-	const unsigned int nBlocks_even_x = ((w_even % nThreads_w) != 0) ? (w_even / nThreads_w + 1) : (w_even / nThreads_w);
-	const unsigned int nBlocks_even_y = ((h_even % nThreads_h) != 0) ? (h_even / nThreads_h + 1) : (h_even / nThreads_h);
+	curandState * devStates; // the curandStates of the even field
 
-	const unsigned int nBlocks_odd_x = ((w_odd % nThreads_w) != 0) ? (w_odd / nThreads_w + 1) : (w_odd / nThreads_w);
-	const unsigned int nBlocks_odd_y = ((h_odd % nThreads_h) != 0) ? (h_odd / nThreads_h + 1) : (h_odd / nThreads_h);
+	// allocate the random states
+	cudaMalloc((void **)&devStates, nPix * sizeof(curandState));
+
+	int nBlocks_ox = ((w_b % nThreads_w) != 0) ? (w_b / nThreads_w + 1) : (w_b / nThreads_w);
+	int nBlocks_x = ((w_grid % nThreads_w) != 0) ? (w_grid / nThreads_w + 1) : (w_grid / nThreads_w);
+	int nBlocks_y = ((h_grid % nThreads_h) != 0) ? (h_grid / nThreads_h + 1) : (h_grid / nThreads_h);
 
 	// determine the dimension of the grid and a block
 	dim3 block(nThreads_w, nThreads_h, 1);
-	dim3 grid_even(nBlocks_even_x, nBlocks_even_y, 1);
-	dim3 grid_odd(nBlocks_odd_x, nBlocks_odd_y, 1);
+	dim3 grid(nBlocks_x, nBlocks_y, 1);
+	dim3 grid_o(nBlocks_ox, nBlocks_y, 1);
 
-//	forCUDA_ShowInfo("kernel_transpose_tile_uchar starts");
+	forCUDA_ShowInfo("PatchMatch starts");
+
+	// setup the random states for all pixels
+	kernel_setup_randstates_2d<<<grid_o, block>>>(devStates, w_b, h_b, randSeed);
+
+	cudaDeviceSynchronize();
+	forCUDA_ShowInfo("1");
+
+	// initialize all the parameter maps with uniform random parameters
+	kernel_PatchMatch_randinit<<<grid_o, block>>>(devStates, d_depth, d_alpha, d_beta, w_b, h_b, min_d, max_d, min_a, max_a, min_b, max_b);
+
+	cudaDeviceSynchronize();
+	forCUDA_ShowInfo("2");
+
+	cudaMemcpy(h_depth, d_depth, sizeMemMaps, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_alpha, d_alpha, sizeMemMaps, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_beta, d_beta, sizeMemMaps, cudaMemcpyDeviceToHost);
+
+	forCUDA_ShowInfo("PatchMatch ends");
+
+	// save the results as images
+	forCUDA_SaveMatAsImage("E:\\results\\depth.png", h_depth, w_b, h_b, min_d, max_d);
+	forCUDA_SaveMatAsImage("E:\\results\\alpha.png", h_alpha, w_b, h_b, min_a, max_a);
+	forCUDA_SaveMatAsImage("E:\\results\\beta.png", h_beta, w_b, h_b, min_b, max_b);
 	
-	// run cuda kernel
-//	kernel_transpose_tile_uchar<<<grid, block>>>(w, h, d_B, d_A);
-
-//	cudaMemcpy(h_B, d_B, sizeMem, cudaMemcpyDeviceToHost);
-
-//	forCUDA_ShowInfo("kernel_transpose_tile_uchar ends");
-
 	cudaFree(d_imgb);
 	cudaFree(d_imgm);
-	cudaFree(d_depth_even);
-	cudaFree(d_depth_odd);
-	cudaFree(d_alpha_even);
-	cudaFree(d_alpha_odd);
-	cudaFree(d_beta_even);
-	cudaFree(d_beta_odd);
+	cudaFree(d_depth);
+	cudaFree(d_alpha);
+	cudaFree(d_beta);
+	cudaFree(devStates);
 }
 
 //}

@@ -97,6 +97,23 @@ CUDA_GenerateDSI_new(int w, int h,					// input: the width and height of stereo 
 					 int costType = 0               // input: 0:BT,  1:ncc, 2:opencvncc
 					 );
 
+// 20170119
+extern "C" void
+CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
+				const unsigned char * h_imgm,	// input: tha matching gray image
+				int w_b, int h_b,				// input: the width and height of base image
+				int w_m, int h_m,				// input: the width and height of matching image
+				double * h_depth,				// output:the estimated depth map of the base image
+				double * h_alpha,				// output:the estimated surface normal map of the base image
+				double * h_beta,				// output:the estimated surface normal map of the base image
+				int nThreads_w,					// input: the number of threads per row of the thread block
+				int nThreads_h,					// input: the number of threads per column of the thread block
+				unsigned long long randSeed,	// input: the random seed
+				double min_d, double max_d,		// input: the minimum and maximum depth
+				double min_a, double max_a,		// input: the minimum and maximum alpha
+				double min_b, double max_b		// input: the minimum and maximum beta
+				);
+
 //extern "C" void
 //forCUDA_ShowInfo(const char * info)
 //{

@@ -63,6 +63,31 @@ forCUDA_ShowInfo(const char * info)
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(str);
 }
 
+extern "C" void
+forCUDA_SaveMatAsImage(const char * info,	// input: output path
+					   const double * mat,	// input: the mat
+					   int w, int h,		// input: the width and height of the mat
+					   double valmin,		// input: the minimum value of the mat
+					   double valmax		// input: the maximum value of the mat
+					   )
+{
+	Mat mDisparity(h, w, CV_8UC1);
+
+	double factor = 255.0/(valmax - valmin);
+
+	for (int i=0; i<h; ++i)
+	{
+		for (int j=0; j<w; ++j)
+		{
+			double val = mat[w*i + j];
+
+			mDisparity.at<uchar>(i, j) = FTOI((val - valmin)*factor);
+		}
+	}
+
+	imwrite(info, mDisparity);
+}
+
 // Quadratic curve fitting
 void DeepVoid::QuadCurveFit(double * x, double * f,					// 输入：所有采样点的 x 和 f 值
 							int n,									// 输入：采样点个数
@@ -1408,6 +1433,21 @@ void DeepVoid::SemiGlobalMatching_CUDA(int w, int h,					// input: the width and
 
 	double * DSI = new double [cubeSize];
 	memset(DSI, 0, cubeSize * sizeof(double));
+
+	// 20170115, test the CUDA PatchMatch ////////////////////////////////////////////////////////////////////////
+	double * depth = new double[imgSize];
+	double * alpha = new double[imgSize];
+	double * beta  = new double[imgSize];
+	memset(depth, 0, imgSize * sizeof(double));
+	memset(alpha, 0, imgSize * sizeof(double));
+	memset(beta,  0, imgSize * sizeof(double));
+
+	CUDA_PatchMatch(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10, 300, 0, 360, 0, 60);
+
+	delete[] depth;
+	delete[] alpha;
+	delete[] beta;
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// generate the DSI based on some certain matching cost measure
 	if (!bVertical) // honrizontal image layout
