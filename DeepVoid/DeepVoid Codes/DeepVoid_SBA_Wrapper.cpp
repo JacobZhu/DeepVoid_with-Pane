@@ -1083,7 +1083,7 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 	vector<double> vds(l);
 
 //	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(XYZs,Ks,Rs,ts,dists,distTypes,vImgPts_vmask,covInvs,j_fixed,i_fixed,ptrMat,info,tau,itermax,eps1,eps2);
-	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs,Ks,Rs,ts,dists,distTypes,vImgPts_vmask,covInvs,j_fixed,i_fixed,ptrMat,vds,tc,info,tau,itermax,eps1,eps2);
+	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
 	
 	// 下面还要将优化完的参数和点坐标全部赋回去
 	for (int i=0;i<m;++i)
@@ -1149,7 +1149,7 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 			auto iter_found_img = iter_found_track->second.find(idx_cam);
 
-			if (rpjerr<sigma3)
+			if (rpjerr < sigma3)
 			{
 				// 20151227，重投影残差足够小还不行，还得位于该图像正前方，否则该图像依然会被判为外点
 				Matx31d mXYZ_C = Rs[j] * mXYZ + ts[j];

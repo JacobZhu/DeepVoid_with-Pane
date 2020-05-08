@@ -56,30 +56,57 @@
 //				   int nThreads			// input: number of threads in a thread block
 //				   );
 //
-extern "C" void
+/*extern "C"*/ void
 forCUDA_ShowInfo(const char * info)
 {
 	CString str(info);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(str);
+//	AfxMessageBox(str);
 }
 
-extern "C" void
+//extern "C" void
+//forCUDA_SaveMatAsImage(const char * info,	// input: output path
+//					   const double * mat,	// input: the mat
+//					   int w, int h,		// input: the width and height of the mat
+//					   double valmin,		// input: the minimum value of the mat
+//					   double valmax		// input: the maximum value of the mat
+//					   )
+//{
+//	Mat mDisparity(h, w, CV_8UC1);
+//
+//	double factor = 255.0/(valmax - valmin);
+//
+//	for (int i=0; i<h; ++i)
+//	{
+//		for (int j=0; j<w; ++j)
+//		{
+//			double val = mat[w*i + j];
+//
+//			mDisparity.at<uchar>(i, j) = FTOI((val - valmin)*factor);
+//		}
+//	}
+//
+//	imwrite(info, mDisparity);
+//}
+
+template <typename T>
+void
 forCUDA_SaveMatAsImage(const char * info,	// input: output path
-					   const double * mat,	// input: the mat
+					   const T * mat,	// input: the mat
 					   int w, int h,		// input: the width and height of the mat
-					   double valmin,		// input: the minimum value of the mat
-					   double valmax		// input: the maximum value of the mat
+					   T valmin,		// input: the minimum value of the mat
+					   T valmax		// input: the maximum value of the mat
 					   )
 {
 	Mat mDisparity(h, w, CV_8UC1);
 
-	double factor = 255.0/(valmax - valmin);
+	T factor = 255.0/(valmax - valmin);
 
 	for (int i=0; i<h; ++i)
 	{
 		for (int j=0; j<w; ++j)
 		{
-			double val = mat[w*i + j];
+			T val = mat[w*i + j];
 
 			mDisparity.at<uchar>(i, j) = FTOI((val - valmin)*factor);
 		}
@@ -87,6 +114,22 @@ forCUDA_SaveMatAsImage(const char * info,	// input: output path
 
 	imwrite(info, mDisparity);
 }
+
+template void
+forCUDA_SaveMatAsImage<double>(const char * info,	// input: output path
+					   const double * mat,			// input: the mat
+					   int w, int h,				// input: the width and height of the mat
+					   double valmin,				// input: the minimum value of the mat
+					   double valmax				// input: the maximum value of the mat
+					   );
+
+template void
+forCUDA_SaveMatAsImage<float>(const char * info,	// input: output path
+					   const float * mat,			// input: the mat
+					   int w, int h,				// input: the width and height of the mat
+					   float valmin,				// input: the minimum value of the mat
+					   float valmax				// input: the maximum value of the mat
+					   );
 
 // Quadratic curve fitting
 void DeepVoid::QuadCurveFit(double * x, double * f,					// 输入：所有采样点的 x 和 f 值
@@ -1435,18 +1478,29 @@ void DeepVoid::SemiGlobalMatching_CUDA(int w, int h,					// input: the width and
 	memset(DSI, 0, cubeSize * sizeof(double));
 
 	// 20170115, test the CUDA PatchMatch ////////////////////////////////////////////////////////////////////////
-	double * depth = new double[imgSize];
-	double * alpha = new double[imgSize];
-	double * beta  = new double[imgSize];
-	memset(depth, 0, imgSize * sizeof(double));
-	memset(alpha, 0, imgSize * sizeof(double));
-	memset(beta,  0, imgSize * sizeof(double));
+//	double * depth = new double[imgSize];
+//	double * alpha = new double[imgSize];
+//	double * beta  = new double[imgSize];
+//	memset(depth, 0, imgSize * sizeof(double));
+//	memset(alpha, 0, imgSize * sizeof(double));
+//	memset(beta,  0, imgSize * sizeof(double));
+//
+////	CUDA_PatchMatch(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10, 300, 0, 360, 0, 60);
+//	CUDA_PatchMatch_template<double>(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10, 300, 0, 360, 0, 60);
 
-	CUDA_PatchMatch(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10, 300, 0, 360, 0, 60);
-
-	delete[] depth;
-	delete[] alpha;
-	delete[] beta;
+//	float * depth = new float[imgSize];
+//	float * alpha = new float[imgSize];
+//	float * beta  = new float[imgSize];
+//	memset(depth, 0, imgSize * sizeof(float));
+//	memset(alpha, 0, imgSize * sizeof(float));
+//	memset(beta,  0, imgSize * sizeof(float));
+//
+////	CUDA_PatchMatch(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10, 300, 0, 360, 0, 60);
+//	CUDA_PatchMatch_template<float>(imgb, imgm, w, h, w, h, depth, alpha, beta, 32, 32, 1234, 10.0, 300.0, 0.0, 360.0, 0.0, 60.0);
+//
+//	delete[] depth;
+//	delete[] alpha;
+//	delete[] beta;
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// generate the DSI based on some certain matching cost measure

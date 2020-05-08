@@ -1,7 +1,9 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "curand_kernel.h"
-//#include "helper_cuda.h"
+//#include "DeepVoid Codes/DeepVoid_CUDA.h"
+#include "helper_cuda.h"  // helper functions for CUDA error check
+//#include <cublas_v2.h>
 //#include "stdafx.h"
 //#include "thrust\sort.h"
 //#include "thrust\execution_policy.h"
@@ -10,15 +12,113 @@
 //#include "thrust 1.8.2\sort.h"
 
 
-extern "C" void
+// 20170628 macro expansion for 3¡Á3 matrix-multiplication
+//#define matmul33_macro(m0, m1, out) \
+//out[0] = \
+//m0 [0] * m1[0] + \
+//m0 [1] * m1[0+3] + \
+//m0 [2] * m1[0+6]; \
+//out[1] = \
+//m0 [0] * m1[1] + \
+//m0 [1] * m1[1+3] + \
+//m0 [2] * m1[1+6]; \
+//out[2] = \
+//m0 [0] * m1[2] + \
+//m0 [1] * m1[2+3] + \
+//m0 [2] * m1[2+6]; \
+//out[3] = \
+//m0 [3] * m1[0] + \
+//m0 [4] * m1[0+3] + \
+//m0 [5] * m1[0+6]; \
+//out[4] = \
+//m0 [3] * m1[1] + \
+//m0 [4] * m1[1+3] + \
+//m0 [5] * m1[1+6]; \
+//out[5] = \
+//m0 [3] * m1[2] + \
+//m0 [4] * m1[2+3] + \
+//m0 [5] * m1[2+6]; \
+//out[6] = \
+//m0 [6] * m1[0] + \
+//m0 [7] * m1[0+3] + \
+//m0 [8] * m1[0+6]; \
+//out[7] = \
+//m0 [6] * m1[1] + \
+//m0 [7] * m1[1+3] + \
+//m0 [8] * m1[1+6]; \
+//out[8] = \
+//m0 [6] * m1[2] + \
+//m0 [7] * m1[2+3] + \
+//m0 [8] * m1[2+6];
+//
+//__device__ __forceinline__ void
+//matmul33_inline(const float * m0, const float * m1, float * out)
+//{
+//	out[0] = m0 [0] * m1[0] + m0 [1] * m1[0+3] + m0 [2] * m1[0+6]; 
+//	out[1] = m0 [0] * m1[1] + m0 [1] * m1[1+3] + m0 [2] * m1[1+6];
+//	out[2] = m0 [0] * m1[2] + m0 [1] * m1[2+3] + m0 [2] * m1[2+6];
+//	out[3] = m0 [3] * m1[0] + m0 [4] * m1[0+3] + m0 [5] * m1[0+6];
+//	out[4] = m0 [3] * m1[1] + m0 [4] * m1[1+3] + m0 [5] * m1[1+6];
+//	out[5] = m0 [3] * m1[2] + m0 [4] * m1[2+3] + m0 [5] * m1[2+6];
+//	out[6] = m0 [6] * m1[0] + m0 [7] * m1[0+3] + m0 [8] * m1[0+6]; 
+//	out[7] = m0 [6] * m1[1] + m0 [7] * m1[1+3] + m0 [8] * m1[1+6]; 
+//	out[8] = m0 [6] * m1[2] + m0 [7] * m1[2+3] + m0 [8] * m1[2+6];
+//}
+//
+//__device__ __forceinline__ void
+//matmul33_cublas(const float * m0, const float * m1, float * out)
+//{
+//	cublasHandle_t handle;
+//	cublasStatus_t status = cublasCreate(&handle);
+//
+//	float alpha = 1;
+//
+//	status = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_T, 3, 3, 3, &alpha, m0, 3, m1, 3, 0, out, 3);
+//
+//	cublasDestroy(handle); 
+//}
+//
+//__global__ void 
+//kernel_matmul33(int w, int h, int nd,	// input: the width and height of stereo images
+//				double * C,				// output:h*w*nd, nd = (dmax - dmin + 1), the output Disparity Space Image
+//				double P1,				// input: constant penalty pixels in the neigborhood of (x,y), for which the disparity changes a little bit (that is 1 pixel)
+//				double P2,				// input: a larger constant penalty for all larger disparity changes
+//				int i					// input: the row index of current parallel row, should be 1<=i<h
+//				)
+//{
+//	float m0[9], m1[9], out[9];
+//	m0[0] = 0; m0[1] = 1; m0[2] = 2;
+//	m0[3] = 3; m0[4] = 4; m0[5] = 5;
+//	m0[6] = 6; m0[7] = 7; m0[8] = 8;
+//
+//	m1[0] = 1; m1[1] = 2; m1[2] = 3;
+//	m1[3] = 4; m1[4] = 5; m1[5] = 6;
+//	m1[6] = 7; m1[7] = 8; m1[8] = 9;
+//
+//	matmul33_macro(m0, m1, out);
+//	matmul33_inline(m0, m1, out);
+//	matmul33_cublas(m0, m1, out);
+//}
+
+
+/*extern "C"*/ void
 forCUDA_ShowInfo(const char * info);
 
-extern "C" void
+//extern "C" void
+//forCUDA_SaveMatAsImage(const char * info,	// input: output path
+//					   const double * mat,	// input: the mat
+//					   int w, int h,		// input: the width and height of the mat
+//					   double valmin,		// input: the minimum value of the mat
+//					   double valmax		// input: the maximum value of the mat
+//					   );
+
+template <typename T>
+void
 forCUDA_SaveMatAsImage(const char * info,	// input: output path
-					   const double * mat,	// input: the mat
+					   const T * mat,		// input: the mat
 					   int w, int h,		// input: the width and height of the mat
-					   double valmin,		// input: the minimum value of the mat
-					   double valmax		// input: the maximum value of the mat
+					   T valmin,			// input: the minimum value of the mat
+					   T valmax			// input: the maximum value of the mat
 					   );
 
 
@@ -2638,6 +2738,7 @@ kernel_setup_randstates_odd(curandState * states,	// output:the array of all the
 // 20170119
 // setup the random states for all the elements in the 2D field
 __global__ void 
+//__launch_bounds__(1024, 2)
 kernel_setup_randstates_2d(curandState * states,	// output:the array of all the random states
 						   int w, int h,			// input: the width, height of the 2D field
 						   unsigned long long seed	// input: the seed
@@ -2649,6 +2750,7 @@ kernel_setup_randstates_2d(curandState * states,	// output:the array of all the 
 	if (i < h && j < w)
 	{
 		int id = i*w + j; // the ID of the element
+//		unsigned long long id = i*w + j; // the ID of the element
 
 		// Each thread gets same seed, a different sequence number, no offset
 		curand_init(seed, id, 0, &states[id]);
@@ -2697,7 +2799,7 @@ kernel_PatchMatch_randinit(curandState * states,			// output:the random states
 						   double min_b, double max_b		// input: the minimum and maximum beta
 						   )
 {
-	extern __shared__ unsigned char s_rect[]; // 20170319, the shared memory, adjacent pixels in base image share parts in support window
+//	extern __shared__ unsigned char s_rect[]; // 20170319, the shared memory, adjacent pixels in base image share parts in support window
 
 	int i = blockDim.y*blockIdx.y + threadIdx.y;
 	int j = blockDim.x*blockIdx.x + threadIdx.x;
@@ -2712,6 +2814,45 @@ kernel_PatchMatch_randinit(curandState * states,			// output:the random states
 		double sample_depth = curand_uniform_double(&localState);
 		double sample_alpha = curand_uniform_double(&localState);
 		double sample_beta  = curand_uniform_double(&localState);
+
+		depth[id] = (max_d - min_d)*sample_depth + min_d;
+		alpha[id] = (max_a - min_a)*sample_alpha + min_a;
+		beta[id]  = (max_b - min_b)*sample_beta  + min_b;
+
+		// Copy state back to global memory (update the state)
+		states[id] = localState;
+	}
+}
+
+// 20170430, change to template function
+// initilize the depth maps, alpha maps and beta maps using random numbers
+template <typename T>
+__global__ void 
+kernel_PatchMatch_randinit_template(curandState * states,// output:the random states
+						   T * depth,			// output:the depth map
+						   T * alpha,			// output:the alpha map
+						   T * beta,			// output:the beta map
+						   int w, int h,		// input: the width and height of the maps
+						   T min_d, T max_d,	// input: the minimum and maximum depth
+						   T min_a, T max_a,	// input: the minimum and maximum alpha
+						   T min_b, T max_b		// input: the minimum and maximum beta
+						   )
+{
+//	extern __shared__ unsigned char s_rect[]; // 20170319, the shared memory, adjacent pixels in base image share parts in support window
+
+	int i = blockDim.y*blockIdx.y + threadIdx.y;
+	int j = blockDim.x*blockIdx.x + threadIdx.x;
+
+	if (i < h && j < w)
+	{
+		int id = i*w + j;
+
+		// Copy state to local memory for efficiency
+		curandState localState = states[id];
+
+		T sample_depth = (T)curand_uniform_double(&localState);
+		T sample_alpha = (T)curand_uniform_double(&localState);
+		T sample_beta  = (T)curand_uniform_double(&localState);
 
 		depth[id] = (max_d - min_d)*sample_depth + min_d;
 		alpha[id] = (max_a - min_a)*sample_alpha + min_a;
@@ -2976,7 +3117,7 @@ CUDA_GenerateDSI(int w, int h,					// input: the width and height of stereo imag
 }
 
 // 20170102, 3D thread block
-extern "C" void
+/*extern "C"*/ void
 CUDA_GenerateDSI_new(int w, int h,					// input: the width and height of stereo images
 					 int hw, int hh,				// input: the half width and half height of the support window
 					 const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
@@ -3298,7 +3439,7 @@ CUDA_CostAggregation_OneDir(int w, int h, int nd,		// input: the width and heigh
 	cudaFree(d_C);
 }
 
-extern "C" void
+/*extern "C"*/ void
 CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
 								const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
 								double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
@@ -3445,7 +3586,7 @@ CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and h
 	cudaFree(d_C);
 }
 
-extern "C" void
+/*extern "C"*/ void
 CUDA_AddVec_double(double * h_A,		// input & output: A[i] += B[i]
 				   const double * h_B,	// input: 
 				   int n,				// input: number of elements
@@ -3690,8 +3831,98 @@ CUDA_transpose_tile_uchar(unsigned char * h_B,			// output:B = A'
 //	cudaFree(devStatesOdd);
 //}
 
+// 20170430, add host uchar gray image to gpu texture memory
+// It is equivalent to declare a function with only the __host__ qualifier 
+// or to declare it without any of the __host__, __device__, or __global__ qualifier;
+// in either case the function is compiled for the host only.
+__host__ void
+addImageToTexture_uchar1(int w, int h,
+						 const unsigned char * h_img,
+						 cudaTextureObject_t & texObj,
+						 cudaArray * cuArray
+						 )
+{
+	int sizeMem = sizeof(unsigned char) * w * h;
+
+	// 20170427, copy the host image into texture memory ////////////////////////
+	// 1. allocate cuda arrays for both the host base image and host matching image
+	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uchar1>();
+	
+	cudaMallocArray(&cuArray, &channelDesc, w, h);
+
+	cudaMemcpyToArray(cuArray, 0, 0, h_img, sizeMem, cudaMemcpyHostToDevice);
+
+	// 2. bind the texture resource and the cuda array
+	struct cudaResourceDesc resDesc;
+
+	memset(&resDesc, 0, sizeof(resDesc));
+
+	resDesc.resType = cudaResourceTypeArray;
+	resDesc.res.array.array = cuArray;
+
+	// 3. specify texture object parameters
+	struct cudaTextureDesc texDesc;
+
+	memset(&texDesc, 0, sizeof(texDesc));
+
+	texDesc.addressMode[0]   = cudaAddressModeClamp; // x index address mode
+	texDesc.addressMode[1]   = cudaAddressModeClamp; // y index address mode
+	texDesc.filterMode       = cudaFilterModeLinear; // with interpolation
+	texDesc.readMode         = cudaReadModeNormalizedFloat; // when texel is 8-bit or 16-bit unsigned integer, if cudaReadModeNormalizedFloat is set, the returned value will be converted to normalized floating point [0.0, 1.0]
+	texDesc.normalizedCoords = 0; // 0 for [0, N-1], 1 for [0.0, 1.0-1/N]
+
+	// 4. create texture object
+	cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL);
+	/////////////////////////////////////////////////////////////////////////////
+}
+
+__host__ void
+lastErrorHandling(const char * info)
+{
+	cudaError_t err = cudaGetLastError();
+	const char * errorString = cudaGetErrorString(err);
+
+	char buffer[256]; // danger, only storage for 256 characters.
+	strncpy(buffer, info, sizeof(buffer));
+	strncat(buffer, errorString, sizeof(buffer));
+
+	forCUDA_ShowInfo(buffer);
+	
+	if (cudaSuccess != err)
+	{
+		cudaDeviceReset();
+		exit(EXIT_FAILURE);
+	}
+}
+
+__host__ double
+getTheoreticalOccupancy(const void * func, int blockSize, size_t dynamicSmemSize)
+{
+	cudaDeviceProp deviceProp;
+	deviceProp.major = 0;
+	deviceProp.minor = 0;
+	int dev = 0;
+
+	// This will pick the best possible CUDA capable device
+	// Otherwise pick the device with highest Gflops/s
+	dev = gpuGetMaxGflopsDeviceId();
+//	checkCudaErrors(cudaSetDevice(dev));
+	checkCudaErrors(cudaGetDeviceProperties(&deviceProp, dev));
+
+	int activeBlocks;
+
+	checkCudaErrors(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&activeBlocks, func, blockSize, dynamicSmemSize));
+
+	int activeWarps = activeBlocks * blockSize / deviceProp.warpSize;
+	int maxWarps = deviceProp.maxThreadsPerMultiProcessor / deviceProp.warpSize;
+
+	double occupancy = (double)activeWarps / maxWarps;
+
+	return occupancy;
+}
+
 // 20170119
-extern "C" void
+/*extern "C"*/ void
 CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 				const unsigned char * h_imgm,	// input: tha matching gray image
 				int w_b, int h_b,				// input: the width and height of base image
@@ -3733,6 +3964,51 @@ CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 	// copy host memory to device memory
 	cudaMemcpy(d_imgb, h_imgb, sizeMemB, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_imgm, h_imgm, sizeMemM, cudaMemcpyHostToDevice);
+
+	// 20170427, copy the host image into texture memory ////////////////////////
+	// 1. allocate cuda arrays for both the host base image and host matching image
+	//cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uchar1>();
+
+	//cudaArray * cuArrayB;
+	//cudaArray * cuArrayM;
+	//
+	//cudaMallocArray(&cuArrayB, &channelDesc, w_b, h_b);
+	//cudaMallocArray(&cuArrayM, &channelDesc, w_m, h_m);
+
+	//cudaMemcpyToArray(cuArrayB, 0, 0, h_imgb, sizeMemB, cudaMemcpyHostToDevice);
+	//cudaMemcpyToArray(cuArrayM, 0, 0, h_imgm, sizeMemM, cudaMemcpyHostToDevice);
+
+	//// 2. bind the texture resource and the cuda array
+	//struct cudaResourceDesc resDescB, resDescM;
+
+	//memset(&resDescB, 0, sizeof(resDescB));
+	//memset(&resDescM, 0, sizeof(resDescM));
+
+	//resDescB.resType = cudaResourceTypeArray;
+	//resDescM.resType = cudaResourceTypeArray;
+	//resDescB.res.array.array = cuArrayB;
+	//resDescM.res.array.array = cuArrayM;
+
+	//// 3. specify texture object parameters
+	//struct cudaTextureDesc texDescB, texDescM;
+
+	//memset(&texDescB, 0, sizeof(texDescB));
+	//memset(&texDescM, 0, sizeof(texDescM));
+
+	//texDescB.addressMode[0]   = texDescM.addressMode[0]   = cudaAddressModeClamp; // x index address mode
+	//texDescB.addressMode[1]   = texDescM.addressMode[1]   = cudaAddressModeClamp; // y index address mode
+	//texDescB.filterMode       = texDescM.filterMode       = cudaFilterModeLinear; // with interpolation
+	//texDescB.readMode         = texDescM.readMode         = cudaReadModeNormalizedFloat; // when texel is 8-bit or 16-bit unsigned integer, if cudaReadModeNormalizedFloat is set, the returned value will be converted to normalized floating point [0.0, 1.0]
+	//texDescB.normalizedCoords = texDescM.normalizedCoords = 0; // 0 for [0, N-1], 1 for [0.0, 1.0-1/N]
+
+	//// 4. create texture object
+	//cudaTextureObject_t texObjB = 0;
+	//cudaTextureObject_t texObjM = 0;
+
+	//cudaCreateTextureObject(&texObjB, &resDescB, &texDescB, NULL);
+	//cudaCreateTextureObject(&texObjM, &resDescM, &texDescM, NULL);
+
+	/////////////////////////////////////////////////////////////////////////////
 
 	curandState * devStates; // the curandStates of the even field
 
@@ -3779,7 +4055,219 @@ CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 	cudaFree(d_alpha);
 	cudaFree(d_beta);
 	cudaFree(devStates);
+
+	// 20170428
+	// destroy texture object
+//	cudaDestroyTextureObject(texObjB);
+//	cudaDestroyTextureObject(texObjM);
+
+	// free cuda array
+//	cudaFreeArray(cuArrayB);
+//	cudaFreeArray(cuArrayM);
 }
+
+// 20170430, 
+template <typename T>
+void
+CUDA_PatchMatch_template(const unsigned char * h_imgb,	// input: the base gray image
+				const unsigned char * h_imgm,	// input: tha matching gray image
+				int w_b, int h_b,				// input: the width and height of base image
+				int w_m, int h_m,				// input: the width and height of matching image
+				T * h_depth,					// output:the estimated depth map of the base image
+				T * h_alpha,					// output:the estimated surface normal map of the base image
+				T * h_beta,						// output:the estimated surface normal map of the base image
+				int nThreads_w,					// input: the number of threads per row of the thread block
+				int nThreads_h,					// input: the number of threads per column of the thread block
+				unsigned long long randSeed,	// input: the random seed
+				T min_d, T max_d,				// input: the minimum and maximum depth
+				T min_a, T max_a,				// input: the minimum and maximum alpha
+				T min_b, T max_b				// input: the minimum and maximum beta
+				)
+{
+	//cudaDeviceProp deviceProp;
+	//deviceProp.major = 0;
+	//deviceProp.minor = 0;
+	//int dev = 0;
+
+	//int argc; char **argv;
+
+	//// This will pick the best possible CUDA capable device
+	//// Otherwise pick the device with highest Gflops/s
+	//dev = gpuGetMaxGflopsDeviceId();
+	//checkCudaErrors(cudaSetDevice(dev));
+	//checkCudaErrors(cudaGetDeviceProperties(&deviceProp, dev));
+	//printf("GPU Device %d: \"%s\" with compute capability %d.%d\n\n", dev, deviceProp.name, deviceProp.major, deviceProp.minor);
+
+	//checkCudaErrors(cudaGetDeviceProperties(&deviceProp, dev));
+
+	//// Statistics about the GPU device
+	//printf("> GPU device has %d Multi-Processors, SM %d.%d compute capabilities\n\n",
+	//	deviceProp.multiProcessorCount, deviceProp.major, deviceProp.minor);
+
+	//int version = (deviceProp.major * 0x10 + deviceProp.minor);
+
+	//if (version < 0x20)
+	//{
+	//	printf("requires a minimum CUDA compute 2.0 capability\n");
+	//	exit(EXIT_SUCCESS);
+	//}
+
+	///*size_t stackLimit = 0;
+	//checkCudaErrors(cudaDeviceGetLimit(&stackLimit, cudaLimitStackSize));
+	//checkCudaErrors(cudaDeviceSetLimit(cudaLimitStackSize, 8000));
+	//checkCudaErrors(cudaDeviceGetLimit(&stackLimit, cudaLimitStackSize));*/
+
+	//int activeBlocks;
+	//int blockSize = 256;
+	//checkCudaErrors(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&activeBlocks, kernel_setup_randstates_2d/*kernel_PatchMatch_randinit_template<T>*/, blockSize, 0));
+
+	//int activeWarps = activeBlocks * blockSize / deviceProp.warpSize;
+	//int maxWarps = deviceProp.maxThreadsPerMultiProcessor / deviceProp.warpSize;
+
+	//double occupancy = (double)activeWarps / maxWarps;
+
+	/////////////////////////////////////////////////////////////////////////////
+	
+	
+	// determine the width and height of the parallel grid
+	int w_grid = ((w_b % 2) != 0) ? ((w_b + 1) / 2) : (w_b / 2);
+	int h_grid = h_b;
+
+	int nPix = w_b*h_b;
+
+//	int sizeMemB = sizeof(unsigned char) * nPix;
+//	int sizeMemM = sizeof(unsigned char) * w_m * h_m;
+
+	int sizeMemMaps = sizeof(T) * nPix;
+
+	// allocate device memory
+//	unsigned char * d_imgb = NULL;
+//	unsigned char * d_imgm = NULL;
+	T * d_depth = NULL;
+	T * d_alpha = NULL;
+	T * d_beta  = NULL;
+//	cudaMalloc((void **)&d_imgb, sizeMemB);
+//	cudaMalloc((void **)&d_imgm, sizeMemM);
+	cudaMalloc((void **)&d_depth, sizeMemMaps);
+	cudaMalloc((void **)&d_alpha, sizeMemMaps);
+	cudaMalloc((void **)&d_beta, sizeMemMaps);
+
+	// copy host memory to device memory
+//	cudaMemcpy(d_imgb, h_imgb, sizeMemB, cudaMemcpyHostToDevice);
+//	cudaMemcpy(d_imgm, h_imgm, sizeMemM, cudaMemcpyHostToDevice);
+
+	// 20170427, copy the host image into texture memory ////////////////////////
+	cudaArray * cuArrayB = NULL;
+	cudaArray * cuArrayM = NULL;
+	
+	cudaTextureObject_t texObjB = 0;
+	cudaTextureObject_t texObjM = 0;
+	
+	addImageToTexture_uchar1(w_b, h_b, h_imgb, texObjB, cuArrayB);
+	addImageToTexture_uchar1(w_m, h_m, h_imgm, texObjM, cuArrayM);
+	/////////////////////////////////////////////////////////////////////////////
+
+	curandState * devStates; // the curandStates of the even field
+
+	// allocate the random states
+	cudaMalloc((void **)&devStates, nPix * sizeof(curandState));
+
+	int nBlocks_ox = ((w_b % nThreads_w) != 0) ? (w_b / nThreads_w + 1) : (w_b / nThreads_w);
+	int nBlocks_x = ((w_grid % nThreads_w) != 0) ? (w_grid / nThreads_w + 1) : (w_grid / nThreads_w);
+	int nBlocks_y = ((h_grid % nThreads_h) != 0) ? (h_grid / nThreads_h + 1) : (h_grid / nThreads_h);
+
+	// determine the dimension of the grid and a block
+	dim3 block(nThreads_w, nThreads_h, 1);
+	dim3 grid(nBlocks_x, nBlocks_y, 1);
+	dim3 grid_o(nBlocks_ox, nBlocks_y, 1);
+
+	forCUDA_ShowInfo("PatchMatch starts");
+
+	// setup the random states for all pixels
+	kernel_setup_randstates_2d<<<grid_o, block>>>(devStates, w_b, h_b, randSeed);
+
+	cudaDeviceSynchronize();
+	double occ = getTheoreticalOccupancy(kernel_setup_randstates_2d, block.x*block.y*block.z, 0);
+	char info[128];
+	sprintf(info, "kernel_setup_randstates_2d: theoretical occupancy %.1f%%, ", occ * 100);
+	lastErrorHandling(info);
+		
+	
+	// initialize all the parameter maps with uniform random parameters
+	kernel_PatchMatch_randinit_template<T><<<grid_o, block>>>(devStates, d_depth, d_alpha, d_beta, w_b, h_b, min_d, max_d, min_a, max_a, min_b, max_b);
+
+	cudaDeviceSynchronize();
+	occ = getTheoreticalOccupancy(kernel_PatchMatch_randinit_template<T>, block.x*block.y*block.z, 0);
+	sprintf(info, "kernel_PatchMatch_randinit_template: theoretical occupancy %.1f%%, ", occ * 100);
+	lastErrorHandling(info);
+
+	
+
+	cudaMemcpy(h_depth, d_depth, sizeMemMaps, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_alpha, d_alpha, sizeMemMaps, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_beta, d_beta, sizeMemMaps, cudaMemcpyDeviceToHost);
+
+	forCUDA_ShowInfo("PatchMatch ends");
+
+	// save the results as images
+	forCUDA_SaveMatAsImage<T>("E:\\results\\depth.png", h_depth, w_b, h_b, min_d, max_d);
+	forCUDA_SaveMatAsImage<T>("E:\\results\\alpha.png", h_alpha, w_b, h_b, min_a, max_a);
+	forCUDA_SaveMatAsImage<T>("E:\\results\\beta.png", h_beta, w_b, h_b, min_b, max_b);
+	
+//	cudaFree(d_imgb);
+//	cudaFree(d_imgm);
+	cudaFree(d_depth);
+	cudaFree(d_alpha);
+	cudaFree(d_beta);
+	cudaFree(devStates);
+
+	// 20170428
+	// destroy texture object
+	checkCudaErrors(cudaDestroyTextureObject(texObjB));
+	lastErrorHandling("cudaDestroyTextureObject texObjB: ");
+
+	checkCudaErrors(cudaDestroyTextureObject(texObjM));
+	lastErrorHandling("cudaDestroyTextureObject texObjM: ");
+
+	// free cuda array
+	checkCudaErrors(cudaFreeArray(cuArrayB));
+	lastErrorHandling("cudaFreeArray cuArrayB: ");
+
+	checkCudaErrors(cudaFreeArray(cuArrayM));
+	lastErrorHandling("cudaFreeArray cuArrayM: ");
+}
+
+template void
+CUDA_PatchMatch_template<double>(const unsigned char * h_imgb,	// input: the base gray image
+				const unsigned char * h_imgm,	// input: tha matching gray image
+				int w_b, int h_b,				// input: the width and height of base image
+				int w_m, int h_m,				// input: the width and height of matching image
+				double * h_depth,					// output:the estimated depth map of the base image
+				double * h_alpha,					// output:the estimated surface normal map of the base image
+				double * h_beta,						// output:the estimated surface normal map of the base image
+				int nThreads_w,					// input: the number of threads per row of the thread block
+				int nThreads_h,					// input: the number of threads per column of the thread block
+				unsigned long long randSeed,	// input: the random seed
+				double min_d, double max_d,				// input: the minimum and maximum depth
+				double min_a, double max_a,				// input: the minimum and maximum alpha
+				double min_b, double max_b				// input: the minimum and maximum beta
+				);
+
+template void
+CUDA_PatchMatch_template<float>(const unsigned char * h_imgb,	// input: the base gray image
+				const unsigned char * h_imgm,	// input: tha matching gray image
+				int w_b, int h_b,				// input: the width and height of base image
+				int w_m, int h_m,				// input: the width and height of matching image
+				float * h_depth,					// output:the estimated depth map of the base image
+				float * h_alpha,					// output:the estimated surface normal map of the base image
+				float * h_beta,						// output:the estimated surface normal map of the base image
+				int nThreads_w,					// input: the number of threads per row of the thread block
+				int nThreads_h,					// input: the number of threads per column of the thread block
+				unsigned long long randSeed,	// input: the random seed
+				float min_d, float max_d,				// input: the minimum and maximum depth
+				float min_a, float max_a,				// input: the minimum and maximum alpha
+				float min_b, float max_b				// input: the minimum and maximum beta
+				);
 
 //}
 

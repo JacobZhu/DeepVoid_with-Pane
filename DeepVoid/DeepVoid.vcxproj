@@ -130,7 +130,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(CudaToolkitLibDir);$(OPENCV_DIR)\x64\vc14\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>cudart.lib;opencv_core320d.lib;opencv_calib3d320d.lib;opencv_highgui320d.lib;opencv_imgproc320d.lib;opencv_imgcodecs320d.lib;opencv_features2d320d.lib;opencv_xfeatures2d320d.lib;opencv_flann320d.lib;opencv_viz320d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>cublas.lib;cublas_device.lib;cudadevrt.lib;cudart_static.lib;opencv_core320d.lib;opencv_calib3d320d.lib;opencv_highgui320d.lib;opencv_imgproc320d.lib;opencv_imgcodecs320d.lib;opencv_features2d320d.lib;opencv_xfeatures2d320d.lib;opencv_flann320d.lib;opencv_viz320d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -142,7 +142,11 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <CudaCompile>
-      <CodeGeneration>compute_20,sm_20;compute_30,sm_30;compute_35,sm_35;compute_37,sm_37;compute_50,sm_50;compute_52,sm_52;compute_60,sm_60;</CodeGeneration>
+      <CodeGeneration>compute_35,sm_35;compute_37,sm_37;compute_50,sm_50;compute_52,sm_52;compute_60,sm_60</CodeGeneration>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <MaxRegCount>32</MaxRegCount>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -207,7 +211,9 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <CudaCompile>
-      <CodeGeneration>compute_20,sm_20;compute_30,sm_30;compute_35,sm_35;compute_37,sm_37;compute_50,sm_50;compute_52,sm_52;compute_60,sm_60;</CodeGeneration>
+      <CodeGeneration>compute_35,sm_35;compute_37,sm_37;compute_50,sm_50;compute_52,sm_52;compute_60,sm_60;compute_61,sm_61</CodeGeneration>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <MaxRegCount>32</MaxRegCount>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -222,6 +228,7 @@
   <ItemGroup>
     <ClInclude Include="ChildFrm.h" />
     <ClInclude Include="DeepVoid Codes\DeepVoid_Calib3D.h" />
+    <ClInclude Include="DeepVoid Codes\DeepVoid_CUDA.h" />
     <ClInclude Include="DeepVoid Codes\DeepVoid_DataType.h" />
     <ClInclude Include="DeepVoid Codes\DeepVoid_Derivatives.h" />
     <ClInclude Include="DeepVoid Codes\DeepVoid_Levmar_Wrapper.h" />

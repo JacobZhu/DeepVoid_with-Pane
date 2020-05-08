@@ -114,6 +114,9 @@
     <ClInclude Include="DeepVoid Codes\DeepVoid_SBA_Wrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DeepVoid Codes\DeepVoid_CUDA.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeepVoid.cpp">

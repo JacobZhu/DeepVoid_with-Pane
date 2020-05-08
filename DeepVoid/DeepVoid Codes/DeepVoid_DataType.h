@@ -49,7 +49,7 @@ CUDA_CostAggregation_OneDir(int w, int h, int nd,		// input: the width and heigh
 							int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
 							);
 
-extern "C" void
+/*extern "C"*/ void
 CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and height of stereo images, and the number of disparities
 								const double * h_DSI,		// input: h*w*nd, the Disparity Space Image
 								double * h_C,				// output:h*w*nd, the aggregated cost volume along this direction
@@ -59,7 +59,7 @@ CUDA_CostAggregation_OneDir_new(int w, int h, int nd,		// input: the width and h
 								int dir						// 0:l2r. 1:r2l. 2:u2b. 3:b2u
 								);
 
-extern "C" void
+/*extern "C"*/ void
 CUDA_AddVec_double(double * h_A,		// input & output: A[i] += B[i]
 				   const double * h_B,	// input: 
 				   int n,				// input: number of elements
@@ -81,7 +81,7 @@ CUDA_transpose_tile_uchar(unsigned char * h_B,			// output:B = A'
 						  );
 
 // 20170102, 3D thread block
-extern "C" void
+/*extern "C"*/ void
 CUDA_GenerateDSI_new(int w, int h,					// input: the width and height of stereo images
 					 int hw, int hh,				// input: the half width and half height of the support window
 					 const unsigned char * h_imgb,	// input: h*w, the rectified grayscale base image
@@ -98,7 +98,7 @@ CUDA_GenerateDSI_new(int w, int h,					// input: the width and height of stereo 
 					 );
 
 // 20170119
-extern "C" void
+/*extern "C"*/ void
 CUDA_PatchMatch(const unsigned char * h_imgb,	// input: the base gray image
 				const unsigned char * h_imgm,	// input: tha matching gray image
 				int w_b, int h_b,				// input: the width and height of base image

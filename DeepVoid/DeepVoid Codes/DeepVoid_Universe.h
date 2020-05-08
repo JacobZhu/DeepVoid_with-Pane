@@ -37,4 +37,5 @@
 #include "DeepVoid Codes/DeepVoid_StereoVision.h"
 #include "DeepVoid Codes/DeepVoid_Derivatives.h"
 
-// #include "DeepVoid Codes/DeepVoid_CUDA.cu"
+// 20170430
+#include "DeepVoid Codes/DeepVoid_CUDA.h"

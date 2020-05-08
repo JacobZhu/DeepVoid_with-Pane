@@ -553,6 +553,83 @@ Matx<double,2,4> derivatives::der_uv_XYZW(const Matx33d & R, const Matx31d & t, 
 	return ders;
 }
 
+// 20170808, for sparse LM of fundamental matrix
+// 线性成像点坐标对空间点齐次坐标XYZW求导
+// 其中 f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 4> derivatives::der_xy_XYZW(const Matx34d & P, double f1, double f2, double g)
+{
+	Matx<double, 2, 4> ders;
+
+	double g2_1 = 1.0 / (g*g);
+
+	ders(0, 0) = (P(0, 0)*g - P(2, 0)*f1)*g2_1;
+	ders(0, 1) = (P(0, 1)*g - P(2, 1)*f1)*g2_1;
+	ders(0, 2) = (P(0, 2)*g - P(2, 2)*f1)*g2_1;
+	ders(0, 3) = (P(0, 3)*g - P(2, 3)*f1)*g2_1;
+
+	ders(1, 0) = (P(1, 0)*g - P(2, 0)*f2)*g2_1;
+	ders(1, 1) = (P(1, 1)*g - P(2, 1)*f2)*g2_1;
+	ders(1, 2) = (P(1, 2)*g - P(2, 2)*f2)*g2_1;
+	ders(1, 3) = (P(1, 3)*g - P(2, 3)*f2)*g2_1;
+
+	return ders;
+}
+
+// 20170812, for sparse LM of fundamental matrix
+// 线性成像点坐标对空间点齐次坐标XYW求导，Z坐标固定为1，即导数为 0
+// 其中 f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 3> derivatives::der_xy_XYW(const Matx34d & P, double f1, double f2, double g)
+{
+	Matx<double, 2, 3> ders;
+
+	double g2_1 = 1.0 / (g*g);
+
+	ders(0, 0) = (P(0, 0)*g - P(2, 0)*f1)*g2_1;
+	ders(0, 1) = (P(0, 1)*g - P(2, 1)*f1)*g2_1;
+	ders(0, 2) = (P(0, 3)*g - P(2, 3)*f1)*g2_1;
+
+	ders(1, 0) = (P(1, 0)*g - P(2, 0)*f2)*g2_1;
+	ders(1, 1) = (P(1, 1)*g - P(2, 1)*f2)*g2_1;
+	ders(1, 2) = (P(1, 3)*g - P(2, 3)*f2)*g2_1;
+
+	return ders;
+}
+
+// 20170808, for sparse LM of fundamental matrix
+// 线性成像点坐标对投影矩阵的12个元素求导
+// 其中 f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 12> derivatives::der_xy_P(double X, double Y, double Z, double W, double f1, double f2, double g)
+{
+	Matx<double, 2, 12> ders;
+
+	double g_1 = 1.0 / g;
+	double x = f1*g_1;
+	double y = f2*g_1;
+
+	ders(0, 0) = ders(1, 4) = X*g_1;
+	ders(0, 1) = ders(1, 5) = Y*g_1;
+	ders(0, 2) = ders(1, 6) = Z*g_1;
+	ders(0, 3) = ders(1, 7) = W*g_1;
+
+	ders(0, 8)  = -ders(0, 0)*x;
+	ders(0, 9)  = -ders(0, 1)*x;
+	ders(0, 10) = -ders(0, 2)*x;
+	ders(0, 11) = -ders(0, 3)*x;
+
+	ders(1, 8)  = -ders(0, 0)*y;
+	ders(1, 9)  = -ders(0, 1)*y;
+	ders(1, 10) = -ders(0, 2)*y;
+	ders(1, 11) = -ders(0, 3)*y;
+
+	return ders;
+}
+
 // 归一化像点坐标对空间点坐标XYZ求导
 // 其中 v1 = r11 X + r12 Y + r13 Z + tx
 //		v2 = r21 X + r22 Y + r23 Z + ty
@@ -3100,6 +3177,235 @@ void derivatives::j_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,			// 输
 		{
 			g.at<double>(m6+i4+ii) = -ebi(ii);
 		}
+	}
+}
+
+// 20170811，一个图像对，左图的投影矩阵固定为[I|0]，另一个为P（待优化的量）
+// 还输入一系列在射影空间中重建出来的待优化的物点坐标，它们的 Z 坐标固定为1（因为在左图中有像点就注定Z坐标不可能为0），因此4维齐次坐标就退化为了XYW三维坐标表示
+// 该函数主要用于非线性迭代优化两图间的基础矩阵 F
+void derivatives::j_f_P_XYW(const Matx34d & P,				// 输入：当前右图投影矩阵 P 的估计
+						    double X, double Y, double W,	// 输入：当前该物点的 X Y W 坐标估计
+						    double x0, double y0,			// 输入：该物点于左参考图中的的实际观测像点坐标
+						    double x1, double y1,			// 输入：该物点于右图中的的实际观测像点坐标
+						    Matx<double,2,12> & A1,			// 输出：该物点于右图中的重投影像点坐标对其投影矩阵 P 各元素求的导数
+						    Matx<double,2,3> & B1,			// 输出：该物点于右图中的重投影像点坐标对其 X Y W 坐标求的导数
+						    double & dx0, double & dy0,		// 输出：当前估计下，该物点于左参考图中的重投影残差
+						    double & dx1, double & dy1		// 输出：当前估计下，该物点于右图中的重投影残差
+						    )
+{
+	Matx41d XYZW;
+	XYZW(0) = X; 
+	XYZW(1) = Y;
+	XYZW(2) = 1; 
+	XYZW(3) = W;
+
+	Matx31d xyw = P * XYZW;
+
+	double f1 = xyw(0);
+	double f2 = xyw(1);
+	double g  = xyw(2);
+	double g_1 = 1.0 / g;
+
+	// 物点于右图中的重投影像点坐标
+	double rx1 = f1*g_1;
+	double ry1 = f2*g_1;
+
+	A1 = der_xy_P(X, Y, 1, W, f1, f2, g);
+	B1 = der_xy_XYW(P, f1, f2, g);
+
+	// [X Y 1 W] 于左参考图 [I|0] 中重投影像点坐标就是 [X Y]
+	dx0 = X - x0;
+	dy0 = Y - y0;
+
+	dx1 = rx1 - x1;
+	dy1 = ry1 - y1;
+}
+
+// 20170809，一个图像对，左图的投影矩阵固定为[I|0]，另一个为P（待优化的量）
+// 还输入一系列在射影空间中重建出来的待优化的物点坐标，它们的 Z 坐标固定为1（因为在左图中有像点就注定Z坐标不可能为0），因此4维齐次坐标就退化为了XYW三维坐标表示
+// 该函数主要用于非线性迭代优化两图间的基础矩阵 F
+void derivatives::j_f_P_XYW(const Matx34d & P,									// 输入：当前估计的右图在射影空间中的投影矩阵
+						    const vector<Point3d> & XYWs,						// 输入：当前估计的 n 个空间点的 XYW 坐标
+							const vector<Point2d> & xysL,						// 输入：n 个空间点于左图（参考图）中观测像点坐标
+							const vector<Point2d> & xysR,						// 输入：n 个空间点于右图中观测像点坐标
+						    const vector<Matx22d> & covInvsL,					// 输入：n 个空间点于左图（参考图）中观测像点坐标协方差矩阵的逆矩阵
+						    const vector<Matx22d> & covInvsR,					// 输入：n 个空间点于右图中观测像点坐标协方差矩阵的逆矩阵
+						    Matx<double, 12, 12> & U,							// 输出：1 个 U 矩阵，仅和 P 有关
+						    vector<Matx<double, 3, 3>> & V,						// 输出：n 个 Vi 矩阵，仅和空间点坐标有关
+						    vector<Matx<double, 12, 3>> & W,					// 输出：n 个 Wi 矩阵，同时和 P 以及空间点坐标有关
+						    Matx<double, 12, 1> & ea,							// 输出：1 个 ea 残差向量
+						    vector<Matx<double, 3, 1>> & eb,					// 输出：n 个 ebi 残差向量
+						    double & F,											// 输出：当前的目标函数值 0.5*ft*covinv*f
+							double & x_norm,									// 输出：当前待优化参数向量的模，即2范数L2，|x|2
+						    Mat & g,											// 输出：12+3*n维的参数梯度
+						    vector<Point2d> & vds								// 输出：n 个空间点于左右两幅图中的重投影残差量
+						    )
+{
+	int n = XYWs.size(); // 物点个数
+
+	Matx<double, 2, 12> A1;
+	Matx23d B1;
+	Matx<double, 12, 2> A1tc1;
+	Matx<double, 3, 2> B1tc1;
+	Matx33d B1tc1B1;
+	Matx31d B1tc1e1;
+	Matx21d e0, e1, c0e0;
+	Matx<double, 1, 1> mF;
+
+	double dx0, dy0, dx1, dy1;
+
+	U = Matx<double, 12, 12>();
+	ea = Matx<double, 12, 1>();
+
+	x_norm = 0;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 4; ++j)
+		{
+			x_norm += (P(i, j)*P(i, j));
+		}
+	}
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Point3d & wrdpt = XYWs[i];
+		const Point2d & imgpt0 = xysL[i];
+		const Point2d & imgpt1 = xysR[i];
+		const Matx22d & covInv0 = covInvsL[i];
+		const Matx22d & covInv1 = covInvsR[i];
+
+		j_f_P_XYW(P, wrdpt.x, wrdpt.y, wrdpt.z, imgpt0.x, imgpt0.y, imgpt1.x, imgpt1.y, A1, B1, dx0, dy0, dx1, dy1);
+
+		e0(0) = -dx0;
+		e0(1) = -dy0;
+		double d0 = sqrt(dx0*dx0 + dy0*dy0);
+		
+		e1(0) = -dx1;
+		e1(1) = -dy1;
+		double d1 = sqrt(dx1*dx1 + dy1*dy1);
+
+		Point2d ds;
+		ds.x = d0;
+		ds.y = d1;
+
+		vds[i] = ds;
+
+		A1tc1 = A1.t()*covInv1;
+		B1tc1 = B1.t()*covInv1;
+
+		U += A1tc1*A1;
+		ea += A1tc1*e1;
+		
+		W[i] = A1tc1*B1;
+
+		B1tc1B1 = B1tc1*B1;
+		B1tc1e1 = B1tc1*e1;
+
+		c0e0 = covInv0*e0;
+
+		mF += (e0.t()*c0e0 + e1.t()*covInv1*e1);
+
+		for (int ii = 0; ii < 2; ++ii)
+		{
+			for (int jj = 0; jj < 2; ++jj)
+			{
+				B1tc1B1(ii, jj) += covInv0(ii, jj);
+			}
+
+			B1tc1e1(ii) += c0e0(ii);
+		}
+
+		V[i] = B1tc1B1;
+		eb[i] = B1tc1e1;
+
+		g.at<double>(12 + i * 3)     = -B1tc1e1(0);
+		g.at<double>(12 + i * 3 + 1) = -B1tc1e1(1);
+		g.at<double>(12 + i * 3 + 2) = -B1tc1e1(2);
+
+		x_norm += (wrdpt.x*wrdpt.x + wrdpt.y*wrdpt.y + wrdpt.z*wrdpt.z);
+	}
+
+	for (int i = 0; i < 12; ++i)
+	{
+		g.at<double>(i) = -ea(i);
+	}
+
+	F = 0.5*mF(0);
+
+	x_norm = sqrt(x_norm);
+}
+
+// 20170816，稀疏LM优化基础矩阵中的稀疏求解正规方程的函数
+void derivatives::solve_sparseLM_F(double u,								// 输入：阻尼系数
+								 const Matx<double,12,12> & U,			// 输入：1个U矩阵，仅跟右图的投影矩阵P有关
+								 const vector<Matx<double,3,3>> & V,	// 输入：n个Vi矩阵，仅跟空间点坐标有关
+								 const vector<Matx<double,12,3>> & W,	// 输入：n个Wi矩阵，同时跟空间点及P有关
+								 const Matx<double,12,1> & ea,			// 输入：1个ea残差向量，仅跟P有关
+								 const vector<Matx<double,3,1>> & eb,	// 输入：n个ebi残差向量，仅跟空间点坐标有关
+								 Matx<double,12,1> & da,				// 输出：1个P的改正量
+								 vector<Matx<double,3,1>> & db,			// 输出：n个空间点坐标的改正量
+								 Mat & h								// 输出：12+3*n维的参数改正量
+								 )
+{
+	int n = V.size(); // 空间点个数
+
+	Matx<double, 12, 12> U_aug = U; // 存放 U' 矩阵
+	vector<Matx<double, 3, 3>> V_aug(n); // 存放 inv(Vi') 矩阵
+	vector<Matx<double, 12, 3>> Y(n); // 存放所有的 Yi = Wi * inv(Vi') 矩阵
+
+	// 形成增广矩阵 U' = U + uI
+	for (int k = 0; k < 12; ++k)
+	{
+		U_aug(k, k) += u;
+	}	
+
+	// 形成增广矩阵的逆 inv(Vi') = (Vi + uI)^(-1)
+	// 以及所有的 Yi = Wi * inv(Vi') 矩阵
+	for (int i = 0; i < n; ++i)
+	{
+		Matx<double, 3, 3> Vi_aug = V[i];
+
+		for (int k = 0; k < 3; ++k)
+		{
+			Vi_aug(k, k) += u;
+		}
+
+		V_aug[i] = Vi_aug.inv(DECOMP_CHOLESKY);
+
+		Y[i] = W[i] * V_aug[i];
+	}
+	
+	Matx<double, 12, 12> S = U_aug;
+	Matx<double, 12, 1> e = ea;
+
+	// 填充 S 和 e
+	for (int i = 0; i < n; ++i)
+	{
+		S -= Y[i] * W[i].t();
+		e -= Y[i] * eb[i];
+	}
+	
+	// 解方程 S*da = e 得到 P 的改正量
+	solve(S, e, da, DECOMP_CHOLESKY);
+
+	for (int i = 0; i < 12; ++i)
+	{
+		h.at<double>(i) = da(i);
+	}
+
+	// 再进一步求解各空间点坐标的改正量
+	for (int i = 0; i < n; ++i)
+	{
+		Matx<double, 3, 1> dbi = V_aug[i] * (eb[i] - W[i].t()*da);
+
+		db[i] = dbi;
+
+		int offset = 12 + i * 3;
+
+		h.at<double>(offset)     = dbi(0);
+		h.at<double>(offset + 1) = dbi(1);
+		h.at<double>(offset + 2) = dbi(2);
 	}
 }
 
@@ -13563,19 +13869,23 @@ void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,	
 	// 20151111，仅统计内点的重投影残差
 	int n_inliers = 0;
 	double sum_d2 = 0;
-	for (int i=0;i<l;++i)
+	for (int i = 0; i < l; ++i)
 	{
-		double dx = f.at<double>(2*i);
+		/*double dx = f.at<double>(2*i);
 		double dy = f.at<double>(2*i+1);
-		double d = sqrt(dx*dx+dy*dy);
-		if (d>=tc)
+		double d = sqrt(dx*dx+dy*dy);*/
+
+		// 20170831，不能从 f 中取值，因为 f 中已经乘了权重了，判断内点集，应该看原始的偏差值
+		double d = vds[i];
+
+		if (d >= tc)
 		{
 			continue;
 		}
 		++n_inliers;
-		sum_d2+=d*d;
+		sum_d2 += d*d;
 	}
-	double err_rpj_init = sqrt(sum_d2/n_inliers);
+	double err_rpj_init = sqrt(sum_d2 / n_inliers);
 
 //	double err_rpj_init = sqrt(2*Fx/l);
 	
@@ -13718,21 +14028,219 @@ void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,	
 	// 20151111，仅统计内点的重投影残差
 	n_inliers = 0;
 	sum_d2 = 0;
-	for (int i=0;i<l;++i)
+	for (int i = 0; i < l; ++i)
 	{
-		double dx = f.at<double>(2*i);
+		/*double dx = f.at<double>(2*i);
 		double dy = f.at<double>(2*i+1);
-		double d = sqrt(dx*dx+dy*dy);
-		if (d>=tc)
+		double d = sqrt(dx*dx+dy*dy);*/
+
+		// 20170831，不能从 f 中取值，因为 f 中已经乘了权重了，判断内点集，应该看原始的偏差值
+		double d = vds[i];
+
+		if (d >= tc)
 		{
 			continue;
 		}
 		++n_inliers;
-		sum_d2+=d*d;
+		sum_d2 += d*d;
 	}
-	double err_rpj_final = sqrt(sum_d2/n_inliers);
+	double err_rpj_final = sqrt(sum_d2 / n_inliers);
 
 //	double err_rpj_final = sqrt(2*Fx/l);
+
+	if (info)
+	{
+		info[0] = err_rpj_init;
+		info[1] = err_rpj_final;
+		info[2] = g_norm;
+		info[3] = k;
+		info[4] = code;
+	}
+}
+
+// 20170820，双目视觉中，固定左图的投影矩阵为[I|0]，稀疏优化右图的投影矩阵 P
+// 以及射影重建出来的 n 个物点坐标 [X Y 1 W]，其中 Z 坐标固定为 1
+// 该函数主要目标是从优化完的 P 中分解出具有几何最优意义的基础矩阵 F 来
+void SBA_ZZK::optim_sparse_lm_P_XiYiWi(Matx34d & P,									// 输入兼输出：当前估计的右图在射影空间中的投影矩阵
+									   vector<Point3d> & XYWs,						// 输入兼输出：n个物点的XYW坐标，Z坐标默认为1
+									   const vector<Point2d> & xysL,				// 输入：n 个空间点于左图（参考图）中观测像点坐标
+									   const vector<Point2d> & xysR,				// 输入：n 个空间点于右图中观测像点坐标
+									   const vector<Matx22d> & covInvsL,			// 输入：n 个空间点于左图（参考图）中观测像点坐标协方差矩阵的逆矩阵
+									   const vector<Matx22d> & covInvsR,			// 输入：n 个空间点于右图中观测像点坐标协方差矩阵的逆矩阵
+									   vector<Point2d> & vds,						// 输出：n 个空间点于左右两幅图中的重投影残差量
+									   double * info /*= NULL*/,					// output:	runtime info, 5-vector
+																					// info[0]:	the initial reprojection error
+																					// info[1]:	the final reprojection error
+																					// info[2]: final max gradient
+																					// info[3]: the number of iterations
+																					// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+									   double tau /*= 1.0E-3*/,						// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+									   int maxIter /*= 64*/,						// input:	the maximum number of iterations
+									   double eps1 /*= 1.0E-8*/,					// input:	threshold
+									   double eps2 /*= 1.0E-12*/					// input:	threshold
+									   )
+{
+	int k = 0;		// 迭代次数索引
+	int v = 2;		// 更新 u 时需要用到的一个控制量      
+	double u;		// LM 优化算法中最关键的阻尼系数 (J'J + uI)h = -J'f
+	double r;		// gain ratio, 增益率，用来衡量近似展开式的好坏
+	double g_norm;  // 梯度的模
+	double h_norm;	// 改正量的模
+	double h_thresh;// 改正量收敛判断阈值 eps2*(norm(x)+eps2)
+	double F, F_new;// 目标函数值 0.5*ft*covInv*f
+	double x_norm, x_norm_new; // 当前待优化参数向量的模，即2范数L2，|x|2
+	double L0_Lh;	// 泰勒展开式的函数值下降量
+
+	double ratio_1_3 = 1.0/3.0;
+
+	bool found = false; // 标识是否已经满足迭代收敛条件
+	int code = 2; // termination code
+
+	int n = XYWs.size(); // 物点个数
+
+	// Mat 结构
+	Mat g(12 + 3 * n, 1, CV_64FC1, Scalar(0)), g_new(12 + 3 * n, 1, CV_64FC1, Scalar(0));
+	Mat h(12 + 3 * n, 1, CV_64FC1, Scalar(0));
+	Mat tmp;
+
+	// [U W; W' V] 是在当前状态下的 J'covInv J 矩阵，也即还未增广的法向方程系数矩阵
+	// [-ea; -eb] 则是当前状态下的参数梯度向量
+	// [U_new W_new; W_new' V_new] 则是存放的候选状态下的未增广法向方程系数矩阵
+	// [-ea_new; -eb_new] 则是存放的候选状态下的参数梯度向量
+	// 只有当候选状态相对于当前状态是使得目标函数值下降的时候，候选状态才能被采纳成为当前状态，即参数估计从当前状态正式移动到候选状态
+	// 也只有在此时，U_new V_new W_new ea_new eb_new 才正式取代 U V W ea eb
+	Matx<double, 12, 12> U, U_new;
+	vector<Matx<double, 3, 3>> V(n), V_new(n);
+	vector<Matx<double, 12, 3>> W(n), W_new(n);
+	Matx<double, 12, 1> ea, ea_new;
+	vector<Matx<double, 3, 1>> eb(n), eb_new(n);
+	Matx<double, 12, 1> da;
+	vector<Matx<double, 3, 1>> db(n);
+
+	derivatives::j_f_P_XYW(P, XYWs, xysL, xysR, covInvsL, covInvsR, U, V, W, ea, eb, F, x_norm, g, vds);
+	
+	// 初始重投影残差
+	double err_rpj_init = sqrt(F / n);
+	
+	g_norm = norm(g, NORM_INF);
+
+	// 梯度收敛，说明已在平坦区域
+	if (g_norm < eps1)
+	{
+		found = true;
+		code = 0;
+	}
+
+	vector<double> Aii;
+	
+	for (int i = 0; i < 12; ++i)
+	{
+		Aii.push_back(U(i, i));
+	}
+	
+	for (int i = 0; i < n; ++i)
+	{
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Aii.push_back(V[i](ii, ii));
+		}
+	}
+
+	auto iter = max_element(Aii.begin(), Aii.end());
+	double max_Aii = *iter;
+
+	u = tau * max_Aii; // initial miu
+
+	while (!found && k < maxIter)
+	{
+		++k;
+
+		// 基于当前所在状态下的 [U W; W' V] 以及梯度向量 [-ea; -eb] 和阻尼系数 u 来求解改正量
+		derivatives::solve_sparseLM_F(u, U, V, W, ea, eb, da, db, h);
+
+		h_norm = norm(h);
+
+		h_thresh = eps2*(x_norm + eps2); // 根据当前待优化参数向量的模来确定改正量大小是否满足收敛条件
+
+//		if (h_norm < eps2) // 改正量收敛
+		if (h_norm < h_thresh) // 20170901，改用相对比例的方式判断改正量收敛
+		{
+			found = true;
+			code = 1;
+		} 
+		else
+		{
+			Matx34d P_new = P;
+			vector<Point3d> XYWs_new = XYWs;
+
+			for (int i = 0; i < 3; ++i)
+			{
+				int i4 = i * 4;
+
+				for (int j = 0; j < 4; ++j)
+				{
+					P_new(i, j) += da(i4 + j);
+				}
+			}
+
+			for (int i = 0; i < n; ++i)
+			{
+				Matx31d dbi = db[i];
+				
+				XYWs_new[i].x += dbi(0);
+				XYWs_new[i].y += dbi(1);
+				XYWs_new[i].z += dbi(2);
+			}
+
+			// 基于改正量得到一候选参数估计，并评估候选参数估计处的目标函数，Jacobian 矩阵以及梯度向量
+			derivatives::j_f_P_XYW(P_new, XYWs_new, xysL, xysR, covInvsL, covInvsR, U_new, V_new, W_new, ea_new, eb_new, F_new, x_norm_new, g_new, vds);
+
+			tmp = 0.5*h.t()*(u*h - g);
+			L0_Lh = tmp.at<double>(0); // 在当前参数处利用梯度和改正量预估的期望目标函数下降量
+
+			r = (F - F_new) / L0_Lh;
+
+			if (r > 0)
+			{
+				// 采纳新参数
+				P = P_new;
+				XYWs = XYWs_new;
+
+				// 一并采纳新参数处的 Jacobian 矩阵和梯度向量
+				U = U_new;
+				V = V_new;
+				W = W_new;
+				ea = ea_new;
+				eb = eb_new;
+				g = g_new.clone();
+
+				// 还采纳新参数处的目标函数值
+				F = F_new;
+
+				// 采纳已经计算出来的新参数向量的模
+				x_norm = x_norm_new;
+
+				g_norm = norm(g, NORM_INF);
+
+				if (g_norm < eps1) // 梯度收敛，说明抵达平坦区域
+				{
+					found = true;
+					code = 0;
+				}
+
+				double tmp_db = std::max(ratio_1_3, 1 - pow(2 * r - 1, 3));
+				u *= tmp_db;
+				v = 2;
+			} 
+			else
+			{
+				u *= v;
+				v *= 2;
+			}
+		}
+	}
+
+	double err_rpj_final = sqrt(F / n);
 
 	if (info)
 	{

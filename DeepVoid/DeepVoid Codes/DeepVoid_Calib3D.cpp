@@ -1747,9 +1747,8 @@ bool DeepVoid::Get_F_Matches_knn(const Features & feats0,				// input:	n1 featur
 
 	vector<uchar> status;
 
-	Matx33d fundamental_matrix;
-
-	fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+//	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
 
 	vector<DMatch> matches_RANSAC;
 	vector<Point2d> vImgPts0, vImgPts1;
@@ -1780,13 +1779,17 @@ bool DeepVoid::Get_F_Matches_knn(const Features & feats0,				// input:	n1 featur
 
 	// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
 	// because of the usage of normalization, this DLT algorithm is quite robust
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT starts");
+
 	mF = findFundamentalMat(vImgPts0, vImgPts1, FM_8POINT);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT ends");
 	//////////////////////////////////////////////////////////////////////////
 
 	// 9. optimize the fundamental matrix using only the inliers, optional step
 	if (bOptim)
 	{
-		Matx33d mF_optim;
+		Matx33d mF_optim = mF;
 		
 // 		if (vImgPts0.size()>=12 && optim_gn_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,maxIter,xEps,fEps))
 // 		{
@@ -1799,7 +1802,15 @@ bool DeepVoid::Get_F_Matches_knn(const Features & feats0,				// input:	n1 featur
 		{
 			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
 			// accept the optimized F only if the optimization succeeds
-			optim_lm_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,1.0E-6,maxIter,1.0E-8,1.0E-10);
+//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim starts");
+
+//			optim_lm_F(vImgPts0, vImgPts1,/*fundamental_matrix*/mF, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-10);
+			
+			// 20170821，稀疏LM方法优化基础矩阵
+			optim_slm_F(vImgPts0, vImgPts1, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+
+//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim ends");
+
 			mF = mF_optim;
 		}
 	}
@@ -23650,8 +23661,8 @@ bool DeepVoid::optim_gn_P_XYZ(const vector<Point2d> & vImgPts0,		// input:	the m
 }
 
 // zhaokunz, 20150331, given camera matrix of the left image [I|0], the right image [P]
-// given the measured image points in both images and the initial projective reconstructed world coordinates
-// optimize the camera matrix [P] of the right image and the projective reconstructed world coordinates
+// given the measured image points in both images and the initial projectively reconstructed world coordinates
+// optimize the camera matrix [P] of the right image and the projectively reconstructed world coordinates
 // using the Levenberg-Marquardt method
 void DeepVoid::optim_lm_P_XYZ(const vector<Point2d> & vImgPts0,		// input:	the measured image points in the left image
 						 	  const vector<Point2d> & vImgPts1,		// input:	the measured image points in the right image
@@ -23972,6 +23983,79 @@ void DeepVoid::optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measur
 	}
 
 	mF_optim = CrossMat(t)*M;
+}
+
+// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// sparse Levenberg-Marquardt
+void DeepVoid::optim_slm_F(const vector<Point2d> & vImgPts0,// input:	the measured image points in the left image
+						   const vector<Point2d> & vImgPts1,// input:	the measured image points in the right image
+						   Matx33d & mF,					// input&output:	the initial and optimized fundamental matrix
+						   double tau /*= 1.0E-3*/,			// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+						   int maxIter /*= 15*/,			// input:	the maximum number of iterations
+						   double eps1 /*= 1.0E-8*/,		// input:	threshold
+						   double eps2 /*= 1.0E-12*/		// input:	threshold
+						   )
+{
+	int n = vImgPts0.size();
+
+	vector<Matx22d> covInvs0(n), covInvs1(n);
+	
+	Matx22d eye22;
+	eye22(0, 0) = eye22(1, 1) = 1;
+
+	// set the inverse covariance matrices of all the measured image points to identities by default
+	for (int i = 0; i < n; ++i)
+	{
+		covInvs0[i] = eye22;
+		covInvs1[i] = eye22;
+	}
+
+	Matx34d mP0, mP1;
+	GetCameraMatfromF(mF, mP0, mP1);
+
+	// 20150113, zhaokunz, correctMatches based on the Optimal Triangulation Method in Multiple View Geometry
+	vector<Point2d> vImgPts0_crct, vImgPts1_crct;
+	correctMatches(mF, vImgPts0, vImgPts1, vImgPts0_crct, vImgPts1_crct);
+
+	Mat mWrdPts;
+	//	triangulatePoints(mP0, mP1, vImgPts0, vImgPts1, mWrdPts);
+	// 20150113, zhaokunz, use corrected image points to triangulate 3D points
+	triangulatePoints(mP0, mP1, vImgPts0_crct, vImgPts1_crct, mWrdPts);
+
+	vector<Point3d> XYWs;
+
+	for (int i = 0; i < n; ++i)
+	{
+		Point3d pt;
+		double z_1 = 1.0 / mWrdPts.at<double>(2, i);
+
+		pt.x = mWrdPts.at<double>(0, i)*z_1;
+		pt.y = mWrdPts.at<double>(1, i)*z_1;
+		pt.z = mWrdPts.at<double>(3, i)*z_1;
+
+		XYWs.push_back(pt);
+	}
+
+	double info[5];
+	vector<Point2d> vds(n);
+
+	// start optimization
+	SBA_ZZK::optim_sparse_lm_P_XiYiWi(mP1, XYWs, vImgPts0, vImgPts1, covInvs0, covInvs1, vds, info, tau, maxIter, eps1, eps2);
+
+	// extract the optimized F matrix
+	// P = [M|t], F = [t]xM
+	Matx31d t; Matx33d M;
+	t(0) = mP1(0, 3); t(1) = mP1(1, 3); t(2) = mP1(2, 3);
+
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			M(i, j) = mP1(i, j);
+		}
+	}
+
+	mF = CrossMat(t)*M;
 }
 
 void DeepVoid::PropagateDepth2OtherImage(const cam_data & cam0, const cam_data & cam,

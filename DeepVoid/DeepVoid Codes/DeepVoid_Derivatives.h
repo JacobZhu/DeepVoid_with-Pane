@@ -141,6 +141,27 @@ Matx<double,2,12> der_uv_Rc(const Matx33d & R, double u, double v, double v1, do
 //		v3 = r31 X + r32 Y + r33 Z + tz W
 Matx<double,2,4> der_uv_XYZW(const Matx33d & R, const Matx31d & t, double v1, double v2, double v3);
 
+// 20170808, for sparse LM of fundamental matrix
+// ÏßĞÔ³ÉÏñµã×ø±ê¶Ô¿Õ¼äµãÆë´Î×ø±êXYZWÇóµ¼
+// ÆäÖĞ f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 4> der_xy_XYZW(const Matx34d & P, double f1, double f2, double g);
+
+// 20170812, for sparse LM of fundamental matrix
+// ÏßĞÔ³ÉÏñµã×ø±ê¶Ô¿Õ¼äµãÆë´Î×ø±êXYWÇóµ¼£¬Z×ø±ê¹Ì¶¨Îª1£¬¼´µ¼ÊıÎª 0
+// ÆäÖĞ f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 3> der_xy_XYW(const Matx34d & P, double f1, double f2, double g);
+
+// 20170808, for sparse LM of fundamental matrix
+// ÏßĞÔ³ÉÏñµã×ø±ê¶ÔÍ¶Ó°¾ØÕóµÄ12¸öÔªËØÇóµ¼
+// ÆäÖĞ f1 = P11 X + P12 Y + P13 Z + P14 W
+//      f2 = P21 X + P22 Y + P23 Z + P24 W
+//      g  = P31 X + P32 Y + P33 Z + P34 W
+Matx<double, 2, 12> der_xy_P(double X, double Y, double Z, double W, double f1, double f2, double g);
+
 // ¹éÒ»»¯Ïñµã×ø±ê¶Ô¿Õ¼äµã×ø±êXYZÇóµ¼
 // ÆäÖĞ v1 = r11 X + r12 Y + r13 Z + tx
 //		v2 = r21 X + r22 Y + r23 Z + ty
@@ -348,7 +369,6 @@ void j_f_w_t_w0_t0_d0(double d0,				// ÊäÈë£ºµ±Ç°¸ÃÎïµãÏà¶ÔÓÚÆä²Î¿¼Í¼ÏñµÄÉî¶È¹À¼
 					  double & dx, double & dy	// Êä³ö£ºµ±Ç°¹À¼ÆÏÂµÄÖØÍ¶Ó°²Ğ²î
 					  );
 
-
 // void j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 // 				  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
 // 				  const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
@@ -409,6 +429,51 @@ void j_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµã
 							 vector<double> & vds,					// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
 							 double tc = 3.0						// ÊäÈë£º¶ÔÓÚÖØÍ¶Ó°²Ğ²î d Ğ¡ÓÚ tc µÄ¹Û²âÁ¿È¨ÖØÈ«¶¨Îª1£¬·ñÔò¶¨È¨ÖØÎª tc/d
 							 );
+
+// 20170811£¬Ò»¸öÍ¼Ïñ¶Ô£¬×óÍ¼µÄÍ¶Ó°¾ØÕó¹Ì¶¨Îª[I|0]£¬ÁíÒ»¸öÎªP£¨´ıÓÅ»¯µÄÁ¿£©
+// »¹ÊäÈëÒ»ÏµÁĞÔÚÉäÓ°¿Õ¼äÖĞÖØ½¨³öÀ´µÄ´ıÓÅ»¯µÄÎïµã×ø±ê£¬ËüÃÇµÄ Z ×ø±ê¹Ì¶¨Îª1£¨ÒòÎªÔÚ×óÍ¼ÖĞÓĞÏñµã¾Í×¢¶¨Z×ø±ê²»¿ÉÄÜÎª0£©£¬Òò´Ë4Î¬Æë´Î×ø±ê¾ÍÍË»¯ÎªÁËXYWÈıÎ¬×ø±ê±íÊ¾
+// ¸Ãº¯ÊıÖ÷ÒªÓÃÓÚ·ÇÏßĞÔµü´úÓÅ»¯Á½Í¼¼äµÄ»ù´¡¾ØÕó F
+void j_f_P_XYW(const Matx34d & P,				// ÊäÈë£ºµ±Ç°ÓÒÍ¼Í¶Ó°¾ØÕó P µÄ¹À¼Æ
+			   double X, double Y, double W,	// ÊäÈë£ºµ±Ç°¸ÃÎïµãµÄ X Y W ×ø±ê¹À¼Æ
+			   double x0, double y0,			// ÊäÈë£º¸ÃÎïµãÓÚ×ó²Î¿¼Í¼ÖĞµÄµÄÊµ¼Ê¹Û²âÏñµã×ø±ê
+			   double x1, double y1,			// ÊäÈë£º¸ÃÎïµãÓÚÓÒÍ¼ÖĞµÄµÄÊµ¼Ê¹Û²âÏñµã×ø±ê
+			   Matx<double,2,12> & A1,			// Êä³ö£º¸ÃÎïµãÓÚÓÒÍ¼ÖĞµÄÖØÍ¶Ó°Ïñµã×ø±ê¶ÔÆäÍ¶Ó°¾ØÕó P ¸÷ÔªËØÇóµÄµ¼Êı
+			   Matx<double,2,3> & B1,			// Êä³ö£º¸ÃÎïµãÓÚÓÒÍ¼ÖĞµÄÖØÍ¶Ó°Ïñµã×ø±ê¶ÔÆä X Y W ×ø±êÇóµÄµ¼Êı
+			   double & dx0, double & dy0,		// Êä³ö£ºµ±Ç°¹À¼ÆÏÂ£¬¸ÃÎïµãÓÚ×ó²Î¿¼Í¼ÖĞµÄÖØÍ¶Ó°²Ğ²î
+			   double & dx1, double & dy1		// Êä³ö£ºµ±Ç°¹À¼ÆÏÂ£¬¸ÃÎïµãÓÚÓÒÍ¼ÖĞµÄÖØÍ¶Ó°²Ğ²î
+			   );
+
+// 20170809£¬Ò»¸öÍ¼Ïñ¶Ô£¬×óÍ¼µÄÍ¶Ó°¾ØÕó¹Ì¶¨Îª[I|0]£¬ÁíÒ»¸öÎªP£¨´ıÓÅ»¯µÄÁ¿£©
+// »¹ÊäÈëÒ»ÏµÁĞÔÚÉäÓ°¿Õ¼äÖĞÖØ½¨³öÀ´µÄ´ıÓÅ»¯µÄÎïµã×ø±ê£¬ËüÃÇµÄ Z ×ø±ê¹Ì¶¨Îª1£¨ÒòÎªÔÚ×óÍ¼ÖĞÓĞÏñµã¾Í×¢¶¨Z×ø±ê²»¿ÉÄÜÎª0£©£¬Òò´Ë4Î¬Æë´Î×ø±ê¾ÍÍË»¯ÎªÁËXYWÈıÎ¬×ø±ê±íÊ¾
+// ¸Ãº¯ÊıÖ÷ÒªÓÃÓÚ·ÇÏßĞÔµü´úÓÅ»¯Á½Í¼¼äµÄ»ù´¡¾ØÕó F
+void j_f_P_XYW(const Matx34d & P,									// ÊäÈë£ºµ±Ç°¹À¼ÆµÄÓÒÍ¼ÔÚÉäÓ°¿Õ¼äÖĞµÄÍ¶Ó°¾ØÕó
+	           const vector<Point3d> & XYWs,						// ÊäÈë£ºµ±Ç°¹À¼ÆµÄ n ¸ö¿Õ¼äµãµÄ XYW ×ø±ê
+			   const vector<Point2d> & xysL,						// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚ×óÍ¼£¨²Î¿¼Í¼£©ÖĞ¹Û²âÏñµã×ø±ê
+			   const vector<Point2d> & xysR,						// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚÓÒÍ¼ÖĞ¹Û²âÏñµã×ø±ê
+			   const vector<Matx22d> & covInvsL,					// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚ×óÍ¼£¨²Î¿¼Í¼£©ÖĞ¹Û²âÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó
+			   const vector<Matx22d> & covInvsR,					// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚÓÒÍ¼ÖĞ¹Û²âÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó
+			   Matx<double, 12, 12> & U,							// Êä³ö£º1 ¸ö U ¾ØÕó£¬½öºÍ P ÓĞ¹Ø
+			   vector<Matx<double, 3, 3>> & V,						// Êä³ö£ºn ¸ö Vi ¾ØÕó£¬½öºÍ¿Õ¼äµã×ø±êÓĞ¹Ø
+			   vector<Matx<double, 12, 3>> & W,						// Êä³ö£ºn ¸ö Wi ¾ØÕó£¬Í¬Ê±ºÍ P ÒÔ¼°¿Õ¼äµã×ø±êÓĞ¹Ø
+			   Matx<double, 12, 1> & ea,							// Êä³ö£º1 ¸ö ea ²Ğ²îÏòÁ¿
+			   vector<Matx<double, 3, 1>> & eb,						// Êä³ö£ºn ¸ö ebi ²Ğ²îÏòÁ¿
+			   double & F,											// Êä³ö£ºµ±Ç°µÄÄ¿±êº¯ÊıÖµ 0.5*ft*covinv*f
+			   double & x_norm,										// Êä³ö£ºµ±Ç°´ıÓÅ»¯²ÎÊıÏòÁ¿µÄÄ££¬¼´2·¶ÊıL2£¬|x|2
+			   Mat & g,												// Êä³ö£º12+3*nÎ¬µÄ²ÎÊıÌİ¶È
+			   vector<Point2d> & vds								// Êä³ö£ºn ¸ö¿Õ¼äµãÓÚ×óÓÒÁ½·ùÍ¼ÖĞµÄÖØÍ¶Ó°²Ğ²îÁ¿
+			   );
+
+// 20170816£¬Ï¡ÊèLMÓÅ»¯»ù´¡¾ØÕóÖĞµÄÏ¡ÊèÇó½âÕı¹æ·½³ÌµÄº¯Êı
+void solve_sparseLM_F(double u,								// ÊäÈë£º×èÄáÏµÊı
+					  const Matx<double,12,12> & U,			// ÊäÈë£º1¸öU¾ØÕó£¬½ö¸úÓÒÍ¼µÄÍ¶Ó°¾ØÕóPÓĞ¹Ø
+					  const vector<Matx<double,3,3>> & V,	// ÊäÈë£ºn¸öVi¾ØÕó£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+					  const vector<Matx<double,12,3>> & W,	// ÊäÈë£ºn¸öWi¾ØÕó£¬Í¬Ê±¸ú¿Õ¼äµã¼°PÓĞ¹Ø
+					  const Matx<double,12,1> & ea,			// ÊäÈë£º1¸öea²Ğ²îÏòÁ¿£¬½ö¸úPÓĞ¹Ø
+					  const vector<Matx<double,3,1>> & eb,	// ÊäÈë£ºn¸öebi²Ğ²îÏòÁ¿£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+					  Matx<double,12,1> & da,				// Êä³ö£º1¸öPµÄ¸ÄÕıÁ¿
+					  vector<Matx<double,3,1>> & db,		// Êä³ö£ºn¸ö¿Õ¼äµã×ø±êµÄ¸ÄÕıÁ¿
+					  Mat & h								// Êä³ö£º12+3*nÎ¬µÄ²ÎÊı¸ÄÕıÁ¿
+					  );
 
 void j_f_w_t_XYZ(const vector<Point3d> & XYZs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZ×ø±ê
 				 const vector<Matx33d> & Ks,			// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
@@ -1483,6 +1548,28 @@ void optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,					// Êä
 											   double eps1 = 1.0E-8,					// input:	threshold
 											   double eps2 = 1.0E-12					// input:	threshold
 											   );
+
+// 20170820£¬Ë«Ä¿ÊÓ¾õÖĞ£¬¹Ì¶¨×óÍ¼µÄÍ¶Ó°¾ØÕóÎª[I|0]£¬Ï¡ÊèÓÅ»¯ÓÒÍ¼µÄÍ¶Ó°¾ØÕó P
+// ÒÔ¼°ÉäÓ°ÖØ½¨³öÀ´µÄ n ¸öÎïµã×ø±ê [X Y 1 W]£¬ÆäÖĞ Z ×ø±ê¹Ì¶¨Îª 1
+// ¸Ãº¯ÊıÖ÷ÒªÄ¿±êÊÇ´ÓÓÅ»¯ÍêµÄ P ÖĞ·Ö½â³ö¾ßÓĞ¼¸ºÎ×îÓÅÒâÒåµÄ»ù´¡¾ØÕó F À´
+void optim_sparse_lm_P_XiYiWi(Matx34d & P,									// ÊäÈë¼æÊä³ö£ºµ±Ç°¹À¼ÆµÄÓÒÍ¼ÔÚÉäÓ°¿Õ¼äÖĞµÄÍ¶Ó°¾ØÕó
+							  vector<Point3d> & XYWs,						// ÊäÈë¼æÊä³ö£ºn¸öÎïµãµÄXYW×ø±ê£¬Z×ø±êÄ¬ÈÏÎª1
+							  const vector<Point2d> & xysL,					// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚ×óÍ¼£¨²Î¿¼Í¼£©ÖĞ¹Û²âÏñµã×ø±ê
+							  const vector<Point2d> & xysR,					// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚÓÒÍ¼ÖĞ¹Û²âÏñµã×ø±ê
+							  const vector<Matx22d> & covInvsL,				// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚ×óÍ¼£¨²Î¿¼Í¼£©ÖĞ¹Û²âÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó
+							  const vector<Matx22d> & covInvsR,				// ÊäÈë£ºn ¸ö¿Õ¼äµãÓÚÓÒÍ¼ÖĞ¹Û²âÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó
+							  vector<Point2d> & vds,						// Êä³ö£ºn ¸ö¿Õ¼äµãÓÚ×óÓÒÁ½·ùÍ¼ÖĞµÄÖØÍ¶Ó°²Ğ²îÁ¿
+							  double * info = NULL,							// output:	runtime info, 5-vector
+																			// info[0]:	the initial reprojection error
+																			// info[1]:	the final reprojection error
+																			// info[2]: final max gradient
+																			// info[3]: the number of iterations
+																			// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+							  double tau = 1.0E-3,							// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+							  int maxIter = 64,								// input:	the maximum number of iterations
+							  double eps1 = 1.0E-8,							// input:	threshold
+							  double eps2 = 1.0E-12							// input:	threshold
+							  );
 
 void optim_sparse_lm_wj_tj_XiYiZi(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
 								  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó

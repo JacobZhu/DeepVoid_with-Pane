@@ -7079,8 +7079,11 @@ void CDeepVoidApp::OnStereo()
 						}
 
 						Mat mDI;
-						SemiGlobalMatching(img0_gray,img1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
-							false,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);
+						/*SemiGlobalMatching(img0_gray,img1_gray,m_minDisparity,m_maxDisparity,m_P1_ZZKSGM,m_P2_ZZKSGM,mDI,
+							false,paths,m_threshConstCheck_ZZKSGM,bSubPixRefine);*/
+
+						SemiGlobalMatching_CUDA(img0_gray, img1_gray, m_minDisparity, m_maxDisparity, m_P1_ZZKSGM, m_P2_ZZKSGM, mDI,
+							false, paths, m_threshConstCheck_ZZKSGM, bSubPixRefine/*, 5, 5, 1, 32*/);
 
 						SaveMat2File_float("E:\\results\\disparity by SGM (ZZK).txt",mDI);
 					}
@@ -7300,7 +7303,7 @@ void CDeepVoidApp::OnStereo()
 
 					// CUDA version
 					SemiGlobalMatching_CUDA(rimg0_gray, rimg1_gray, m_minDisparity, m_maxDisparity, m_P1_ZZKSGM, m_P2_ZZKSGM, mDI,
-						isVerticalStereo, paths, m_threshConstCheck_ZZKSGM, bSubPixRefine, 5, 5, 1, 32);
+						isVerticalStereo, paths, m_threshConstCheck_ZZKSGM, bSubPixRefine/*, 5, 5, 1, 32*/);
 
 					m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("SGM ends!");
 
@@ -11055,7 +11058,7 @@ UINT NetworkOrientation(LPVOID param)
 		// match all image pairs
 		// 20150113, zhaokunz, new matching function
 		Matx33d mF;
-		bool bSuc = Get_F_Matches_knn(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,false,0.65,0.5,thresh_d2epiline,thresh_matchConf,64);
+		bool bSuc = Get_F_Matches_knn(pApp->m_vCams[i].m_feats, pApp->m_vCams[j].m_feats, mF, matches, true, 0.65, 0.5, thresh_d2epiline, thresh_matchConf, 64);
 
 		// draw matches
 // 		Mat disp_matches;

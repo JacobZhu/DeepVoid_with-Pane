@@ -1852,6 +1852,17 @@ void optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image p
 				double eps2 = 1.0E-12				// input:	threshold
 			    );
 
+// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// sparse Levenberg-Marquardt
+void optim_slm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
+			     const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
+			     Matx33d & mF,						// input&output:	the initial and optimized fundamental matrix
+				 double tau = 1.0E-3,				// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+				 int maxIter = 15,					// input:	the maximum number of iterations
+				 double eps1 = 1.0E-8,				// input:	threshold
+				 double eps2 = 1.0E-12				// input:	threshold
+			     );
+
 void PropagateDepth2OtherImage(const cam_data & cam0, const cam_data & cam,
 							   const Mat & mDepth0, const Mat & mHx0, const Mat & mHy0, const Mat & mScore0,
 							   Mat & mDepth, double & mindepth, double & maxdepth
