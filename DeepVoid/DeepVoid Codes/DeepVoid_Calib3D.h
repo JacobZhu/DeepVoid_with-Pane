@@ -231,6 +231,34 @@ bool Get_F_Matches_knn(const Mat & img0,					// input:	the 1st image
 					   double fEps = 1.0E-6					// input:	threshold
 					   );
 
+// 20200621, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// 5. triangulate and get the projective reconstructions of all the inliers based on the optimized fundamental matrix
+bool Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n1 features extracted from the 1st image
+							   const Features & feats1,				// input:	n2 features extracted from the 2nd image
+							   Matx33d & mF,						// output:	the estimated fundamental matrix
+							   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
+							   vector<Point3d> & pWrdPts,			// output:	the projective reconstructed world coordinates of all the inliers based on the final F
+							   bool bOptim = true,					// input:	whether optimize F using Golden Standard algorithm or not
+							   double thresh_ratioTest = 0.3,		// input:	the ratio threshold for ratio test
+							   double thresh_minInlierRatio = 0.5,	// input:	the allowed minimum ratio of inliers
+							   double thresh_p2l = 3.,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+							   double thresh_conf = 0.99,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+							   int maxIter = 10,					// input:	the maximum number of iterations
+							   double xEps = 1.0E-8,				// input:	threshold
+							   double fEps = 1.0E-6					// input:	threshold
+							   );
+
+// 20200629, 参考Changchang WU "Towards Linear-time Incremental Struture from Motion"一文中的"Preemptive Feature Matching"
+bool PreemptiveFeatureMatching(const Features & feats0,				// input:	n1 features extracted from the 1st image
+							   const Features & feats1,				// input:	n2 features extracted from the 2nd image
+							   double thresh_ratioTest = 0.3,		// input:	the ratio threshold for ratio test
+							   int th = 4							
+							   );
+
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
 			   vector<DMatch> & matches,						// output:	matches that have past the ratio test
@@ -287,6 +315,49 @@ void DisambiguateRT_givenE(const CMatrix & mImgPts1,        // input:	3*n or 2*n
 						   const CMatrix & mE,				// input:	3*3 matrix, the given essential matrix
 						   CMatrix & mP,					// output:	3*4 matrix, the relative orientation of these two images [R|t]
 						   CMatrix & mWrdPts				// output:	4*n matrix, the reconstructed 3d points in reference camera frame, which is the first image
+						   );
+
+// 2020.06.16, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void ExtractRTfromE(const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+					const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+					cv::Matx33d & E,						// input&output: the given Essential Matrix
+					cv::Matx33d & R,						// output: the extracted rotation matrix from E
+					cv::Matx31d & t,						// output: the extracted translation vector from E
+					vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+					);
+
+// 只是试试，验证些东西，非正式函数
+// 2020.06.25, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void ExtractRTfromE_Ei(const vector<cv::Point2d> & nImgPts1,// input: normalized image points in image 1
+					   const vector<cv::Point2d> & nImgPts2,// input: normalized image points in image 2
+					   cv::Matx33d & E,						// input&output: the given Essential Matrix
+					   cv::Matx33d & R,						// output: the extracted rotation matrix from E
+					   cv::Matx31d & t,						// output: the extracted translation vector from E
+					   vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+					   );
+
+// 只是试试，验证些东西，非正式函数
+// 2020.06.25, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void ExtractRTfromE_givenK(const vector<cv::Point2d> & imgPts1,	// input: normalized image points in image 1
+						   const vector<cv::Point2d> & imgPts2,
+						   const vector<cv::Point2d> & nImgPts1,// input: normalized image points in image 1
+						   const vector<cv::Point2d> & nImgPts2,// input: normalized image points in image 2
+						   const Matx33d & F0,
+						   const Matx33d & K1,					
+						   const Matx33d & K2,					
+						   cv::Matx33d & E,						// input&output: the given Essential Matrix
+						   cv::Matx33d & R,						// output: the extracted rotation matrix from E
+						   cv::Matx31d & t,						// output: the extracted translation vector from E
+						   vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+						   );
+
+// 2020.06.25, 验证些东西，非正式函数
+void ExtractRTfromE_opencv(const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+						   const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+						   cv::Matx33d & E,						// input&output: the given Essential Matrix
+						   cv::Matx33d & R,						// output: the extracted rotation matrix from E
+						   cv::Matx31d & t,						// output: the extracted translation vector from E
+						   vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
 						   );
 
 // Remove D.C.Brown image distortion 
@@ -508,6 +579,28 @@ double PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured distortion fr
 			   double fEps = 1.0E-12			// input:	threshold
 			   );
 
+// 20200626，改用归一化像点坐标，且不用输入标定矩阵 K
+double PIRO_GN(const vector<Point2d> & nimgpts0,// input:	distortion free normalized image points in reference image
+			   const vector<Point2d> & nimgpts1,// input:	distortion free normalized image points in matching image
+			   Matx33d & mR,					// output:	the relative rotation matrix between the matching and reference image
+			   Matx31d & mt,					// output:	the relative translation vector between the matching and reference image
+			   vector<Point3d> & wrdpts,		// output:	the reconstructed 3D coordinates of all correspondences
+			   int maxIter = 128,				// input:	max iteration
+			   double xEps = 1.0E-12,			// input:	threshold
+			   double fEps = 1.0E-12			// input:	threshold
+			   );
+
+// 20200626, triangulate points given the normalized image points and [R|t] estimates, and output some values.
+void triangulation(const vector<Point2d> & nimgpts0,// input:	distortion free normalized image points in reference image
+				   const vector<Point2d> & nimgpts1,// input:	distortion free normalized image points in matching image
+				   const Matx33d & mR,				// input:	the relative rotation matrix between the matching and reference image
+				   const Matx31d & mt,				// input:	the relative translation vector between the matching and reference image
+				   vector<Point3d> & wrdpts,		// output:	the reconstructed 3D coordinates of all correspondences
+				   double & err_rpj_nimgpt,			// output:	the reprojetion error on both image in terms of normalized image coordinate
+				   int & n_bothFront,				// output:	the number of object points that are in front of both images
+				   double & avgDepth				// output:	the average depth, i.e. the z value relative to reference image, of object points
+				   );
+
 /*bool RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,			// input:	all the information about the image 1
 											  const cam_data & cam2,			// input:	all the information about the image 2
 											  int idx_cam1,						// input:	the index of the first camera
@@ -564,6 +657,19 @@ bool RelativeOrientation_Features_PIRO_givenMatches(const cam_data & cam1,			// 
 													double thresh_reprojErr = 1,	// input:	the threshold of the reprojection error in pixels
 													double thresh_meanAng = 5		// input:	the threshold of the mean triangulation angle
 													);
+
+// 20200623, zhaokunz, given the already estimated fundamental matrix F during the matching stage
+bool RelativeOrientation(const cam_data & cam1,					// input:	all the information about the image 1
+						 const cam_data & cam2,					// input:	all the information about the image 2
+						 const Matx33d & mF,					// input:	the already estimated fundamental matrix between these two images optimized by sparse_lm_F
+						 const vector<DMatch> & matches,		// input:	the given matches
+						 Matx33d & mR,							// output:	the relative rotation matrix
+						 Matx31d & mt,							// output:	the relative translation vector
+						 SfM_ZZK::PointCloud & map_pointcloud,	// output:	the reconstructed point cloud in reference camera frame, which is the first image
+						 int RO_method = 0,						// input:	0:PIRO; 1:extract [R|t] from essential matrix, just like recoverPose() from opencv						
+						 double thresh_reprojErr = 1,			// input:	the threshold of the reprojection error in pixels
+						 double thresh_meanAng = 5				// input:	the threshold of the mean triangulation angle
+						 );
 
 void Triangulate_PIRO_py(double nx1, double ny1, double nz1,	// input:	the normalized image coordinates in reference image
 						 double nx2, double ny2, double nz2,	// input:	the normalized image coordinates in the other image
@@ -817,6 +923,16 @@ void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	// 输入:	所
 						 vector<vector<int>> & vIdxSupports,			// 输出：	确定的每个图像的支持图索引
 						 int nSpt = 2,									// 输入：	期望每幅图像关联的支持图的个数
 						 double ang_desired = 45						// 输入：	期望的交会角度值
+						 );
+
+// 20200622，换新的数据结构
+void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,						// 输入:	所有物点
+						 const vector<cam_data> & cams,										// 输入:	所有图像
+						 const SfM_ZZK::PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// 输入：	所有图像对的特征匹配
+						 const SfM_ZZK::MultiTracks & map_tracks,							// 输入：	找到的所有特征轨迹
+						 vector<vector<int>> & vIdxSupports,								// 输出：	确定的每个图像的支持图索引
+						 int nSpt = 2,														// 输入：	期望每幅图像关联的支持图的个数
+						 double ang_desired = 45											// 输入：	期望的交会角度值
 						 );
 
 // feature points in all images are supposed to be distortion free
@@ -1829,7 +1945,7 @@ void optim_lm_P_XYZ(const vector<Point2d> & vImgPts0,		// input:	the measured im
 				    double eps2 = 1.0E-12					// input:	threshold
 				    );
 
-// 20150110, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20150110, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 // gauss-newton
 bool optim_gn_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
 			    const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
@@ -1840,7 +1956,7 @@ bool optim_gn_F(const vector<Point2d> & vImgPts0,	// input:	the measured image p
 			    double fEps = 1.0E-6				// input:	threshold
 			    );
 
-// 20150401, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20150401, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 // Levenberg-Marquardt
 void optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
 			    const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
@@ -1852,11 +1968,25 @@ void optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image p
 				double eps2 = 1.0E-12				// input:	threshold
 			    );
 
-// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 // sparse Levenberg-Marquardt
 void optim_slm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
 			     const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
 			     Matx33d & mF,						// input&output:	the initial and optimized fundamental matrix
+				 double tau = 1.0E-3,				// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+				 int maxIter = 15,					// input:	the maximum number of iterations
+				 double eps1 = 1.0E-8,				// input:	threshold
+				 double eps2 = 1.0E-12				// input:	threshold
+			     );
+
+// 20200615, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
+// sparse Levenberg-Marquardt
+// output the world points' projective reconstruction results
+void optim_slm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
+			     const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
+			     Matx33d & mF,						// input&output:	the initial and optimized fundamental matrix
+				 vector<Point3d> & vWrdPts_init,	// output:	the triangulated world points using initial fundamental matrix
+				 vector<Point3d> & vWrdPts_final,	// output:	the triangulated world points using optimized fundamental matrix
 				 double tau = 1.0E-3,				// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
 				 int maxIter = 15,					// input:	the maximum number of iterations
 				 double eps1 = 1.0E-8,				// input:	threshold

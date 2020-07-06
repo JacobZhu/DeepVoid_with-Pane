@@ -563,6 +563,35 @@ void j_f_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 				    vector<double> & vds					// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
 				    );
 
+// 20200604, iteratively reweighted least square, IRLS
+// µü´úÖØ¼ÓÈ¨Ä£Ê½£¬ÎªÁËÓ¦¶Ô outliers
+// ²ÉÓÃ Huber È¨ÖØ
+void j_f_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
+							   const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+							   const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+							   const vector<Matx31d> & ts,				// ÊäÈë£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+							   const vector<Matx<double, 5, 1>> & dists,// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+							   const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+							   const vector<Point2d> & xys,				// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+							   vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬Ò²¼´¸÷¶Ô½ÇÏßÔªËØ (i)=wi*wi£¬¼´Ã¿¸ö¹Û²âÁ¿È¨ÖØµÄÆ½·½£¬È¨ÖØÊÇÓÉ¹Û²âÁ¿×ÔÉíµÄÖØÍ¶Ó°²Ğ²îÀ´¾ö¶¨µÄ
+							   const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+							   const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+							   const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+							   vector<Matx<double, 6, 6>> & U,			// Êä³ö£ºm¸öUj¾ØÕó£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							   vector<Matx<double, 4, 4>> & V,			// Êä³ö£ºn¸öVi¾ØÕó£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+							   vector<Matx<double, 6, 4>> & W,			// Êä³ö£ºl¸öWij¾ØÕó£¬Í¬Ê±¸ú¿Õ¼äµã¼°Æä¹Û²âÍ¼ÏñÓĞ¹Ø
+							   Matx<double, 1, 1> & Q,					// Êä³ö£ºÎ¨Ò»Ò»¸öQ¾ØÕó£¬Ö»¸ú¹²²ÎÊıÓĞ¹Ø
+							   vector<Matx<double, 1, 6>> & G,			// Êä³ö£ºm¸öGj¾ØÕó£¬Í¬Ê±ºÍ¶ÀÓĞ¼°¹²ÓĞÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							   vector<Matx<double, 1, 4>> & H,			// Êä³ö£ºn¸öHi¾ØÕó£¬Í¬Ê±ºÍ¹²ÓĞÍ¼Ïñ²ÎÊıÒÔ¼°ÎïµãÓĞ¹Ø
+							   vector<Matx<double, 6, 1>> & ea,			// Êä³ö£ºm¸öeaj²Ğ²îÏòÁ¿£¬½ö¸úÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							   vector<Matx<double, 4, 1>> & eb,			// Êä³ö£ºn¸öebi²Ğ²îÏòÁ¿£¬½ö¸ú¿Õ¼äµã×ø±êÓĞ¹Ø
+							   Matx<double, 1, 1> & ec,					// Êä³ö£ºÎ¨Ò»Ò»¸öec²Ğ²îÏòÁ¿£¬½ö¸ú¹²ÓĞÍ¼Ïñ²ÎÊıÓĞ¹Ø
+							   Mat & f,									// Êä³ö£º2*l¸öÏñµã²Ğ²îÁ¿£¬ÆäÊµÒ²¾ÍÊÇÆÀ¼ÛµÄÄ¿±êº¯ÊıÖµ
+							   Mat & g,									// Êä³ö£º1+6*m+4*nÎ¬µÄ²ÎÊıÌİ¶È
+							   vector<double> & vds,					// Êä³ö£ºl¸öÏñµãµÄÖØÍ¶Ó°²Ğ²îÁ¿
+							   double tc = 3.0							// ÊäÈë£º¶ÔÓÚÖØÍ¶Ó°²Ğ²î d Ğ¡ÓÚ tc µÄ¹Û²âÁ¿È¨ÖØÈ«¶¨Îª1£¬·ñÔò¶¨È¨ÖØÎª tc/d
+							   );
+
 void j_f_f_w_c_XYZ(const vector<Point3d> & XYZs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZ×ø±ê
 				   const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
 				   const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
@@ -1324,8 +1353,23 @@ typedef std::pair<pair_ij,int> pair_ij_k;
 // 2015.11.03, a pair structure representing a 2D index with a double value, often used in std::vector
 typedef std::pair<pair_ij,double> pair_ij_a;
 
+// 2020.06.11, a pair structure representing the fundamental matrix and feature matches found between two images
+typedef std::pair<cv::Matx33d, std::vector<DMatch>> pair_F_matches;
+
+// 2020.06.21, a pair structure representing the fundamental matrix and feature matches found between two images
+// and also the projective reconstruction world coordinates of those matched features
+typedef std::pair<pair_F_matches, std::vector<Point3d>> pair_F_matches_pWrdPts;
+
 // 2015.09.20, a map container contains all the pairwise matches between each image pair: {<image i,image j>, matches}, named after openMVG convention.
-typedef std::map<std::pair<int,int>, std::vector<DMatch>> PairWiseMatches;
+typedef std::map<std::pair<int, int>, std::vector<DMatch>> PairWiseMatches;
+
+// 2020.06.11, a map container contains the fundamental matrix and all the pairwise matches found between each image pair: {<img i, img j>, F, matches}.
+typedef std::map<std::pair<int, int>, pair_F_matches> PairWise_F_Matches;
+
+// 2020.06.21, a map container contains the fundamental matrix, all the pairwise matches 
+// and projective reconstruction world coordinates of those matches found between each image pair: {<img i, img j>, <<F, matches>, wrdpts>}
+// the found matches and estimated wrdpts are supposed to be consistent with the estimated fundamental matrix F
+typedef std::map<std::pair<int, int>, pair_F_matches_pWrdPts> PairWise_F_matches_pWrdPts;
 
 // 2015.10.08, a map container to store a track: collection of {ImageId,FeatureId}
 // The corresponding image points with their imageId and FeatureId.
@@ -1355,6 +1399,11 @@ void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pai
 // 20151128£¬ÀÏµÄÌØÕ÷¹À¼Æ½á¹¹
 void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 						  MultiTracks_old & map_tracks				// output:	all the found tracks
+						  );
+
+// 20200622£¬²ÉÓÃĞÂµÄÊı¾İ½á¹¹
+void FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
+						  MultiTracks & map_tracks									// output:	all the found tracks
 						  );
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
@@ -1398,6 +1447,12 @@ double BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// i
 void RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 								   const MultiTracks & map_tracks,		// input:	all the tracks
 								   vector<pair_ij_k> & pairs			// output:	pairs in descending order
+								   );
+
+// 20200622, zhaokunz, ¸ÄÓÃĞÂµÄÊı¾İ½á¹¹
+void RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise matches
+								   const MultiTracks & map_tracks,								// input:	all the tracks
+								   vector<pair_ij_k> & pairs									// output:	pairs in descending order
 								   );
 
 // 20151108£¬ĞÂ¼ÓÈëÒ»·ùÍ¼Ïñºó£¬ÒªÇ°·½½»»áĞÂµÄµã
@@ -1662,6 +1717,33 @@ void optim_sparse_lm_f_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£
 									  double eps1 = 1.0E-8,						// input:	threshold
 									  double eps2 = 1.0E-12						// input:	threshold
 								      );
+
+// 20200607£¬iteratively reweighted least squares
+// µü´úÖØ¼ÓÈ¨°æ±¾£¬²ÉÓÃ Huber È¨ÖØ
+void optim_sparse_lm_f_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,				// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
+												 vector<Matx33d> & Ks,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
+												 vector<Matx33d> & Rs,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
+												 vector<Matx31d> & ts,					// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñÆ½ÒÆÏòÁ¿
+												 const vector<Matx<double,5,1>> & dists,// ÊäÈë£ºm¸öÍ¼ÏñÏñ²îÏµÊı
+												 const vector<int> & distTypes,			// ÊäÈë£ºm¸öÍ¼ÏñµÄÏñ²îÏµÊıÀàĞÍ
+												 const vector<Point2d> & xys,			// ÊäÈë£ºl¸öËùÓĞÍ¼ÏñÉÏµÄÏñµã×ø±ê£¬×î¶à×î¶àÎª m*n ¸ö
+												 vector<Matx22d> & covInvs,				// Êä³ö£ºl¸öËùÓĞÏñµã×ø±êĞ­·½²î¾ØÕóµÄÄæ¾ØÕó£¬(i)=wi*wi
+												 const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
+												 const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
+												 const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+												 vector<double> & vds,					// Êä³ö£ºÃ¿¸öÏñµãµÄÖØÍ¶Ó°²Ğ²î
+												 double tc = 3.0,						// ÊäÈë£º¼ÆËã Huber È¨ÖØÊ±ÓÃµ½µÄ³£Á¿
+												 double * info = NULL,					// output:	runtime info, 5-vector
+																						// info[0]:	the initial reprojection error
+																						// info[1]:	the final reprojection error
+																						// info[2]: final max gradient
+																						// info[3]: the number of iterations
+																						// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+												 double tau = 1.0E-3,					// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+												 int maxIter = 64,						// input:	the maximum number of iterations
+												 double eps1 = 1.0E-8,					// input:	threshold
+												 double eps2 = 1.0E-12					// input:	threshold
+												 );
 
 void optim_sparse_lm_f_wj_tj_XiYiZiWi_c_fixedBaseline(vector<Point3d> & XYZs,					// ÊäÈë¼æÊä³ö£ºn¸ö¿Õ¼äµã×ø±ê
 													  vector<Matx33d> & Ks,						// ÊäÈë¼æÊä³ö£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó

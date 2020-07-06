@@ -185,13 +185,21 @@ enum FeatureType
 {
 	Feature_SIFT       = 0,     
 	Feature_SURF       = 1,
+	Feature_SIFT_FAST  = 2,
 };
 
 struct Features
 {
-	std::vector<cv::KeyPoint> key_points;
+	std::vector<cv::KeyPoint> key_points; // 20200703，做一个小改动，这个对象存融合的所有特征，下面的特征描述矩阵同此
 	cv::Mat descriptors;
 	std::vector<int> tracks;
+
+	// 20200703，这里把不同类型的特征及描述矩阵按类型来存
+	//std::vector<cv::KeyPoint> keypts_sift;
+	//cv::Mat descrps_sift;
+
+	//std::vector<cv::KeyPoint> keypts_fast;
+	//cv::Mat descrps_fast;
 
 	// zhaokunz, 20140324, sometimes multiple keypoints correspond to the same image point
 	// like the SIFT features, a feature can have multiple orientations
@@ -215,7 +223,11 @@ struct Features
 		{
 			type = otherFeat.type;
 			key_points = otherFeat.key_points;
+			//keypts_sift = otherFeat.keypts_sift;
+			//keypts_fast = otherFeat.keypts_fast;
 			descriptors = otherFeat.descriptors.clone();
+			//descrps_sift = otherFeat.descrps_sift.clone();
+			//descrps_fast = otherFeat.descrps_fast.clone();
 			tracks = otherFeat.tracks;
 			idx_pt = otherFeat.idx_pt;
 			rgbs = otherFeat.rgbs;
@@ -328,6 +340,8 @@ struct cam_data
 	int dist_type;          // distortion type, 0 is Weng's, 1 is D.C.Brown's
 
 	Features m_feats;		// image features
+
+	Features m_subFeats;	// image sub feature set
 
 	cam_data()
 	{
@@ -803,5 +817,17 @@ void DetermineInterval(double val_max, double val_min, double val_cur, double ra
 
 // compute exp((-1/2)*(x-miu)^2/sigma^2)
 double exp_miu_sigma(double x, double miu, double sigma);
+
+// 2020.06.14, instead of drawing all the matches across two images,
+// this func trys to draw matches within only the reference/left image
+// with a 'line' starting from one feature, and ending at the matching feature.
+void drawMatchesRefImg(const cv::Mat & img1,								// input: the reference/left image
+					   const std::vector<cv::KeyPoint> & keypoints1,		// input: keypoints found in the reference/left image
+					   const std::vector<cv::KeyPoint> & keypoints2,		// input: keypoints found in the matching image
+					   const std::vector<cv::DMatch> & matches1to2,			// input: matches found from ref image to matching image
+					   cv::Mat & outImg,									// output: the output image with matches drawn
+					   const Scalar & matchColor = Scalar(0, 255, 0),		// input: the color of the matched points connecting lines 
+					   const Scalar & singlePointColor = Scalar(0, 0, 255)	// input: the color of the unmatched points
+					   );
 
 }

@@ -62,6 +62,10 @@ public:
 	viz::Viz3d m_wnd3d; // 20160403, 3D visualizer window
 	viz::WCloud m_ptcloud = viz::WCloud(Mat(1,1,CV_64FC3));
 
+	// 20200630
+	SfM_ZZK::PointCloud m_map_pointcloud;
+	SfM_ZZK::MultiTracks m_map_tracks;
+
 	// 20161029, the calibration of the camera used to do MVS
 	double m_fx, m_fy, m_s, m_cx, m_cy;
 	double m_k1, m_k2, m_k3, m_k4, m_k5;
@@ -121,6 +125,7 @@ public:
 	afx_msg void On3dreconstructionParametersettings();
 	afx_msg void On3dreconstructionNetworkorientationandsparsereconstruction();
 	afx_msg void On3dreconstructionDensereconstruction();
+	afx_msg void On3dview();
 };
 
 extern CDeepVoidApp theApp;

@@ -3678,3 +3678,57 @@ double DeepVoid::exp_miu_sigma(double x, double miu, double sigma)
 
 	return exp(-0.5*a2);
 }
+
+// 2020.06.14, instead of drawing all the matches across two images,
+// this func trys to draw matches within only the reference/left image
+// with a 'line' starting from one feature, and ending at the matching feature.
+void DeepVoid::drawMatchesRefImg(const cv::Mat & img1,									// input: the reference/left image
+								 const std::vector<cv::KeyPoint> & keypoints1,			// input: keypoints found in the reference/left image
+								 const std::vector<cv::KeyPoint> & keypoints2,			// input: keypoints found in the matching image
+								 const std::vector<cv::DMatch> & matches1to2,			// input: matches found from ref image to matching image
+								 cv::Mat & outImg,										// output: the output image with matches drawn
+								 const Scalar & matchColor/* = Scalar(0, 255, 0)*/,		// input: the color of the matched points connecting lines 
+								 const Scalar & singlePointColor/* = Scalar(0, 0, 255)*/// input: the color of the unmatched points
+								 )
+{
+	// 先把参考图中所有特征点画出来
+	cv::drawKeypoints(img1, keypoints1, outImg, singlePointColor);
+
+	vector<KeyPoint> keypoints1_FAST_all;
+
+	for (auto iter = keypoints1.begin(); iter != keypoints1.end(); ++iter)
+	{
+		if (/*fabs(iter->size + 1) < 1.0E-12 && */fabs(iter->angle + 1) < 1.0E-12) // 目前来看只有 fast 特征点的 angle 恒为-1，sift 特征点角度的取值范围为0-360°
+		{
+			keypoints1_FAST_all.push_back(*iter);
+		}
+	}
+
+	// 再单独把 FAST 特征点画个别的颜色
+	cv::drawKeypoints(outImg, keypoints1_FAST_all, outImg, Scalar(0, 255, 255));
+
+	vector<KeyPoint> matchedKeyPts1; // all the matched keypoints in the reference image
+	vector<KeyPoint> matchedFASTPts1;
+
+	for (auto iter = matches1to2.begin(); iter != matches1to2.end(); ++iter)
+	{
+		const KeyPoint & keypt1 = keypoints1[iter->queryIdx];
+		const KeyPoint & keypt2 = keypoints2[iter->trainIdx];
+
+		if (/*fabs(keypt1.size + 1) < 1.0E-12 && */fabs(keypt1.angle + 1) < 1.0E-12) // 目前来看只有 fast 特征点的 angle 恒为-1，sift 特征点角度的取值范围为0-360°
+		{
+			cv::line(outImg, keypt1.pt, keypt2.pt, Scalar(255, 255, 0));
+
+			matchedFASTPts1.push_back(keypt1);
+		}
+		else
+		{
+			cv::line(outImg, keypt1.pt, keypt2.pt, matchColor);
+
+			matchedKeyPts1.push_back(keypt1);
+		}		
+	}
+
+	cv::drawKeypoints(outImg, matchedKeyPts1, outImg, matchColor);
+	cv::drawKeypoints(outImg, matchedFASTPts1, outImg, Scalar(255, 255, 0));
+}

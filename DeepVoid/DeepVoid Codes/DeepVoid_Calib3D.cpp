@@ -1846,6 +1846,564 @@ bool DeepVoid::Get_F_Matches_knn(const Features & feats0,				// input:	n1 featur
 	return true;
 }
 
+// 20200621, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get initial fundamental matrix using RANSAC
+// 3. optimize fundamental matrix using only inliers
+// 4. augment inlier set using optimized fundamental matrix
+// 5. triangulate and get the projective reconstructions of all the inliers based on the optimized fundamental matrix
+bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n1 features extracted from the 1st image
+										 const Features & feats1,				// input:	n2 features extracted from the 2nd image
+										 Matx33d & mF,							// output:	the estimated fundamental matrix
+										 vector<DMatch> & matches,				// output:	matches obtained after feature matching and RANSAC
+										 vector<Point3d> & pWrdPts,				// output:	the projective reconstructed world coordinates of all the inliers based on the final F
+										 bool bOptim /*= true*/,				// input:	whether optimize F using Golden Standard algorithm or not
+										 double thresh_ratioTest /*= 0.3*/,		// input:	the ratio threshold for ratio test
+										 double thresh_minInlierRatio /*= 0.5*/,// input:	the allowed minimum ratio of inliers
+										 double thresh_p2l /*= 3.*/,			// input:	the distance threshold between point and epiline, used in RANSAC stage
+										 double thresh_conf /*= 0.99*/,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+										 int maxIter /*= 10*/,					// input:	the maximum number of iterations
+										 double xEps /*= 1.0E-8*/,				// input:	threshold
+										 double fEps /*= 1.0E-6*/				// input:	threshold
+										 )
+{
+	int i,j;
+
+	matches.clear();
+
+	int K = 2; // the number of nearest neighbors
+
+	int nFeat0 = feats0.key_points.size();
+	int nFeat1 = feats1.key_points.size();
+
+//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+	//////////////////////////////////////////////////////////////////////////
+
+	// 2. using the unique image point index, useful for SIFT, since for one image point
+	// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 3. reorganize all matches, again only neccesary for SIFT
+	// (0,25) (0,16)
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
+	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
+
+	auto iter01_begin = matches01_knn.begin();
+	auto iter10_begin = matches10_knn.begin();
+
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		i = iter-iter01_begin;
+
+		if (status01[i])
+		{
+			continue;
+		}
+
+		matches01_knn_idximgpt.push_back(*iter);
+
+		status01[i] = 1;
+
+		auto iter_end = matches01_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches01_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+			
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status01[iter_k-iter01_begin] = 1;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		i = iter-iter10_begin;
+
+		if (status10[i])
+		{
+			continue;
+		}
+
+		matches10_knn_idximgpt.push_back(*iter);
+
+		status10[i] = 1;
+
+		auto iter_end = matches10_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches10_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status10[iter_k-iter10_begin] = 1;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 4. select best 2 different matches for each image point
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
+	// after this step, they will be like (2,14) only, since they are all basically the same matches
+	for (auto iter=matches01_knn_idximgpt.begin();iter!=matches01_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+
+	for (auto iter=matches10_knn_idximgpt.begin();iter!=matches10_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn_idximgpt, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn_idximgpt, matches10_passRatioTest, thresh_ratioTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches_passSymTest;
+	// 6. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size()<8)
+	{
+		return false;
+	}
+
+	// 7. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for(i=0;i<matches_passSymTest.size();i++)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+//	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+
+	vector<DMatch> matches_RANSAC;
+	vector<Point2d> vImgPts0, vImgPts1;
+
+	for (i=0;i<matches_passSymTest.size();i++)
+	{
+		if (status[i])
+		{
+			matches_RANSAC.push_back(matches_passSymTest[i]);
+
+			Point2d pt0,pt1;
+			pt0.x = points0[i].x; pt0.y = points0[i].y;
+			pt1.x = points1[i].x; pt1.y = points1[i].y;
+			vImgPts0.push_back(pt0);
+			vImgPts1.push_back(pt1);
+		}
+	}
+
+	double ratioInliers = (double)matches_RANSAC.size()/matches_passSymTest.size();
+
+	if (matches_RANSAC.size()<8 || ratioInliers<thresh_minInlierRatio)
+	{
+		// number of inliers must be bigger than 8
+		// and the ratio of inliers should be more than certain threshold
+		return false;
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
+	// because of the usage of normalization, this DLT algorithm is quite robust
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT starts");
+
+	mF = findFundamentalMat(vImgPts0, vImgPts1, FM_8POINT);
+
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT ends");
+	//////////////////////////////////////////////////////////////////////////
+
+	// 9. optimize the fundamental matrix using only the inliers, optional step
+	vector<Point3d> pWrdPts_inlier_init, pWrdPts_inlier_optim;
+
+	if (bOptim)
+	{
+		Matx33d mF_optim = mF;
+		
+// 		if (vImgPts0.size()>=12 && optim_gn_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,maxIter,xEps,fEps))
+// 		{
+// 			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+// 			// accept the optimized F only if the optimization succeeds
+// 			mF = mF_optim;
+// 		}
+
+		if (vImgPts0.size()>=12)
+		{
+			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+			// accept the optimized F only if the optimization succeeds
+//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim starts");
+
+//			optim_lm_F(vImgPts0, vImgPts1,/*fundamental_matrix*/mF, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-10);
+			
+			// 20170821，稀疏LM方法优化基础矩阵
+//			optim_slm_F(vImgPts0, vImgPts1, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+			// 20200622，同步输出射影重建物点坐标
+			optim_slm_F(vImgPts0, vImgPts1, mF_optim, pWrdPts_inlier_init, pWrdPts_inlier_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+
+//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim ends");
+
+			mF = mF_optim;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 10. augment matching set by checking which match satisfys the determined epipolar geometry, pls refer to Christos's 2014 paper for more details
+	// first delete all inliers from the candidate set to avoid replicates
+	for (auto iter=matches_RANSAC.begin();iter!=matches_RANSAC.end();++iter)
+	{
+		auto iter01_found = find_if(matches01_knn_idximgpt.begin(),matches01_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a){return (a[0].queryIdx==iter->queryIdx&&a[0].trainIdx==iter->trainIdx);});
+
+		auto iter10_found = find_if(matches10_knn_idximgpt.begin(),matches10_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a){return (a[0].queryIdx==iter->trainIdx&&a[0].trainIdx==iter->queryIdx);});
+
+		// delete
+		matches01_knn_idximgpt.erase(iter01_found);
+		matches10_knn_idximgpt.erase(iter10_found);
+	}
+
+	vector<DMatch> matches01_aug,matches10_aug;
+	GetInliers_knn(feats0.key_points,feats1.key_points,mF,    matches01_knn_idximgpt,matches01_aug,thresh_p2l);
+	GetInliers_knn(feats1.key_points,feats0.key_points,mF.t(),matches10_knn_idximgpt,matches10_aug,thresh_p2l);
+
+	// do symmetry test one more time
+	vector<DMatch> matches_aug_passSymTest;
+	symmetryTest(matches01_aug, matches10_aug, matches_aug_passSymTest);
+
+	matches = matches_RANSAC;
+	matches.insert(matches.end(), matches_aug_passSymTest.begin(), matches_aug_passSymTest.end());
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 11. 20200621, 利用 Optimal Triangulation Method in Multiple View Geometry 交会出射影重建意义上的三维物点坐标
+	// 即先将最终的特征匹配进行对极几何矫正，然后利用严格符合 mF 对极几何约束的像点通过 opencv 的 triangulatePoints 函数交会出射影物点坐标
+	vImgPts0.clear();
+	vImgPts1.clear();
+
+	for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+	{
+		Point2f imgpt0f = feats0.key_points[iter->queryIdx].pt;
+		Point2f imgpt1f = feats1.key_points[iter->trainIdx].pt;
+
+		Point2d imgpt0, imgpt1;
+		imgpt0.x = imgpt0f.x;
+		imgpt0.y = imgpt0f.y;
+		imgpt1.x = imgpt1f.x;
+		imgpt1.y = imgpt1f.y;
+
+		vImgPts0.push_back(imgpt0);
+		vImgPts1.push_back(imgpt1);
+	}
+
+	vector<Point3d> pWrdPts_aug_optim;
+
+	Matx33d mF_tmp = mF;
+
+	optim_slm_F(vImgPts0, vImgPts1, mF_tmp, pWrdPts, pWrdPts_aug_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+
+	return true;
+}
+
+// 20200629, 参考Changchang WU "Towards Linear-time Incremental Struture from Motion"一文中的"Preemptive Feature Matching"
+bool DeepVoid::PreemptiveFeatureMatching(const Features & feats0,				// input:	n1 features extracted from the 1st image
+										 const Features & feats1,				// input:	n2 features extracted from the 2nd image
+										 double thresh_ratioTest /*= 0.3*/,		// input:	the ratio threshold for ratio test
+										 int th /*= 4*/
+										 )
+{
+	int i,j;
+
+	int K = 2; // the number of nearest neighbors
+
+	int nFeat0 = feats0.key_points.size();
+	int nFeat1 = feats1.key_points.size();
+
+//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+	//////////////////////////////////////////////////////////////////////////
+
+	// 2. using the unique image point index, useful for SIFT, since for one image point
+	// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		for (auto iter_k=iter->begin();iter_k!=iter->end();++iter_k)
+		{
+			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 3. reorganize all matches, again only neccesary for SIFT
+	// (0,25) (0,16)
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
+	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
+
+	auto iter01_begin = matches01_knn.begin();
+	auto iter10_begin = matches10_knn.begin();
+
+	for (auto iter=matches01_knn.begin();iter!=matches01_knn.end();++iter)
+	{
+		i = iter-iter01_begin;
+
+		if (status01[i])
+		{
+			continue;
+		}
+
+		matches01_knn_idximgpt.push_back(*iter);
+
+		status01[i] = 1;
+
+		auto iter_end = matches01_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches01_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+			
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status01[iter_k-iter01_begin] = 1;
+		}
+	}
+
+	for (auto iter=matches10_knn.begin();iter!=matches10_knn.end();++iter)
+	{
+		i = iter-iter10_begin;
+
+		if (status10[i])
+		{
+			continue;
+		}
+
+		matches10_knn_idximgpt.push_back(*iter);
+
+		status10[i] = 1;
+
+		auto iter_end = matches10_knn_idximgpt.end()-1;
+
+		for (auto iter_k=iter+1;iter_k!=matches10_knn.end();++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx!=(*iter)[0].queryIdx)
+			{
+				continue;
+			}
+
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status10[iter_k-iter10_begin] = 1;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 4. select best 2 different matches for each image point
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
+	// after this step, they will be like (2,14) only, since they are all basically the same matches
+	for (auto iter=matches01_knn_idximgpt.begin();iter!=matches01_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+
+	for (auto iter=matches10_knn_idximgpt.begin();iter!=matches10_knn_idximgpt.end();++iter)
+	{
+		sort(iter->begin(),iter->end(),[](const DMatch & a, const DMatch & b){return a.distance<b.distance;});
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin()+2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(),iter->end(),[idxBest](const DMatch & a){return a.trainIdx!=idxBest;});
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin()+1,iter_find);
+			iter->erase(iter->begin()+2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin()+1, iter->end());
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn_idximgpt, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn_idximgpt, matches10_passRatioTest, thresh_ratioTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches_passSymTest;
+	// 6. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size() < th)
+	{
+		return false;
+	}
+	else
+	{
+		return true;
+	}	
+}
+
 // 20151016, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get initial fundamental matrix using RANSAC
@@ -3020,6 +3578,663 @@ void DeepVoid::DisambiguateRT_givenE(const CMatrix & mImgPts1,        // input:	
 	{
 		mP = P2_4.Clone();
 		mWrdPts = mWrdPts_reconstruct_4_1.Clone();
+	}
+}
+
+// 2020.06.16, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void DeepVoid::ExtractRTfromE(const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+							  const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+							  cv::Matx33d & E,						// input&output: the given Essential Matrix
+							  cv::Matx33d & R,						// output: the extracted rotation matrix from E
+							  cv::Matx31d & t,						// output: the extracted translation vector from E
+							  vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+							  )
+{
+	int n = nImgPts1.size(); // number of points
+
+	Matx33d u, vt, W, diag110;
+	Matx31d w;
+
+	SVD::compute(E, w, u, vt);
+
+	double detU = cv::determinant(u);
+	double detV = cv::determinant(vt);
+
+	if (detU * detV < 0)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			u(i, 2) = -u(i, 2);
+		}
+	}
+
+	diag110(0, 0) = 1;
+	diag110(1, 1) = 1;
+
+	// update the essential matrix E by E = U * diag(1,1,0) * V.t(), according to p. 259 in <Multiple view geometry in computer vision>
+	E = u*diag110*vt;
+
+	W(0, 1) = -1;
+	W(1, 0) = W(2, 2) = 1;
+
+	Matx33d R1_tmp = u*W*vt;
+	Matx33d R2_tmp = u*W.t()*vt;
+	Matx31d u3 = u.col(2);
+
+	Matx34d P0, P1, P2, P3, P4;
+	
+	// P0=[I|0]
+	// P1=[R1|u3]; P2=[R1|-u3]; P3=[R2|u3]; P4=[R2|-u3]
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			P1(i, j) = P2(i, j) = R1_tmp(i, j);
+			P3(i, j) = P4(i, j) = R2_tmp(i, j);
+		}
+		P0(i, i) = 1;
+		P1(i, 3) = P3(i, 3) = u3(i);
+		P2(i, 3) = P4(i, 3) = -u3(i);
+	}
+
+	// 直接利用本质矩阵矫正归一化像点坐标，也不知道行不行，因为毕竟内参数有可能有误差
+	vector<Point2d> nImgPts1_crct, nImgPts2_crct;
+	correctMatches(E, nImgPts1, nImgPts2, nImgPts1_crct, nImgPts2_crct);
+
+	Mat mWrdPts1, mWrdPts2, mWrdPts3, mWrdPts4;
+	triangulatePoints(P0, P1, nImgPts1_crct, nImgPts2_crct, mWrdPts1);
+	triangulatePoints(P0, P2, nImgPts1_crct, nImgPts2_crct, mWrdPts2);
+	triangulatePoints(P0, P3, nImgPts1_crct, nImgPts2_crct, mWrdPts3);
+	triangulatePoints(P0, P4, nImgPts1_crct, nImgPts2_crct, mWrdPts4);
+
+	vector<Point3d> wrdPts1, wrdPts2, wrdPts3, wrdPts4;
+
+	int nBothPos1 = 0;
+	int nBothPos2 = 0;
+	int nBothPos3 = 0;
+	int nBothPos4 = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double z1_1 = 1.0 / mWrdPts1.at<double>(3, i);
+		double z2_1 = 1.0 / mWrdPts2.at<double>(3, i);
+		double z3_1 = 1.0 / mWrdPts3.at<double>(3, i);
+		double z4_1 = 1.0 / mWrdPts4.at<double>(3, i);
+
+		Matx31d XYZ01, XYZ02, XYZ03, XYZ04;
+		Point3d wrdpt1, wrdpt2, wrdpt3, wrdpt4;
+
+		// 第一组配置的坐标值
+		XYZ01(0) = wrdpt1.x = mWrdPts1.at<double>(0, i)*z1_1;
+		XYZ01(1) = wrdpt1.y = mWrdPts1.at<double>(1, i)*z1_1;
+		XYZ01(2) = wrdpt1.z = mWrdPts1.at<double>(2, i)*z1_1;
+		Matx31d XYZ11 = R1_tmp*XYZ01 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ01(2) > 0 && XYZ11(2) > 0)
+		{
+			nBothPos1++;
+		}
+		wrdPts1.push_back(wrdpt1);
+
+		// 第二组配置的坐标值
+		XYZ02(0) = wrdpt2.x = mWrdPts2.at<double>(0, i)*z2_1;
+		XYZ02(1) = wrdpt2.y = mWrdPts2.at<double>(1, i)*z2_1;
+		XYZ02(2) = wrdpt2.z = mWrdPts2.at<double>(2, i)*z2_1;
+		Matx31d XYZ12 = R1_tmp*XYZ02 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ02(2) > 0 && XYZ12(2) > 0)
+		{
+			nBothPos2++;
+		}
+		wrdPts2.push_back(wrdpt2);
+
+		// 第三组配置的坐标值
+		XYZ03(0) = wrdpt3.x = mWrdPts3.at<double>(0, i)*z3_1;
+		XYZ03(1) = wrdpt3.y = mWrdPts3.at<double>(1, i)*z3_1;
+		XYZ03(2) = wrdpt3.z = mWrdPts3.at<double>(2, i)*z3_1;
+		Matx31d XYZ13 = R2_tmp*XYZ03 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ03(2) > 0 && XYZ13(2) > 0)
+		{
+			nBothPos3++;
+		}
+		wrdPts3.push_back(wrdpt3);
+
+		// 第四组配置的坐标值
+		XYZ04(0) = wrdpt4.x = mWrdPts4.at<double>(0, i)*z4_1;
+		XYZ04(1) = wrdpt4.y = mWrdPts4.at<double>(1, i)*z4_1;
+		XYZ04(2) = wrdpt4.z = mWrdPts4.at<double>(2, i)*z4_1;
+		Matx31d XYZ14 = R2_tmp*XYZ04 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ04(2) > 0 && XYZ14(2) > 0)
+		{
+			nBothPos4++;
+		}
+		wrdPts4.push_back(wrdpt4);
+	}
+
+	int nMax = nBothPos1;
+	R = R1_tmp;
+	t = u3;
+	wrdPts = wrdPts1;
+
+	if (nBothPos2 > nMax)
+	{
+		nMax = nBothPos2;
+
+		R = R1_tmp;
+		t = -u3;
+		wrdPts = wrdPts2;
+	}
+
+	if (nBothPos3 > nMax)
+	{
+		nMax = nBothPos3;
+
+		R = R2_tmp;
+		t = u3;
+		wrdPts = wrdPts3;
+	}
+
+	if (nBothPos4 > nMax)
+	{
+		nMax = nBothPos4;
+
+		R = R2_tmp;
+		t = -u3;
+		wrdPts = wrdPts4;
+	}
+}
+
+// 只是试试，验证些东西，非正式函数
+// 2020.06.25, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void DeepVoid::ExtractRTfromE_Ei(const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+								 const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+								 cv::Matx33d & E,						// input&output: the given Essential Matrix
+								 cv::Matx33d & R,						// output: the extracted rotation matrix from E
+								 cv::Matx31d & t,						// output: the extracted translation vector from E
+								 vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+								 )
+{
+	int n = nImgPts1.size(); // number of points
+
+	Matx33d u, vt, W, diag110;
+	Matx31d w;
+
+	SVD::compute(E, w, u, vt);
+
+	double detU = cv::determinant(u);
+	double detV = cv::determinant(vt);
+
+	if (detU * detV < 0)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			u(i, 2) = -u(i, 2);
+		}
+	}
+
+	diag110(0, 0) = 1;
+	diag110(1, 1) = 1;
+
+	// update the essential matrix E by E = U * diag(1,1,0) * V.t(), according to p. 259 in <Multiple view geometry in computer vision>
+	E = u*diag110*vt;
+
+	W(0, 1) = -1;
+	W(1, 0) = W(2, 2) = 1;
+
+	Matx33d R1_tmp = u*W*vt;
+	Matx33d R2_tmp = u*W.t()*vt;
+	Matx31d u3 = u.col(2);
+
+	Matx34d P0, P1, P2, P3, P4;
+	
+	// P0=[I|0]
+	// P1=[R1|u3]; P2=[R1|-u3]; P3=[R2|u3]; P4=[R2|-u3]
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			P1(i, j) = P2(i, j) = R1_tmp(i, j);
+			P3(i, j) = P4(i, j) = R2_tmp(i, j);
+		}
+		P0(i, i) = 1;
+		P1(i, 3) = P3(i, 3) = u3(i);
+		P2(i, 3) = P4(i, 3) = -u3(i);
+	}
+
+	// 直接利用本质矩阵矫正归一化像点坐标，也不知道行不行，因为毕竟内参数有可能有误差
+	vector<Point2d> nImgPts1_crct, nImgPts2_crct;
+	correctMatches(E, nImgPts1, nImgPts2, nImgPts1_crct, nImgPts2_crct);
+
+	// Ei = [ti]x * Ri ///////////////////////////////////////////
+	Matx33d E1 = CrossMat(u3)*R1_tmp;
+	Matx33d E2 = CrossMat(-u3)*R1_tmp;
+	Matx33d E3 = CrossMat(u3)*R2_tmp;
+	Matx33d E4 = CrossMat(-u3)*R2_tmp;
+
+	vector<Matx33d> vEi;
+	vEi.push_back(E1);
+	vEi.push_back(E2);
+	vEi.push_back(E3);
+	vEi.push_back(E4);
+
+	vector<double> vDiff;
+
+	for (auto iter = vEi.begin(); iter != vEi.end(); ++iter)
+	{
+		const Matx33d & Ei = (*iter);
+
+		vector<Point2d> nimgpts1_c_Ei, nimgpts2_c_Ei;
+		correctMatches(Ei, nImgPts1, nImgPts2, nimgpts1_c_Ei, nimgpts2_c_Ei);
+
+		double sum2_crt = 0;
+
+		for (int i = 0; i < n; ++i)
+		{
+			const Point2d & pt10 = nImgPts1[i];
+			const Point2d & pt20 = nImgPts2[i];
+
+			const Point2d & pt1 = nImgPts1_crct[i];
+			const Point2d & pt2 = nImgPts2_crct[i];
+
+			const Point2d & pt1_Ei = nimgpts1_c_Ei[i];
+			const Point2d & pt2_Ei = nimgpts2_c_Ei[i];
+
+			double dx1 = pt1_Ei.x - pt1.x;
+			double dy1 = pt1_Ei.y - pt1.y;
+			double d12 = dx1*dx1 + dy1*dy1;
+
+			double dx2 = pt2_Ei.x - pt2.x;
+			double dy2 = pt2_Ei.y - pt2.y;
+			double d22 = dx2*dx2 + dy2*dy2;
+
+			sum2_crt += (d12 + d22);
+
+			double dx10 = pt1_Ei.x - pt10.x;
+			double dy10 = pt1_Ei.y - pt10.y;
+			double d102 = dx10*dx10 + dy10*dy10;
+
+			double dx20 = pt2_Ei.x - pt20.x;
+			double dy20 = pt2_Ei.y - pt20.y;
+			double d202 = dx20*dx20 + dy20*dy20;
+		}
+
+		double diff_Ei = sqrt(0.5*sum2_crt / n);
+
+		vDiff.push_back(diff_Ei);
+	}
+	/////////////////////////////////////////////////////////////////
+
+	Mat mWrdPts1, mWrdPts2, mWrdPts3, mWrdPts4;
+	triangulatePoints(P0, P1, nImgPts1_crct, nImgPts2_crct, mWrdPts1);
+	triangulatePoints(P0, P2, nImgPts1_crct, nImgPts2_crct, mWrdPts2);
+	triangulatePoints(P0, P3, nImgPts1_crct, nImgPts2_crct, mWrdPts3);
+	triangulatePoints(P0, P4, nImgPts1_crct, nImgPts2_crct, mWrdPts4);
+
+	vector<Point3d> wrdPts1, wrdPts2, wrdPts3, wrdPts4;
+
+	int nBothPos1 = 0;
+	int nBothPos2 = 0;
+	int nBothPos3 = 0;
+	int nBothPos4 = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double z1_1 = 1.0 / mWrdPts1.at<double>(3, i);
+		double z2_1 = 1.0 / mWrdPts2.at<double>(3, i);
+		double z3_1 = 1.0 / mWrdPts3.at<double>(3, i);
+		double z4_1 = 1.0 / mWrdPts4.at<double>(3, i);
+
+		Matx31d XYZ01, XYZ02, XYZ03, XYZ04;
+		Point3d wrdpt1, wrdpt2, wrdpt3, wrdpt4;
+
+		// 第一组配置的坐标值
+		XYZ01(0) = wrdpt1.x = mWrdPts1.at<double>(0, i)*z1_1;
+		XYZ01(1) = wrdpt1.y = mWrdPts1.at<double>(1, i)*z1_1;
+		XYZ01(2) = wrdpt1.z = mWrdPts1.at<double>(2, i)*z1_1;
+		Matx31d XYZ11 = R1_tmp*XYZ01 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ01(2) > 0 && XYZ11(2) > 0)
+		{
+			nBothPos1++;
+		}
+		wrdPts1.push_back(wrdpt1);
+
+		// 第二组配置的坐标值
+		XYZ02(0) = wrdpt2.x = mWrdPts2.at<double>(0, i)*z2_1;
+		XYZ02(1) = wrdpt2.y = mWrdPts2.at<double>(1, i)*z2_1;
+		XYZ02(2) = wrdpt2.z = mWrdPts2.at<double>(2, i)*z2_1;
+		Matx31d XYZ12 = R1_tmp*XYZ02 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ02(2) > 0 && XYZ12(2) > 0)
+		{
+			nBothPos2++;
+		}
+		wrdPts2.push_back(wrdpt2);
+
+		// 第三组配置的坐标值
+		XYZ03(0) = wrdpt3.x = mWrdPts3.at<double>(0, i)*z3_1;
+		XYZ03(1) = wrdpt3.y = mWrdPts3.at<double>(1, i)*z3_1;
+		XYZ03(2) = wrdpt3.z = mWrdPts3.at<double>(2, i)*z3_1;
+		Matx31d XYZ13 = R2_tmp*XYZ03 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ03(2) > 0 && XYZ13(2) > 0)
+		{
+			nBothPos3++;
+		}
+		wrdPts3.push_back(wrdpt3);
+
+		// 第四组配置的坐标值
+		XYZ04(0) = wrdpt4.x = mWrdPts4.at<double>(0, i)*z4_1;
+		XYZ04(1) = wrdpt4.y = mWrdPts4.at<double>(1, i)*z4_1;
+		XYZ04(2) = wrdpt4.z = mWrdPts4.at<double>(2, i)*z4_1;
+		Matx31d XYZ14 = R2_tmp*XYZ04 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ04(2) > 0 && XYZ14(2) > 0)
+		{
+			nBothPos4++;
+		}
+		wrdPts4.push_back(wrdpt4);
+	}
+
+	int nMax = nBothPos1;
+	R = R1_tmp;
+	t = u3;
+	wrdPts = wrdPts1;
+
+	if (nBothPos2 > nMax)
+	{
+		nMax = nBothPos2;
+
+		R = R1_tmp;
+		t = -u3;
+		wrdPts = wrdPts2;
+	}
+
+	if (nBothPos3 > nMax)
+	{
+		nMax = nBothPos3;
+
+		R = R2_tmp;
+		t = u3;
+		wrdPts = wrdPts3;
+	}
+
+	if (nBothPos4 > nMax)
+	{
+		nMax = nBothPos4;
+
+		R = R2_tmp;
+		t = -u3;
+		wrdPts = wrdPts4;
+	}
+}
+
+// 只是试试，验证些东西，非正式函数
+// 2020.06.25, extract [R|t] from given essential matrix, please refer to p259 in <Multiple View Geometry>
+void DeepVoid::ExtractRTfromE_givenK(const vector<cv::Point2d> & imgPts1,	// input: normalized image points in image 1
+									 const vector<cv::Point2d> & imgPts2,
+									 const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+									 const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+									 const Matx33d & F0,
+									 const Matx33d & K1,					
+									 const Matx33d & K2,					
+									 cv::Matx33d & E,						// input&output: the given Essential Matrix
+									 cv::Matx33d & R,						// output: the extracted rotation matrix from E
+									 cv::Matx31d & t,						// output: the extracted translation vector from E
+									 vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+									 )
+{
+	int n = nImgPts1.size(); // number of points
+
+	Matx33d u, vt, W, diag110;
+	Matx31d w;
+
+	SVD::compute(E, w, u, vt);
+
+	double detU = cv::determinant(u);
+	double detV = cv::determinant(vt);
+
+	if (detU * detV < 0)
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			u(i, 2) = -u(i, 2);
+		}
+	}
+
+	diag110(0, 0) = 1;
+	diag110(1, 1) = 1;
+
+	// update the essential matrix E by E = U * diag(1,1,0) * V.t(), according to p. 259 in <Multiple view geometry in computer vision>
+	E = u*diag110*vt;
+
+	W(0, 1) = -1;
+	W(1, 0) = W(2, 2) = 1;
+
+	Matx33d R1_tmp = u*W*vt;
+	Matx33d R2_tmp = u*W.t()*vt;
+	Matx31d u3 = u.col(2);
+
+	Matx34d P0, P1, P2, P3, P4;
+	
+	// P0=[I|0]
+	// P1=[R1|u3]; P2=[R1|-u3]; P3=[R2|u3]; P4=[R2|-u3]
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			P1(i, j) = P2(i, j) = R1_tmp(i, j);
+			P3(i, j) = P4(i, j) = R2_tmp(i, j);
+		}
+		P0(i, i) = 1;
+		P1(i, 3) = P3(i, 3) = u3(i);
+		P2(i, 3) = P4(i, 3) = -u3(i);
+	}
+
+	P0 = K1*P0;
+	P1 = K2*P1;
+	P2 = K2*P2;
+	P3 = K2*P3;
+	P4 = K2*P4;
+
+	// 任意合成一个 F 即可，因为 4 组 [R|t] 配合 K 合成的 F 是等效的
+	Matx33d F = GetF_Stereo(K1, K2, R1_tmp, u3);
+
+	// 直接利用本质矩阵矫正归一化像点坐标，也不知道行不行，因为毕竟内参数有可能有误差
+	vector<Point2d> imgPts1_crct, imgPts2_crct;
+	correctMatches(F0, imgPts1, imgPts2, imgPts1_crct, imgPts2_crct);
+
+	double sum2_all = 0;
+	double sum2_left = 0;
+	double sum2_right = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		Point2d dd1 = imgPts1_crct[i] - imgPts1[i];
+		Point2d dd2 = imgPts2_crct[i] - imgPts2[i];
+		
+		double d12 = dd1.x*dd1.x + dd1.y*dd1.y;
+		double d22 = dd2.x*dd2.x + dd2.y*dd2.y;
+
+		sum2_all += (d12 + d22);
+		sum2_left += d12;
+		sum2_right += d22;
+	}
+
+	double err_all = sqrt(0.5*sum2_all / n);
+	double err_left = sqrt(sum2_left / n);
+	double err_right = sqrt(sum2_right / n);
+
+	Mat mWrdPts1, mWrdPts2, mWrdPts3, mWrdPts4;
+	triangulatePoints(P0, P1, imgPts1_crct, imgPts2_crct, mWrdPts1);
+	triangulatePoints(P0, P2, imgPts1_crct, imgPts2_crct, mWrdPts2);
+	triangulatePoints(P0, P3, imgPts1_crct, imgPts2_crct, mWrdPts3);
+	triangulatePoints(P0, P4, imgPts1_crct, imgPts2_crct, mWrdPts4);
+
+	vector<Point3d> wrdPts1, wrdPts2, wrdPts3, wrdPts4;
+
+	int nBothPos1 = 0;
+	int nBothPos2 = 0;
+	int nBothPos3 = 0;
+	int nBothPos4 = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double z1_1 = 1.0 / mWrdPts1.at<double>(3, i);
+		double z2_1 = 1.0 / mWrdPts2.at<double>(3, i);
+		double z3_1 = 1.0 / mWrdPts3.at<double>(3, i);
+		double z4_1 = 1.0 / mWrdPts4.at<double>(3, i);
+
+		Matx31d XYZ01, XYZ02, XYZ03, XYZ04;
+		Point3d wrdpt1, wrdpt2, wrdpt3, wrdpt4;
+
+		// 第一组配置的坐标值
+		XYZ01(0) = wrdpt1.x = mWrdPts1.at<double>(0, i)*z1_1;
+		XYZ01(1) = wrdpt1.y = mWrdPts1.at<double>(1, i)*z1_1;
+		XYZ01(2) = wrdpt1.z = mWrdPts1.at<double>(2, i)*z1_1;
+		Matx31d XYZ11 = R1_tmp*XYZ01 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ01(2) > 0 && XYZ11(2) > 0)
+		{
+			nBothPos1++;
+		}
+		wrdPts1.push_back(wrdpt1);
+
+		// 第二组配置的坐标值
+		XYZ02(0) = wrdpt2.x = mWrdPts2.at<double>(0, i)*z2_1;
+		XYZ02(1) = wrdpt2.y = mWrdPts2.at<double>(1, i)*z2_1;
+		XYZ02(2) = wrdpt2.z = mWrdPts2.at<double>(2, i)*z2_1;
+		Matx31d XYZ12 = R1_tmp*XYZ02 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ02(2) > 0 && XYZ12(2) > 0)
+		{
+			nBothPos2++;
+		}
+		wrdPts2.push_back(wrdpt2);
+
+		// 第三组配置的坐标值
+		XYZ03(0) = wrdpt3.x = mWrdPts3.at<double>(0, i)*z3_1;
+		XYZ03(1) = wrdpt3.y = mWrdPts3.at<double>(1, i)*z3_1;
+		XYZ03(2) = wrdpt3.z = mWrdPts3.at<double>(2, i)*z3_1;
+		Matx31d XYZ13 = R2_tmp*XYZ03 + u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ03(2) > 0 && XYZ13(2) > 0)
+		{
+			nBothPos3++;
+		}
+		wrdPts3.push_back(wrdpt3);
+
+		// 第四组配置的坐标值
+		XYZ04(0) = wrdpt4.x = mWrdPts4.at<double>(0, i)*z4_1;
+		XYZ04(1) = wrdpt4.y = mWrdPts4.at<double>(1, i)*z4_1;
+		XYZ04(2) = wrdpt4.z = mWrdPts4.at<double>(2, i)*z4_1;
+		Matx31d XYZ14 = R2_tmp*XYZ04 - u3; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ04(2) > 0 && XYZ14(2) > 0)
+		{
+			nBothPos4++;
+		}
+		wrdPts4.push_back(wrdpt4);
+	}
+
+	int nMax = nBothPos1;
+	R = R1_tmp;
+	t = u3;
+	wrdPts = wrdPts1;
+
+	if (nBothPos2 > nMax)
+	{
+		nMax = nBothPos2;
+
+		R = R1_tmp;
+		t = -u3;
+		wrdPts = wrdPts2;
+	}
+
+	if (nBothPos3 > nMax)
+	{
+		nMax = nBothPos3;
+
+		R = R2_tmp;
+		t = u3;
+		wrdPts = wrdPts3;
+	}
+
+	if (nBothPos4 > nMax)
+	{
+		nMax = nBothPos4;
+
+		R = R2_tmp;
+		t = -u3;
+		wrdPts = wrdPts4;
+	}
+}
+
+// 2020.06.25, 验证些东西，非正式函数
+void DeepVoid::ExtractRTfromE_opencv(const vector<cv::Point2d> & nImgPts1,	// input: normalized image points in image 1
+									 const vector<cv::Point2d> & nImgPts2,	// input: normalized image points in image 2
+									 cv::Matx33d & E,						// input&output: the given Essential Matrix
+									 cv::Matx33d & R,						// output: the extracted rotation matrix from E
+									 cv::Matx31d & t,						// output: the extracted translation vector from E
+									 vector<cv::Point3d> & wrdPts			// output: the reconstructed world points
+									 )
+{
+	int n = nImgPts1.size(); // number of points
+	
+	wrdPts.clear();
+
+	// opencv's own RO function from given E
+	Matx33d K;
+	Mat mask;
+
+	K(0, 0) = K(1, 1) = K(2, 2) = 1;
+
+//	E = findEssentialMat(nImgPts1, nImgPts2, K, RANSAC, 0.999, 1.0, mask);
+	cv::recoverPose(E, nImgPts1, nImgPts2, K, R, t/*, mask*/);
+
+	E = CrossMat(t)*R;
+
+	Matx34d P0, P1;
+	
+	// P0=[I|0]; P1=[R|t]
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			P1(i, j) = R(i, j);
+		}
+		P0(i, i) = 1;
+		P1(i, 3) = t(i);
+	}
+
+	// 直接利用本质矩阵矫正归一化像点坐标，也不知道行不行，因为毕竟内参数有可能有误差
+	vector<Point2d> nImgPts1_crct, nImgPts2_crct;
+	correctMatches(E, nImgPts1, nImgPts2, nImgPts1_crct, nImgPts2_crct);
+
+	Mat mWrdPts;
+	triangulatePoints(P0, P1, nImgPts1_crct, nImgPts2_crct, mWrdPts);
+
+	int nBothPos = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double z_1 = 1.0 / mWrdPts.at<double>(3, i);
+
+		Matx31d XYZ0;
+		Point3d wrdpt;
+
+		// 第一组配置的坐标值
+		XYZ0(0) = wrdpt.x = mWrdPts.at<double>(0, i)*z_1;
+		XYZ0(1) = wrdpt.y = mWrdPts.at<double>(1, i)*z_1;
+		XYZ0(2) = wrdpt.z = mWrdPts.at<double>(2, i)*z_1;
+		Matx31d XYZ1 = R*XYZ0 + t; // 物点于第二幅图中的坐标值
+		// 统计同时位于两幅图前方的物点数目
+		if (XYZ0(2) > 0 && XYZ1(2) > 0)
+		{
+			nBothPos++;
+		}
+		wrdPts.push_back(wrdpt);
 	}
 }
 
@@ -4540,7 +5755,7 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		}
 	}
 
-	vector<Point2d> nimgpts0,nimgpts1;
+	vector<Point2d> nimgpts0, nimgpts1;
 
 	// first, normalize all image points
 	for (i=0;i<n;i++)
@@ -4609,6 +5824,7 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 	double sum_d2 = 0;
 	int n_pos = 0;
 
+//	FILE * file = fopen("E:\\all\\RO points.txt", "w");
 	for (i=0;i<n;i++)
 	{
 		Point3d pt;
@@ -4617,6 +5833,8 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		pt.x = mWrdPts.at<double>(0,i)*w_1;
 		pt.y = mWrdPts.at<double>(1,i)*w_1;
 		pt.z = mWrdPts.at<double>(2,i)*w_1;
+
+//		fprintf(file, "%lf;%lf;%lf\n", pt.x, pt.y, pt.z);
 
 		if (pt.z>0)
 		{
@@ -4631,7 +5849,38 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		double dy1 = imgpts1_crct[i].y-imgpts1[i].y;
 		double d2 = dx0*dx0+dy0*dy0+dx1*dx1+dy1*dy1;
 		sum_d2+=d2;
+
+		// 2020.06.11, 试试看直接由 PIRO 导出物点坐标值
+		/*Matx31d nxy1;
+		Point2d nimgpt0 = nimgpts0[i];
+		Point2d nimgpt1 = nimgpts1[i];
+
+		nxy1(0) = nimgpt1.x;
+		nxy1(1) = nimgpt1.y;
+		nxy1(2) = 1;
+
+		Matx31d ABC = mR.t()*nxy1;
+		double A = ABC(0) / ABC(2);
+		double B = ABC(1) / ABC(2);
+
+		double Z1 = (C(0) - A*C(2)) / (nimgpt0.x - A);
+		double Z2 = (C(1) - B*C(2)) / (nimgpt0.y - B);
+
+		double X1 = nimgpt0.x*Z1;
+		double X2 = nimgpt0.x*Z2;
+
+		double Y1 = nimgpt0.y*Z1;
+		double Y2 = nimgpt0.y*Z2;
+
+		double dX1 = X1 - pt.x;
+		double dY1 = Y1 - pt.y;
+		double dZ1 = Z1 - pt.z;
+
+		double dX2 = X2 - pt.x;
+		double dY2 = Y2 - pt.y;
+		double dZ2 = Z2 - pt.z;*/
 	}
+//	fclose(file);
 
 	double err_rpj = sqrt(sum_d2*0.5/n);
 
@@ -4693,6 +5942,36 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		double dy1 = imgpts1_crct[i].y-imgpts1[i].y;
 		double d2 = dx0*dx0+dy0*dy0+dx1*dx1+dy1*dy1;
 		sum_d2+=d2;
+
+		// 2020.06.11, 试试看直接由 PIRO 导出物点坐标值
+		/*Matx31d nxy1;
+		Point2d nimgpt0 = nimgpts0[i];
+		Point2d nimgpt1 = nimgpts1[i];
+
+		nxy1(0) = nimgpt1.x;
+		nxy1(1) = nimgpt1.y;
+		nxy1(2) = 1;
+
+		Matx31d ABC = mR.t()*nxy1;
+		double A = ABC(0) / ABC(2);
+		double B = ABC(1) / ABC(2);
+
+		double Z1 = (C(0) - A*C(2)) / (nimgpt0.x - A);
+		double Z2 = (C(1) - B*C(2)) / (nimgpt0.y - B);
+
+		double X1 = nimgpt0.x*Z1;
+		double X2 = nimgpt0.x*Z2;
+
+		double Y1 = nimgpt0.y*Z1;
+		double Y2 = nimgpt0.y*Z2;
+
+		double dX1 = X1 - pt.x;
+		double dY1 = Y1 - pt.y;
+		double dZ1 = Z1 - pt.z;
+
+		double dX2 = X2 - pt.x;
+		double dY2 = Y2 - pt.y;
+		double dZ2 = Z2 - pt.z;*/
 	}
 
 	err_rpj = sqrt(sum_d2*0.5/n);
@@ -4756,6 +6035,36 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		double dy1 = imgpts1_crct[i].y-imgpts1[i].y;
 		double d2 = dx0*dx0+dy0*dy0+dx1*dx1+dy1*dy1;
 		sum_d2+=d2;
+
+		// 2020.06.11, 试试看直接由 PIRO 导出物点坐标值
+		/*Matx31d nxy1;
+		Point2d nimgpt0 = nimgpts0[i];
+		Point2d nimgpt1 = nimgpts1[i];
+
+		nxy1(0) = nimgpt1.x;
+		nxy1(1) = nimgpt1.y;
+		nxy1(2) = 1;
+
+		Matx31d ABC = mR.t()*nxy1;
+		double A = ABC(0) / ABC(2);
+		double B = ABC(1) / ABC(2);
+
+		double Z1 = (C(0) - A*C(2)) / (nimgpt0.x - A);
+		double Z2 = (C(1) - B*C(2)) / (nimgpt0.y - B);
+
+		double X1 = nimgpt0.x*Z1;
+		double X2 = nimgpt0.x*Z2;
+
+		double Y1 = nimgpt0.y*Z1;
+		double Y2 = nimgpt0.y*Z2;
+
+		double dX1 = X1 - pt.x;
+		double dY1 = Y1 - pt.y;
+		double dZ1 = Z1 - pt.z;
+
+		double dX2 = X2 - pt.x;
+		double dY2 = Y2 - pt.y;
+		double dZ2 = Z2 - pt.z;*/
 	}
 
 	err_rpj = sqrt(sum_d2*0.5/n);
@@ -4796,6 +6105,7 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 	sum_d2 = 0;
 	n_pos = 0;
 
+//	file = fopen("E:\\all\\RO points.txt", "w");
 	for (i=0;i<n;i++)
 	{
 		Point3d pt;
@@ -4804,6 +6114,8 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		pt.x = mWrdPts.at<double>(0,i)*w_1;
 		pt.y = mWrdPts.at<double>(1,i)*w_1;
 		pt.z = mWrdPts.at<double>(2,i)*w_1;
+
+//		fprintf(file, "%lf;%lf;%lf\n", pt.x, pt.y, pt.z);
 
 		if (pt.z>0)
 		{
@@ -4818,7 +6130,38 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		double dy1 = imgpts1_crct[i].y-imgpts1[i].y;
 		double d2 = dx0*dx0+dy0*dy0+dx1*dx1+dy1*dy1;
 		sum_d2+=d2;
+
+		// 2020.06.11, 试试看直接由 PIRO 导出物点坐标值
+		/*Matx31d nxy1;
+		Point2d nimgpt0 = nimgpts0[i];
+		Point2d nimgpt1 = nimgpts1[i];
+
+		nxy1(0) = nimgpt1.x;
+		nxy1(1) = nimgpt1.y;
+		nxy1(2) = 1;
+
+		Matx31d ABC = mR.t()*nxy1;
+		double A = ABC(0) / ABC(2);
+		double B = ABC(1) / ABC(2);
+
+		double Z1 = (C(0) - A*C(2)) / (nimgpt0.x - A);
+		double Z2 = (C(1) - B*C(2)) / (nimgpt0.y - B);
+
+		double X1 = nimgpt0.x*Z1;
+		double X2 = nimgpt0.x*Z2;
+
+		double Y1 = nimgpt0.y*Z1;
+		double Y2 = nimgpt0.y*Z2;
+
+		double dX1 = X1 - pt.x;
+		double dY1 = Y1 - pt.y;
+		double dZ1 = Z1 - pt.z;
+
+		double dX2 = X2 - pt.x;
+		double dY2 = Y2 - pt.y;
+		double dZ2 = Z2 - pt.z;*/
 	}
+//	fclose(file);
 
 	err_rpj = sqrt(sum_d2*0.5/n);
 
@@ -4964,6 +6307,12 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 		idx_min_err_rpj++;
 	}
 
+	// 20200612 try one try
+	vector <int>::iterator iterInt = max_element(n_pos_all.begin(), n_pos_all.end());
+	int max_nPos = *iterInt;
+	idx_min_err_rpj = iterInt - n_pos_all.begin();
+	////////////////////////
+
 	mR = R_all[idx_min_err_rpj];
 	mt = t_all[idx_min_err_rpj];
 	wrdpts = wrdpts_all[idx_min_err_rpj];
@@ -4981,6 +6330,345 @@ double DeepVoid::PIRO_GN(const vector<Point2d> & imgpts0,	// input:	measured dis
 // 	}
 
 	return err_rpj_all[idx_min_err_rpj];
+}
+
+// 20200626，改用归一化像点坐标，且不用输入标定矩阵 K
+double DeepVoid::PIRO_GN(const vector<Point2d> & nimgpts0,	// input:	distortion free normalized image points in reference image
+						 const vector<Point2d> & nimgpts1,	// input:	distortion free normalized image points in matching image
+						 Matx33d & mR,						// output:	the relative rotation matrix between the matching and reference image
+						 Matx31d & mt,						// output:	the relative translation vector between the matching and reference image
+						 vector<Point3d> & wrdpts,			// output:	the reconstructed 3D coordinates of all correspondences
+						 int maxIter /*= 128*/,				// input:	max iteration
+						 double xEps /*= 1.0E-12*/,			// input:	threshold
+						 double fEps /*= 1.0E-12*/			// input:	threshold
+						 )
+{
+	int n = nimgpts0.size();
+
+	vector<vector<Point3d>> wrdpts_all;
+	vector<double> err_rpj_all;
+	vector<int> n_pos_all;
+	vector<Matx33d> R_all;
+	vector<Matx31d> t_all;
+	vector<double> z_avg_all;
+
+	vector<Point3d> vWrdPts;
+	double err_rpj;
+	int n_pos, n_pos_pre;
+	double z_avg;
+
+	double ratio_n_pos1, ratio_n_pos2, diff_ratio_n_pos;
+	double z_avg_abs;
+
+	// <j, <i, diffPosRatio, z_avg, err_rpj>>
+	// 其中 j 表示组号，0为X配置组，1为Y配置组，2为Z配置组
+	// i表示每组配置中的优胜者全局索引号，目前每组里的优胜者即为 nPos 最多者
+	// 依次按照 diffPosRation、z_avg、err_rpj 对3组进行排序，最终输出为优胜组中的优胜者
+	typedef std::pair<int, Point3d> pair_i_diff_zAvg_err;
+	
+	vector<pair_i_diff_zAvg_err> vec_info;
+
+	int idx;
+	Point3d info;
+
+	////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix bx = 1 //////////////////////////////////////////////////////////////////////////
+	double bx = 1.0;
+	double Y_optim, Z_optim, AX_optim, AY_optim, AZ_optim;
+	PIRO_Y_Z_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, Y_optim, Z_optim, AX_optim, AY_optim, AZ_optim, bx, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	Matx31d C;
+	C(0) = bx;
+	C(1) = Y_optim;
+	C(2) = Z_optim;
+	mt = -mR*C; // t=-RC
+
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos1 = (double)n_pos / n;
+	z_avg_abs = 0;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	n_pos_pre = n_pos;
+	idx = 0;
+	/////////////////////////////////////////////////////////////////////////////////////////////
+
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix bx = -1 //////////////////////////////////////////////////////////////////////////
+	bx = -1.0;
+	PIRO_Y_Z_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, Y_optim, Z_optim, AX_optim, AY_optim, AZ_optim, bx, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	C(0) = bx;
+	C(1) = Y_optim;
+	C(2) = Z_optim;
+	mt = -mR*C; // t=-RC
+	
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos2 = (double)n_pos / n;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	diff_ratio_n_pos = std::fabs(ratio_n_pos1 - ratio_n_pos2);
+	z_avg_abs *= 0.5;
+
+	if (n_pos > n_pos_pre)
+	{
+		idx = 1;
+	}
+	info.x = diff_ratio_n_pos;
+	info.y = z_avg_abs;
+	info.z = err_rpj;
+
+	vec_info.push_back(std::make_pair(idx, info));
+	////////////////////////////////////////////////////////////////////////////////////////////
+
+	////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix by = 1 //////////////////////////////////////////////////////////////////////////
+	double by = 1.0;
+	double X_optim;
+	PIRO_X_Z_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, X_optim, Z_optim, AX_optim, AY_optim, AZ_optim, by, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	C(0) = X_optim;
+	C(1) = by;
+	C(2) = Z_optim;
+	mt = -mR*C; // t=-RC
+	
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos1 = (double)n_pos / n;
+	z_avg_abs = 0;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	n_pos_pre = n_pos;
+	idx = 2;
+	/////////////////////////////////////////////////////////////////////////////////////////////
+
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix by = -1 //////////////////////////////////////////////////////////////////////////
+	by = -1.0;
+	PIRO_X_Z_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, X_optim, Z_optim, AX_optim, AY_optim, AZ_optim, by, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	C(0) = X_optim;
+	C(1) = by;
+	C(2) = Z_optim;
+	mt = -mR*C; // t=-RC
+	
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos2 = (double)n_pos / n;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	diff_ratio_n_pos = std::fabs(ratio_n_pos1 - ratio_n_pos2);
+	z_avg_abs *= 0.5;
+
+	if (n_pos > n_pos_pre)
+	{
+		idx = 3;
+	}
+	info.x = diff_ratio_n_pos;
+	info.y = z_avg_abs;
+	info.z = err_rpj;
+
+	vec_info.push_back(std::make_pair(idx, info));
+	////////////////////////////////////////////////////////////////////////////////////////////
+
+	////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix bz = 1 //////////////////////////////////////////////////////////////////////////
+	double bz = 1.0;
+	PIRO_X_Y_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, X_optim, Y_optim, AX_optim, AY_optim, AZ_optim, bz, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	C(0) = X_optim;
+	C(1) = Y_optim;
+	C(2) = bz;
+	mt = -mR*C; // t=-RC
+	
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos1 = (double)n_pos / n;
+	z_avg_abs = 0;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	n_pos_pre = n_pos;
+	idx = 4;
+	/////////////////////////////////////////////////////////////////////////////////////////////
+
+	/////////////////////////////////////////////////////////////////////////////////////////////
+	// try fix bz = -1 //////////////////////////////////////////////////////////////////////////
+	bz = -1.0;
+	PIRO_X_Y_AXAYAZ_GN(nimgpts0, nimgpts1, 0, 0, 0, 0, 0, X_optim, Y_optim, AX_optim, AY_optim, AZ_optim, bz, maxIter, xEps, fEps);
+	mR = GenR_Euler_Radian_CV(AX_optim, AY_optim, AZ_optim, ZYX);
+	C(0) = X_optim;
+	C(1) = Y_optim;
+	C(2) = bz;
+	mt = -mR*C; // t=-RC
+	
+	DeepVoid::triangulation(nimgpts0, nimgpts1, mR, mt, vWrdPts, err_rpj, n_pos, z_avg);
+
+	ratio_n_pos2 = (double)n_pos / n;
+	z_avg_abs += std::fabs(z_avg);
+
+	wrdpts_all.push_back(vWrdPts);
+	err_rpj_all.push_back(err_rpj);
+	n_pos_all.push_back(n_pos);
+	R_all.push_back(mR);
+	t_all.push_back(mt);
+	z_avg_all.push_back(z_avg);
+
+	diff_ratio_n_pos = std::fabs(ratio_n_pos1 - ratio_n_pos2);
+	z_avg_abs *= 0.5;
+
+	if (n_pos > n_pos_pre)
+	{
+		idx = 5;
+	}
+	info.x = diff_ratio_n_pos;
+	info.y = z_avg_abs;
+	info.z = err_rpj;
+
+	vec_info.push_back(std::make_pair(idx, info));
+	/////////////////////////////////////////////////////////////////////////////////////////////
+
+	// 20200628，最终决定还是选择残差最小的配置，因为靠其它的都不太靠谱，总能出现反例，至少选残差小是有最大似然意义的
+	vector <double>::iterator iterDouble = min_element(err_rpj_all.begin(), err_rpj_all.end());
+	double min_err_rpj = *iterDouble;
+	int idx_min_err_rpj = iterDouble - err_rpj_all.begin();
+
+	// 同一组中选择正面点数最多的配置
+	if (n_pos_all[idx_min_err_rpj]<n_pos_all[idx_min_err_rpj+1])
+	{
+		idx_min_err_rpj++;
+	}
+
+	mR = R_all[idx_min_err_rpj];
+	mt = t_all[idx_min_err_rpj];
+	wrdpts = wrdpts_all[idx_min_err_rpj];
+
+	return err_rpj_all[idx_min_err_rpj];
+}
+
+// 20200626, triangulate points given the normalized image points and [R|t] estimates, and output some values.
+void DeepVoid::triangulation(const vector<Point2d> & nimgpts0,	// input:	distortion free normalized image points in reference image
+							 const vector<Point2d> & nimgpts1,	// input:	distortion free normalized image points in matching image
+							 const Matx33d & mR,				// input:	the relative rotation matrix between the matching and reference image
+							 const Matx31d & mt,				// input:	the relative translation vector between the matching and reference image
+							 vector<Point3d> & wrdpts,			// output:	the reconstructed 3D coordinates of all correspondences
+							 double & err_rpj_nimgpt,			// output:	the reprojetion error on both image in terms of normalized image coordinate
+							 int & n_bothFront,					// output:	the number of object points that are in front of both images
+							 double & avgDepth					// output:	the average depth, i.e. the z value relative to reference image, of object points
+							 )
+{
+	wrdpts.clear();
+	
+	int n = nimgpts0.size(); // number of correspondences
+
+	// P0 = [I|0]
+	Matx34d mP0;
+	mP0(0, 0) = mP0(1, 1) = mP0(2, 2) = 1;
+	
+	// P1 = [R|t]
+	Matx34d mP1;
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			mP1(i, j) = mR(i, j);
+		}
+
+		mP1(i, 3) = mt(i);
+	}
+
+	// get essential matrix E = [t]x * R
+	Matx33d mE = CrossMat(mt)*mR;
+
+	// correct the normalized image points according to epipolar geometry
+	vector<Point2d> nimgpts0_c, nimgpts1_c;
+	correctMatches(mE, nimgpts0, nimgpts1, nimgpts0_c, nimgpts1_c);
+
+	// triangulate points
+	Mat mWrdPts;
+	triangulatePoints(mP0, mP1, nimgpts0_c, nimgpts1_c, mWrdPts);
+
+	double sum_d2 = 0;
+	int n_pos = 0;
+	double sum_z = 0;
+
+	for (int i = 0; i < n; ++i)
+	{
+		Point3d pt;
+		Matx31d XYZ;
+
+		double w_1 = 1.0 / mWrdPts.at<double>(3, i);
+
+		XYZ(0) = pt.x = mWrdPts.at<double>(0, i)*w_1;
+		XYZ(1) = pt.y = mWrdPts.at<double>(1, i)*w_1;
+		XYZ(2) = pt.z = mWrdPts.at<double>(2, i)*w_1;
+
+//		sum_z += pt.z;
+		sum_z += std::fabs(pt.z);
+
+		if (pt.z > 0)
+		{
+			XYZ = mR*XYZ + mt;
+
+			if (XYZ(2) > 0)
+			{
+				++n_pos;
+			}			
+		}
+
+		wrdpts.push_back(pt);
+
+		const Point2d & npt0 = nimgpts0[i];
+		const Point2d & npt1 = nimgpts1[i];
+		const Point2d & npt0_c = nimgpts0_c[i];
+		const Point2d & npt1_c = nimgpts1_c[i];
+
+		double dx0 = npt0_c.x - npt0.x;
+		double dy0 = npt0_c.y - npt0.y;
+		double dx1 = npt1_c.x - npt1.x;
+		double dy1 = npt1_c.y - npt1.y;
+		double d2 = dx0*dx0 + dy0*dy0 + dx1*dx1 + dy1*dy1;
+		sum_d2 += d2;
+	}
+
+	err_rpj_nimgpt = sqrt(0.5*sum_d2 / n);
+	n_bothFront = n_pos;
+	avgDepth = sum_z / n;	
 }
 
 /*bool DeepVoid::RelativeOrientation_RANSAC_Features_PIRO(const cam_data & cam1,				// input:	all the information about the image 1
@@ -5689,7 +7377,7 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 		}
 	}
 
-	if (err_rpj>=thresh_reprojErr)
+	if (/*err_rpj>=thresh_reprojErr*/false) // 20200612, try one try
 	{
 		return false;
 	}
@@ -5768,6 +7456,232 @@ bool DeepVoid::RelativeOrientation_Features_PIRO_givenMatches(const cam_data & c
 		{
 			return true;
 		} 
+		else
+		{
+			return false;
+		}
+	}
+}
+
+// 20200623, zhaokunz, given the already estimated fundamental matrix F during the matching stage
+bool DeepVoid::RelativeOrientation(const cam_data & cam1,				// input:	all the information about the image 1
+								   const cam_data & cam2,				// input:	all the information about the image 2
+								   const Matx33d & mF,					// input:	the already estimated fundamental matrix between these two images optimized by sparse_lm_F
+								   const vector<DMatch> & matches,		// input:	the given matches
+								   Matx33d & mR,						// output:	the relative rotation matrix
+								   Matx31d & mt,						// output:	the relative translation vector
+								   SfM_ZZK::PointCloud & map_pointcloud,// output:	the reconstructed point cloud in reference camera frame, which is the first image
+								   int RO_method /*= 0*/,				// input:	0:PIRO; 1:extract [R|t] from essential matrix, just like recoverPose() from opencv
+								   double thresh_reprojErr /*= 1*/,		// input:	the threshold of the reprojection error in pixels
+								   double thresh_meanAng /*= 5*/		// input:	the threshold of the mean triangulation angle
+								   )
+{
+	int nFeat1 = cam1.m_feats.key_points.size();
+	int nFeat2 = cam2.m_feats.key_points.size();
+
+	// the feature points in both cam_data are supposed to be distortion free 
+	const Features & feat1_rectified = cam1.m_feats;
+	const Features & feat2_rectified = cam2.m_feats;
+
+	const Matx33d & mK0 = cam1.m_K;
+	const Matx33d & mK1 = cam2.m_K;
+
+	Matx33d mK0_1 = mK0.inv();
+	Matx33d mK1_1 = mK1.inv();
+
+	int n = matches.size();
+
+	if (n<5)
+	{
+		return false;
+	}
+
+	// 20200623，生成好所有的像点坐标和归一化像点坐标
+	vector<Point2d> imgpts0, imgpts1;
+	vector<Point2d> nimgpts0, nimgpts1;
+	for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+	{
+		const Point2f & imgpt0f = feat1_rectified.key_points[iter->queryIdx].pt;
+		const Point2f & imgpt1f = feat2_rectified.key_points[iter->trainIdx].pt;
+
+		Point2d imgpt0d, imgpt1d;
+		Point2d nimgpt0, nimgpt1;
+		Matx31d xy10, xy11;
+		imgpt0d.x = xy10(0) = imgpt0f.x;
+		imgpt0d.y = xy10(1) = imgpt0f.y;
+		imgpt1d.x = xy11(0) = imgpt1f.x;
+		imgpt1d.y = xy11(1) = imgpt1f.y;
+		xy10(2) = xy11(2) = 1;
+
+		Matx31d nxy10 = mK0_1*xy10;
+		Matx31d nxy11 = mK1_1*xy11;
+
+		nimgpt0.x = nxy10(0);
+		nimgpt0.y = nxy10(1);
+		nimgpt1.x = nxy11(0);
+		nimgpt1.y = nxy11(1);
+
+		imgpts0.push_back(imgpt0d);
+		imgpts1.push_back(imgpt1d);
+		nimgpts0.push_back(nimgpt0);
+		nimgpts1.push_back(nimgpt1);		
+	}
+
+	// get the essential matrix E
+	Matx33d mE = mK1.t()*mF*mK0; // E = K'.t * F * K,  'Multiple View Geometry' p. 257 (9.12)
+
+	vector<Point3d> vwrdpts;
+
+	if (RO_method == 0)
+	{
+		double err_tmp = PIRO_GN(nimgpts0, nimgpts1, mR, mt, vwrdpts);
+	}
+	else if (RO_method == 1)
+	{
+		ExtractRTfromE(nimgpts0, nimgpts1, mE, mR, mt, vwrdpts);
+	}
+	else
+	{
+		double err_tmp = PIRO_GN(nimgpts0, nimgpts1, mR, mt, vwrdpts);
+	}
+
+	// record which points' Z coordinates are negative or 0
+	vector<bool> status_neg(n, true);
+
+	// 20200624，考察重投影残差及点位情况
+	double sum2 = 0; // 两图全部像点
+	double sum02 = 0; // 单左图
+	double sum12 = 0; // 单右图
+	int nPos0 = 0;
+	int nPos01 = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		const Point3d & wrdpt = vwrdpts[i];
+		const Point2d & imgpt0 = imgpts0[i];
+		const Point2d & imgpt1 = imgpts1[i];
+
+		Matx31d XYZ0;
+		XYZ0(0) = wrdpt.x;
+		XYZ0(1) = wrdpt.y;
+		XYZ0(2) = wrdpt.z;
+
+		Matx31d XYZ1 = mR*XYZ0 + mt;
+
+		Matx31d xyw0 = mK0*XYZ0;
+		Matx31d xyw1 = mK1*XYZ1;
+
+		double w0_1 = 1.0 / xyw0(2);
+		double w1_1 = 1.0 / xyw1(2);
+
+		double dx0 = xyw0(0)*w0_1 - imgpt0.x;
+		double dy0 = xyw0(1)*w0_1 - imgpt0.y;
+		double d02 = dx0*dx0 + dy0*dy0;
+
+		double dx1 = xyw1(0)*w1_1 - imgpt1.x;
+		double dy1 = xyw1(1)*w1_1 - imgpt1.y;
+		double d12 = dx1*dx1 + dy1*dy1;
+
+		sum2 += (d02 + d12);
+		sum02 += d02;
+		sum12 += d12;
+
+		if (XYZ0(2) > 0)
+		{
+			++nPos0;
+
+			if (XYZ1(2) > 0)
+			{
+				++nPos01;
+
+				status_neg[i] = false;
+			}
+		}
+	}
+
+	double err_rpj_01 = sqrt(0.5*sum2 / n);
+	double err_rpj_0 = sqrt(sum02 / n);
+	double err_rpj_1 = sqrt(sum12 / n);
+	////////////////////////////////////////////////////////
+
+	if (err_rpj_01 >= thresh_reprojErr)
+	{
+		return false;
+	}
+	else
+	{
+		double sum_ang = 0;
+		int n_nonneg = 0;
+		vector<double> angs_all;
+
+		for (int i = 0; i<n; i++)
+		{
+			if (!status_neg[i])
+			{
+				if (feat1_rectified.tracks[matches[i].queryIdx] == -1 || feat2_rectified.tracks[matches[i].trainIdx] == -1 ||
+					feat1_rectified.tracks[matches[i].queryIdx] != feat2_rectified.tracks[matches[i].trainIdx])
+				{
+					// if the matched features do not belong to the same track
+					// the reconstructed object coordinates will not be accepted
+					continue;
+				}
+
+				Point3d pt = vwrdpts[i];
+
+				CloudPoint cldpt;
+				cldpt.m_pt.x = pt.x;
+				cldpt.m_pt.y = pt.y;
+				cldpt.m_pt.z = pt.z;
+
+				cldpt.m_idx = feat1_rectified.tracks[matches[i].queryIdx];
+
+				map_pointcloud.insert(make_pair(cldpt.m_idx, cldpt));
+
+				// 20151219，接下来考察一下当前重建物点的交会角大小
+				Matx31d XYZ;
+				XYZ(0) = pt.x;
+				XYZ(1) = pt.y;
+				XYZ(2) = pt.z;
+
+				Matx31d C_R = -mR.t()*mt;
+
+				double nVec_L = norm(XYZ);
+
+				Matx31d vec_R = XYZ - C_R;
+				double nVec_R = norm(vec_R);
+
+				Matx<double, 1, 1> cosa = XYZ.t() * vec_R;
+				double tmp = cosa(0) / (nVec_L*nVec_R);
+				if (tmp>1)
+				{
+					tmp = 1;
+				}
+				if (tmp<-1)
+				{
+					tmp = -1;
+				}
+				double ang = acos(tmp)*R2D; // 0-180
+
+				sum_ang += ang;
+				++n_nonneg;
+				angs_all.push_back(ang);
+			}
+		}
+
+		// 交会角均值
+		double ang_mean = sum_ang / n_nonneg;
+
+		// 交会角中值
+		int idx_median = n_nonneg / 2;
+		sort(angs_all.begin(), angs_all.end(), [](const double & a, const double & b) {return a>b; });
+		double ang_median = angs_all[idx_median];
+
+		// 20151219，所有有效重建物点的平均交会角或者中值交会角要大于给定阈值才认为此时相对定向以及重建初始稀疏点成功
+		// 否则认为参与初始相对定向的两幅图像间的基线太小
+//		if (ang_mean > thresh_meanAng)
+		if (ang_median > thresh_meanAng)
+		{
+			return true;
+		}
 		else
 		{
 			return false;
@@ -7842,6 +9756,161 @@ void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,	/
 		int nSpt_actual = n_vec < nSpt ? n_vec : nSpt;
 		
 		for (int j=0;j<nSpt_actual/*nSpt*/;++j)
+		{
+			vIdxSpt.push_back(vec_i_a_b[j].first);
+		}
+
+		vIdxSupports.push_back(vIdxSpt);
+	}
+}
+
+// 20200622，换新的数据结构
+void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,							// 输入:	所有物点
+								   const vector<cam_data> & cams,										// 输入:	所有图像
+								   const SfM_ZZK::PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// 输入：	所有图像对的特征匹配
+								   const SfM_ZZK::MultiTracks & map_tracks,								// 输入：	找到的所有特征轨迹
+								   vector<vector<int>> & vIdxSupports,									// 输出：	确定的每个图像的支持图索引
+								   int nSpt /*= 2*/,													// 输入：	期望每幅图像关联的支持图的个数
+								   double ang_desired /*= 45*/											// 输入：	期望的交会角度值
+								   )
+{
+	vIdxSupports.clear();
+
+	int m = cams.size();
+
+	double ang_sigma = ang_desired / 3.0;
+
+	typedef std::pair<int, std::pair<double, double>> pair_i_a_b; // i为图像索引，a为评分，b为平均交会角
+
+	std::map<int, vector<pair_i_a_b>> map_i_j_a_b;
+
+	for (int i = 0; i<m; ++i)
+	{
+		if (cams[i].m_bOriented)
+		{
+			vector<pair_i_a_b> vec_i_a_b;
+			map_i_j_a_b.insert(make_pair(i, vec_i_a_b));
+		}
+	}
+
+	for (auto iter_matches = map_F_matches_pWrdPts.begin(); iter_matches != map_F_matches_pWrdPts.end(); ++iter_matches)
+	{
+		const int & I = iter_matches->first.first;	// 图 I
+		const int & J = iter_matches->first.second;	// 图 J
+		const vector<DMatch> & match = iter_matches->second.first.second; // 图 IJ 间的特征匹配
+
+		const cam_data & cam_I = cams[I];
+		const cam_data & cam_J = cams[J];
+
+		if (!cam_I.m_bOriented || !cam_J.m_bOriented)
+		{
+			// 只有两幅图都完成定向的时候才可以考虑交会角的事情
+			continue;
+		}
+
+		double sum_w = 0;
+		double sum_ang = 0;
+		int n_count = 0;
+
+		// 考察IJ间的每个匹配
+		for (auto iter_match = match.begin(); iter_match != match.end(); ++iter_match)
+		{
+			int idx_i = iter_match->queryIdx;
+			int idx_j = iter_match->trainIdx;
+
+			int trackID_i = cam_I.m_feats.tracks[idx_i];
+			int trackID_j = cam_J.m_feats.tracks[idx_j];
+
+			if (trackID_i != trackID_j || trackID_i<0 || trackID_j<0)
+			{
+				// 匹配的两个特征点必须从属于同一个有效的特征轨迹
+				continue;
+			}
+
+			int trackID = trackID_i;
+
+			// 再考察这两幅图对于当前的空间坐标来说是不是内点
+			auto iter_found_track = map_tracks.find(trackID);
+			auto iter_found_I = iter_found_track->second.find(I);
+			auto iter_found_J = iter_found_track->second.find(J);
+
+			if (!iter_found_I->second.second || !iter_found_J->second.second)
+			{
+				// 两个特征点必须同时是内点，这样才能最终确定两个特征点是匹配的
+				continue;
+			}
+
+			// 最后才把物点坐标取出来
+			auto iter_found_wrdpt = map_pointcloud.find(trackID);
+
+			Matx31d XYZ;
+			XYZ(0) = iter_found_wrdpt->second.m_pt.x;
+			XYZ(1) = iter_found_wrdpt->second.m_pt.y;
+			XYZ(2) = iter_found_wrdpt->second.m_pt.z;
+
+			Matx31d C_I = -cam_I.m_R.t()*cam_I.m_t;
+			Matx31d C_J = -cam_J.m_R.t()*cam_J.m_t;
+
+			Matx31d vec_I = XYZ - C_I;
+			double nVec_I = norm(vec_I);
+
+			Matx31d vec_J = XYZ - C_J;
+			double nVec_J = norm(vec_J);
+
+			Matx<double, 1, 1> cosa = vec_I.t() * vec_J;
+			double tmp = cosa(0) / (nVec_I*nVec_J);
+			if (tmp>1)
+			{
+				tmp = 1;
+			}
+			if (tmp<-1)
+			{
+				tmp = -1;
+			}
+			double ang = acos(tmp)*R2D; // 0-180
+
+			double w = exp_miu_sigma(ang, ang_desired, ang_sigma); // compute the weight
+
+			sum_w += w;
+			sum_ang += ang;
+			++n_count;
+		}
+
+		double ang_avg = sum_ang / n_count;
+
+		auto iter_found_I = map_i_j_a_b.find(I);
+		auto iter_found_J = map_i_j_a_b.find(J);
+
+		pair_i_a_b I_a_b, J_a_b;
+		I_a_b.first = J; J_a_b.first = I;
+		I_a_b.second.first = J_a_b.second.first = sum_w;
+		I_a_b.second.second = J_a_b.second.second = ang_avg;
+
+		iter_found_I->second.push_back(I_a_b);
+		iter_found_J->second.push_back(J_a_b);
+	}
+
+	for (int i = 0; i<m; ++i)
+	{
+		auto iter_found_img = map_i_j_a_b.find(i);
+		vector<int> vIdxSpt;
+		if (iter_found_img == map_i_j_a_b.end())
+		{
+			// 说明第 i 幅图还没有完成定向，此时直接推入空的
+			vIdxSupports.push_back(vIdxSpt);
+			continue;
+		}
+
+		vector<pair_i_a_b> & vec_i_a_b = iter_found_img->second;
+
+		// 按权重值降序排列
+		sort(vec_i_a_b.begin(), vec_i_a_b.end(), [](const pair_i_a_b & a, const pair_i_a_b & b) {return a.second.first>b.second.first; });
+
+		// 20161029, 如果实际能和一个图配上的图像只有1个，那么如果强行要为该图找到2个或者更多的支持图显然是不太合理的
+		int n_vec = vec_i_a_b.size();
+		int nSpt_actual = n_vec < nSpt ? n_vec : nSpt;
+
+		for (int j = 0; j<nSpt_actual/*nSpt*/; ++j)
 		{
 			vIdxSpt.push_back(vec_i_a_b[j].first);
 		}
@@ -23850,7 +25919,7 @@ void DeepVoid::optim_lm_P_XYZ(const vector<Point2d> & vImgPts0,		// input:	the m
 	info.push_back(code);
 }
 
-// 20150110, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20150110, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 bool DeepVoid::optim_gn_F(const vector<Point2d> & vImgPts0,		// input:	the measured image points in the left image
 					      const vector<Point2d> & vImgPts1,		// input:	the measured image points in the right image
 					      const Matx33d & mF_init,				// input:	the initial fundamental matrix
@@ -23919,7 +25988,7 @@ bool DeepVoid::optim_gn_F(const vector<Point2d> & vImgPts0,		// input:	the measu
 	return true;
 }
 
-// 20150401, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20150401, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 // Levenberg-Marquardt
 void DeepVoid::optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measured image points in the left image
 						  const vector<Point2d> & vImgPts1,	// input:	the measured image points in the right image
@@ -23985,7 +26054,7 @@ void DeepVoid::optim_lm_F(const vector<Point2d> & vImgPts0,	// input:	the measur
 	mF_optim = CrossMat(t)*M;
 }
 
-// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm
+// 20170821, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
 // sparse Levenberg-Marquardt
 void DeepVoid::optim_slm_F(const vector<Point2d> & vImgPts0,// input:	the measured image points in the left image
 						   const vector<Point2d> & vImgPts1,// input:	the measured image points in the right image
@@ -24056,6 +26125,115 @@ void DeepVoid::optim_slm_F(const vector<Point2d> & vImgPts0,// input:	the measur
 	}
 
 	mF = CrossMat(t)*M;
+}
+
+// 20200615, zhaokunz, optimize the given fundamental matrix according to the golden standard algorithm "p. 285 Algorithm 11.3"
+// sparse Levenberg-Marquardt
+// output the world points' projective reconstruction results
+void DeepVoid::optim_slm_F(const vector<Point2d> & vImgPts0,// input:	the measured image points in the left image
+						   const vector<Point2d> & vImgPts1,// input:	the measured image points in the right image
+						   Matx33d & mF,					// input&output:	the initial and optimized fundamental matrix
+						   vector<Point3d> & vWrdPts_init,	// output:	the triangulated world points using initial fundamental matrix
+						   vector<Point3d> & vWrdPts_final,	// output:	the triangulated world points using optimized fundamental matrix
+						   double tau /*= 1.0E-3*/,			// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+						   int maxIter /*= 15*/,			// input:	the maximum number of iterations
+						   double eps1 /*= 1.0E-8*/,		// input:	threshold
+						   double eps2 /*= 1.0E-12*/		// input:	threshold
+						   )
+{
+	int n = vImgPts0.size();
+
+	vWrdPts_init.clear();
+	vWrdPts_final.clear();
+
+	vector<Matx22d> covInvs0(n), covInvs1(n);
+	
+	Matx22d eye22;
+	eye22(0, 0) = eye22(1, 1) = 1;
+
+	// set the inverse covariance matrices of all the measured image points to identities by default
+	for (int i = 0; i < n; ++i)
+	{
+		covInvs0[i] = eye22;
+		covInvs1[i] = eye22;
+	}
+
+	Matx34d mP0, mP1;
+	GetCameraMatfromF(mF, mP0, mP1);
+
+	// 20150113, zhaokunz, correctMatches based on the Optimal Triangulation Method in Multiple View Geometry
+	vector<Point2d> vImgPts0_crct, vImgPts1_crct;
+	correctMatches(mF, vImgPts0, vImgPts1, vImgPts0_crct, vImgPts1_crct);
+
+	Mat mWrdPts;
+	//	triangulatePoints(mP0, mP1, vImgPts0, vImgPts1, mWrdPts);
+	// 20150113, zhaokunz, use corrected image points to triangulate 3D points
+	triangulatePoints(mP0, mP1, vImgPts0_crct, vImgPts1_crct, mWrdPts);
+
+	vector<Point3d> XYWs;
+
+	for (int i = 0; i < n; ++i)
+	{
+		double x = mWrdPts.at<double>(0, i);
+		double y = mWrdPts.at<double>(1, i);
+		double z = mWrdPts.at<double>(2, i);
+		double w = mWrdPts.at<double>(3, i);
+
+		double z_1 = 1.0 / z;
+		double w_1 = 1.0 / w;
+
+		Point3d XYZ, XYW;
+
+		XYZ.x = x*w_1;
+		XYZ.y = y*w_1;
+		XYZ.z = z*w_1;
+		vWrdPts_init.push_back(XYZ);
+
+		XYW.x = x*z_1;
+		XYW.y = y*z_1;
+		XYW.z = w*z_1;
+		XYWs.push_back(XYW);
+	}
+
+	double info[5];
+	vector<Point2d> vds(n);
+
+	// start optimization
+	SBA_ZZK::optim_sparse_lm_P_XiYiWi(mP1, XYWs, vImgPts0, vImgPts1, covInvs0, covInvs1, vds, info, tau, maxIter, eps1, eps2);
+
+	// extract the optimized F matrix
+	// P = [M|t], F = [t]xM
+	Matx33d M;
+	Matx31d t;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int j = 0; j < 3; ++j)
+		{
+			M(i, j) = mP1(i, j);
+		}
+
+		t(i) = mP1(i, 3);
+	}
+
+	mF = CrossMat(t)*M;
+
+	// extract the optimized world points
+	for (auto iter = XYWs.begin(); iter != XYWs.end(); ++iter)
+	{
+		Point3d XYZ;
+
+		double x = iter->x;
+		double y = iter->y;
+		double w = iter->z;
+		double w_1 = 1.0 / w;
+
+		XYZ.x = x*w_1;
+		XYZ.y = y*w_1;
+		XYZ.z = w_1;
+
+		vWrdPts_final.push_back(XYZ);
+	}
 }
 
 void DeepVoid::PropagateDepth2OtherImage(const cam_data & cam0, const cam_data & cam,

@@ -64,6 +64,7 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_3DRECONSTRUCTION_PARAMETERSETTINGS, &CDeepVoidApp::On3dreconstructionParametersettings)
 	ON_COMMAND(ID_3DRECONSTRUCTION_NETWORKORIENTATIONANDSPARSERECONSTRUCTION, &CDeepVoidApp::On3dreconstructionNetworkorientationandsparsereconstruction)
 	ON_COMMAND(ID_3DRECONSTRUCTION_DENSERECONSTRUCTION, &CDeepVoidApp::On3dreconstructionDensereconstruction)
+	ON_COMMAND(ID_3DVIEW, &CDeepVoidApp::On3dview)
 END_MESSAGE_MAP()
 
 
@@ -434,6 +435,9 @@ UINT SfM(LPVOID param)
 
 	int i,j,k,ii,jj;
 
+	int nSubFeats = 150; // Changchang Wu 文章中该值是 100，考虑到 sift 特征点有不少是重的（存在不同的特征主方向），因此这里放宽到 150
+	int nMaxFeats = 8192; // 参考 Changchang Wu 的文章
+
 	CString strInfo;
 
 	int nCam = pApp->m_vCams.size();
@@ -443,7 +447,11 @@ UINT SfM(LPVOID param)
 
 	vector<CString> vImgPaths;
 
+	pApp->m_vImgPaths.clear(); // 20200630
+
 	int imgWidth, imgHeight;
+
+//	typedef std::pair<int, cv::KeyPoint> pair_idx_keypt;
 
 	// first, extract all the features in each image
 	for (i=0;i<nCam;i++)
@@ -459,11 +467,15 @@ UINT SfM(LPVOID param)
 
 		vImgPaths.push_back(strDir);
 
+		pApp->m_vImgPaths.push_back(strDir);
+
 		vImages.push_back(img); // store every image
 
 		imgWidth = img.cols;
 		imgHeight = img.rows;
-				
+			
+		cam_data & cam = pApp->m_vCams[i];
+
 		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
 		// create a feature class
 		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
@@ -471,38 +483,74 @@ UINT SfM(LPVOID param)
 //		cv::Ptr<Feature2D> f2d = cv::ORB::create();
 
 		// detect features and compute descriptors
-		Mat mask;
-		f2d->detectAndCompute(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
+//		Mat mask;
+//		f2d->detectAndCompute(img, mask, cam.m_feats.key_points, cam.m_feats.descriptors);
 
-//		SIFT sift;
-//		SURF sift;
-//
-//		/*const double contrast = sift.get("contrastThreshold");*/
-//		/*std::string str_contrastThreshold = sift.paramHelp("contrastThreshold");*/
-//		sift.set("contrastThreshold",0.01);
-//
-//		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
+		vector<KeyPoint> keypts_sift, keypts_fast;
 
-		pApp->m_vCams[i].m_feats.type = Feature_SIFT;
+		// 先提取 sift 特征点
+		f2d->detect(img, keypts_sift);
 
+		// 按特征 size 从大到小对 sift 特征点进行排序
+		sort(keypts_sift.begin(), keypts_sift.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+
+		// 再提取 fast 角点特征
+		cv::FAST(img, keypts_fast, 10, true, cv::FastFeatureDetector::TYPE_9_16);
+
+		// 按照 response 从大到小对 fast 特征点进行排序
+		sort(keypts_fast.begin(), keypts_fast.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+
+		// 把与已有 sift 特征点重叠的 fast 特征点给删除掉
+		//for (auto iter = keypts_sift.begin(); iter != keypts_sift.end(); ++iter)
+		//{
+		//	auto iter_found = find_if(keypts_fast.begin(), keypts_fast.end(),
+		//		[iter](const KeyPoint & a) {return sqrt((a.pt.x - iter->pt.x)*(a.pt.x - iter->pt.x) + (a.pt.y - iter->pt.y)*(a.pt.y - iter->pt.y)) < 1.0; });
+
+		//	if (iter_found != keypts_fast.end())
+		//	{
+		//		keypts_fast.erase(iter_found);
+		//	}
+		//}
+
+		// 生成特征描述向量
+		cv::Mat descrps_sift, descrps_fast;
+		f2d->compute(img, keypts_sift, descrps_sift);
+		f2d->compute(img, keypts_fast, descrps_fast);
+
+		// 暂时先合成个大的
+		vector<KeyPoint> keypts_all = keypts_sift;
+		keypts_all.insert(keypts_all.end(), keypts_fast.begin(), keypts_fast.end());
+
+		cv::Mat descrps_all = descrps_sift.clone();
+		descrps_all.push_back(descrps_fast);
+
+		// 然后截取为最终的，并录入
+		int nSize = keypts_all.size();
+		int nSmaller = nSize < nMaxFeats ? nSize : nMaxFeats;
+		cam.m_feats.key_points.insert(cam.m_feats.key_points.end(), keypts_all.begin(), keypts_all.begin() + nSmaller);
+		cam.m_feats.descriptors = descrps_all.rowRange(cv::Range(0, nSmaller));
+
+		cam.m_feats.type = Feature_SIFT_FAST;
+
+		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 		KeyPoint kpt_pre;
 		kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
 		kpt_pre.size = -1000;
 		int idx_imgPt;
-		for (j=0;j<pApp->m_vCams[i].m_feats.key_points.size();j++)
+		for (j = 0; j < cam.m_feats.key_points.size(); j++)
 		{
-			pApp->m_vCams[i].m_feats.tracks.push_back(-1);
+			cam.m_feats.tracks.push_back(-1);
 
-			KeyPoint kpt_cur = pApp->m_vCams[i].m_feats.key_points[j];
-			if (fabs(kpt_cur.pt.x-kpt_pre.pt.x)<1.0E-12 && fabs(kpt_cur.pt.y-kpt_pre.pt.y)<1.0E-12
-				&& fabs(kpt_cur.size - kpt_pre.size)<1.0E-12)
+			KeyPoint kpt_cur = cam.m_feats.key_points[j];
+			if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
+				&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
 			{
 				// indicating that current keypoint is identical to the previous keypoint
-				pApp->m_vCams[i].m_feats.idx_pt.push_back(idx_imgPt);
+				cam.m_feats.idx_pt.push_back(idx_imgPt);
 			} 
 			else
 			{
-				pApp->m_vCams[i].m_feats.idx_pt.push_back(j);
+				cam.m_feats.idx_pt.push_back(j);
 				idx_imgPt = j;
 			}
 
@@ -513,14 +561,30 @@ UINT SfM(LPVOID param)
 			// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
 			uchar r,g,b;
 			Vec3b rgb;
-			if (BilinearInterp(img,kpt_cur.pt.x,kpt_cur.pt.y,r,g,b))
+			if (BilinearInterp(img, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
 			{
 				rgb[0]=b;
 				rgb[1]=g;
 				rgb[2]=r;	
 			}
-			pApp->m_vCams[i].m_feats.rgbs.push_back(rgb);
+			cam.m_feats.rgbs.push_back(rgb);
 		}
+
+		// 20200703 ///////////////////////////////////////////////////////////////////
+		// 生成子特征集，用于快速筛查匹配
+		const Features & feats = cam.m_feats;
+		Features & subFeats = cam.m_subFeats;
+
+		if (nSubFeats < nSize)
+		{
+			subFeats.key_points.insert(subFeats.key_points.end(), keypts_all.begin(), keypts_all.begin() + nSubFeats);
+			subFeats.descriptors = descrps_all.rowRange(cv::Range(0, nSubFeats));
+			subFeats.idx_pt.insert(subFeats.idx_pt.end(), feats.idx_pt.begin(), feats.idx_pt.begin() + nSubFeats);
+			subFeats.tracks.insert(subFeats.tracks.end(), feats.tracks.begin(), feats.tracks.begin() + nSubFeats);
+			subFeats.rgbs.insert(subFeats.rgbs.end(), feats.rgbs.begin(), feats.rgbs.begin() + nSubFeats);
+			subFeats.type = Feature_SIFT_FAST;
+		}
+		///////////////////////////////////////////////////////////////////////////////
 
 		strInfo.Format("Image %03d extracted %07d features", i, pApp->m_vCams[i].m_feats.key_points.size());
 		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
@@ -587,19 +651,53 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20151206 橘子洲毛泽东像
-		pApp->m_vCams[i].fx = 849.812399662762910;
-		pApp->m_vCams[i].fy = 849.028798494762330;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 401.558250358447480;
-		pApp->m_vCams[i].cy = 273.689303692577480;
+		//double fx = /*1100*/849.812399662762910;
+		//double fy = /*1100*/849.028798494762330;
+		//pApp->m_vCams[i].fx = fx;
+		//pApp->m_vCams[i].fy = fy;
+		//pApp->m_vCams[i].s  = 0;
+		//pApp->m_vCams[i].cx = 401.558250358447480;
+		//pApp->m_vCams[i].cy = 273.689303692577480;
 
-		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
-		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
-		pApp->m_vCams[i].m_K(0,1) = 0;
-		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
-		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
-		pApp->m_vCams[i].m_K(2,2) = 1;
+		//pApp->m_vCams[i].m_K(0,0) = fx;
+		//pApp->m_vCams[i].m_K(1,1) = fy;
+		//pApp->m_vCams[i].m_K(0,1) = 0;
+		//pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
+		//pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
+		//pApp->m_vCams[i].m_K(2,2) = 1;
+		//pApp->m_vCams[i].m_bCalibed = true;
+
+		// 20200519 涿州测量
+		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+		pApp->m_vCams[i].fx = f;
+		pApp->m_vCams[i].fy = f;
+		pApp->m_vCams[i].s  = 0;
+		pApp->m_vCams[i].cx = 501.5;
+		pApp->m_vCams[i].cy = 500.5;
+
+		pApp->m_vCams[i].m_K(0, 0) = f;
+		pApp->m_vCams[i].m_K(1, 1) = f;
+		pApp->m_vCams[i].m_K(0, 1) = 0;
+		pApp->m_vCams[i].m_K(0, 2) = 501.5;
+		pApp->m_vCams[i].m_K(1, 2) = 500.5;
+		pApp->m_vCams[i].m_K(2, 2) = 1;
 		pApp->m_vCams[i].m_bCalibed = true;
+
+		// 20200626 四时田园“马雕塑”
+		//double f = /*521.2902*/657.1836;
+		//pApp->m_vCams[i].fx = f;
+		//pApp->m_vCams[i].fy = f;
+		//pApp->m_vCams[i].s = 0;
+		//pApp->m_vCams[i].cx = 399.5;
+		//pApp->m_vCams[i].cy = 299.5;
+
+		//pApp->m_vCams[i].m_K(0, 0) = f;
+		//pApp->m_vCams[i].m_K(1, 1) = f;
+		//pApp->m_vCams[i].m_K(0, 1) = 0;
+		//pApp->m_vCams[i].m_K(0, 2) = 399.5;
+		//pApp->m_vCams[i].m_K(1, 2) = 299.5;
+		//pApp->m_vCams[i].m_K(2, 2) = 1;
+		//pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -703,9 +801,10 @@ UINT SfM(LPVOID param)
 	vector<vector<DMatch>> allMatches;
 	vector<DMatch> matches;
 
-	SfM_ZZK::PairWiseMatches map_pairwise_matches; // 20150920, <(i,j), <DMatch>>
+//	SfM_ZZK::PairWiseMatches map_pairwise_matches; // 20150920, <(i,j), <DMatch>>
+	SfM_ZZK::PairWise_F_matches_pWrdPts map_pairwise_F_matches_pWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
 
-	FILE * fileMatches = fopen("D:\\matches number.txt", "w");
+	FILE * fileMatches = fopen("E:\\all\\matches number.txt", "w");
 
 	for (i=0;i<nCam;i++)
 	{
@@ -743,36 +842,60 @@ UINT SfM(LPVOID param)
 // 				thresh_match, thresh_d2epiline, thresh_matchConf);
 
 			// 20150113, zhaokunz, new matching function
-			Matx33d mF;
+			Matx33d mF; 
+			vector<Point3d> pWrdPts;
 //			Get_F_Matches(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,thresh_d2epiline,thresh_matchConf); bool bSuc = true;
 //			Get_F_Matches(vImages[i],vImages[j],pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,thresh_d2epiline,thresh_matchConf); bool bSuc = true;
-			bool bSuc = Get_F_Matches_knn(pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,false,0.65,0.5,thresh_d2epiline,thresh_matchConf,64);
+//			bool bSuc = Get_F_Matches_knn(pApp->m_vCams[i].m_feats, pApp->m_vCams[j].m_feats, mF, matches, true, 0.65, 0.5, thresh_d2epiline, thresh_matchConf, 64);
+
+			bool bSuc = false;
+//			bool bPreempSuc = false;
+
+			// 20200629, “先发制人”特征匹配
+			if (nSubFeats < pApp->m_vCams[i].m_feats.key_points.size())
+			{
+				if (PreemptiveFeatureMatching(pApp->m_vCams[i].m_subFeats, pApp->m_vCams[j].m_subFeats, 0.65, 1))
+				{
+					// 20200621, 同步输出射影重建物点坐标
+					bSuc = Get_F_Matches_pWrdPts_knn(pApp->m_vCams[i].m_feats, pApp->m_vCams[j].m_feats, mF, matches, pWrdPts, true, 0.65, 0.5, thresh_d2epiline, thresh_matchConf, 64);
+				}
+			}
+			else
+			{
+				bSuc = Get_F_Matches_pWrdPts_knn(pApp->m_vCams[i].m_feats, pApp->m_vCams[j].m_feats, mF, matches, pWrdPts, true, 0.65, 0.5, thresh_d2epiline, thresh_matchConf, 64);
+			}			
+			
 			// 20151017，draw matches from each stage from inside the function
 // 			bool bSuc = Get_F_Matches_knn(vImages[i],vImages[j],pApp->m_vCams[i].m_feats,pApp->m_vCams[j].m_feats,mF,matches,
 // 				true,0.65,0.5,thresh_d2epiline,thresh_matchConf,64);
 
-			Mat disp_matches;
-			drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches,
-				disp_matches, Scalar(0,255,0), Scalar(0,0,255));
-			strInfo.Format("E:\\matches\\matches between image %03d and %03d.bmp", i, j);
-//			imwrite(strInfo.GetBuffer(), disp_matches);
-
-			strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, matches.size());
-			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-
-//			if (matches.size() < thresh_n_matches)
 			if (!bSuc)		
 			{
 				vector<DMatch> nullMatch;
 				allMatches.push_back(nullMatch);
 				fprintf(fileMatches, "%d	", nullMatch.size());
+
+//				strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, nullMatch.size());
+//				pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 			} 
 			else
 			{
 				allMatches.push_back(matches);
 				fprintf(fileMatches, "%d	", matches.size());
 
-				map_pairwise_matches.insert(make_pair(make_pair(i,j), matches));
+				strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, matches.size());
+				pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+//				map_pairwise_matches.insert(make_pair(make_pair(i,j), matches));
+				map_pairwise_F_matches_pWrdPts.insert(make_pair(make_pair(i, j), make_pair(make_pair(mF, matches), pWrdPts)));
+
+				Mat disp_matches;
+//				drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches,
+//					disp_matches, Scalar(0,255,0), Scalar(0,0,255)/*,std::vector<char>(), 1*/);
+				drawMatchesRefImg(vImages[i], pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[j].m_feats.key_points, matches,
+					disp_matches);
+				strInfo.Format("E:\\all\\matches between image %03d and %03d.bmp", i, j);
+				imwrite(strInfo.GetBuffer(), disp_matches);
 			}
 		}
 		fprintf(fileMatches, "\n");
@@ -782,8 +905,8 @@ UINT SfM(LPVOID param)
 
 	// feature tracking
 	SfM_ZZK::MultiTracks map_tracks_init;
-	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks_init);
-//	SfM_ZZK::FindAllTracks_Least(map_pairwise_matches, map_tracks);
+//	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks_init);
+	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_F_matches_pWrdPts, map_tracks_init); // 20200622
 
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
@@ -853,13 +976,15 @@ UINT SfM(LPVOID param)
 
 	//////////////////////////////////////////////////////////////////////////
 	vector<SfM_ZZK::pair_ij_k> pairs;
-	SfM_ZZK::RankImagePairs_TrackLengthSum(map_pairwise_matches, map_tracks, pairs);
+//	SfM_ZZK::RankImagePairs_TrackLengthSum(map_pairwise_matches, map_tracks, pairs);
+	SfM_ZZK::RankImagePairs_TrackLengthSum(map_pairwise_F_matches_pWrdPts, map_tracks, pairs);
 
 // 	vector<Point2i> pairs;
 // 	FindPairObservingMostCommonTracks(pApp->m_vCams,allTracks,pairs);
 
 	CString strFile;
 	int idx_refimg;
+	bool bSuc_RO = false;
 
 //	for (k=0;k<pairs.size();k++)
 	for (auto iter_pair=pairs.begin();iter_pair!=pairs.end();++iter_pair)
@@ -874,7 +999,8 @@ UINT SfM(LPVOID param)
 		cam_data & cam_j = pApp->m_vCams[j];
 
 		// 找到两者之间的特征匹配
-		auto iter_found = map_pairwise_matches.find(iter_pair->first);
+//		auto iter_found = map_pairwise_matches.find(iter_pair->first);
+		auto iter_found = map_pairwise_F_matches_pWrdPts.find(iter_pair->first);
 
 		// 尝试做相对定向
 // 		bool bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(cam_i, cam_j, i, j, iter_found->second,
@@ -884,8 +1010,10 @@ UINT SfM(LPVOID param)
 		Matx31d mt;
 		SfM_ZZK::PointCloud map_pointcloud_tmp;
 
-		bool bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(cam_i, cam_j, i, j, iter_found->second,
-			mR, mt, map_pointcloud_tmp, thresh_reproj_ro);
+//		bSuc_RO = RelativeOrientation_Features_PIRO_givenMatches(cam_i, cam_j, i, j, /*iter_found->second*/iter_found->second.first.second,
+//			mR, mt, map_pointcloud_tmp, thresh_reproj_ro/*, 0.1*/); // 20200519 交会角阈值放宽
+		bSuc_RO = RelativeOrientation(cam_i, cam_j, iter_found->second.first.first, iter_found->second.first.second,
+			mR, mt, map_pointcloud_tmp, 0, thresh_reproj_ro/*, 0.5*/); // 20200623 inspect
 
 		if (bSuc_RO)
 		{
@@ -929,6 +1057,14 @@ UINT SfM(LPVOID param)
 			break;
 		}
 	}
+
+	// 20200607，如果没有任何像对相对定向成功那就直接退出
+	if (!bSuc_RO)
+	{
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Relative Orientation failed for all image pair candidates!"));
+		return TRUE;
+	}
+
 	//////////////////////////////////////////////////////////////////////////
 
 	CString strOut;
@@ -940,7 +1076,7 @@ UINT SfM(LPVOID param)
 
 	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2);
 
-	double d_mean = MeanMinDistance_3D(clouds);
+	double d_mean = MeanMinDistance_3D(cloud_old);
 	strInfo.Format("average distance between cloud points is: %lf", d_mean);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
@@ -1002,7 +1138,9 @@ UINT SfM(LPVOID param)
 			double info[10];
 			try
 			{
-				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+//				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+				// 20200607 同时优化所有图像共有的等效焦距 f
+				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 			}
 			catch (cv::Exception & e)
 			{
@@ -1018,7 +1156,7 @@ UINT SfM(LPVOID param)
 			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
 			try
 			{
-				SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);	
+				SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2/*3*//*1*/);	
 			}
 			catch (cv::Exception & e)
 			{
@@ -1072,7 +1210,9 @@ UINT SfM(LPVOID param)
 	// 最后总的来一次稀疏光束法平差
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
 	double info[10];
-	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
+//	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
+	// 20200607 同时优化所有图像共有的等效焦距 f
+	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
 		map_pointcloud.size(), info[0], info[1], info[3], info[4]);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
@@ -1090,7 +1230,7 @@ UINT SfM(LPVOID param)
 
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
-	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,3);
+	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2/*3*//*1*/);
 
 	// 输出像机定向
 	// save all cameras' parameters
@@ -1098,13 +1238,18 @@ UINT SfM(LPVOID param)
 	{
 		CString strtmp;
 		strFile.Format("cam%02d.txt", i);
-//		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
+		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
 	}
+
+	// 20200630
+	pApp->m_map_pointcloud = map_pointcloud;
+	pApp->m_map_tracks = map_tracks;
 
 	return TRUE;
 
 	vector<vector<int>> vIdxSupports;
-	ScoreMatchingImages(map_pointcloud, pApp->m_vCams, map_pairwise_matches, map_tracks, vIdxSupports, nSptImgs_desired, 10);
+//	ScoreMatchingImages(map_pointcloud, pApp->m_vCams, map_pairwise_matches, map_tracks, vIdxSupports, nSptImgs_desired, 10);
+	ScoreMatchingImages(map_pointcloud, pApp->m_vCams, map_pairwise_F_matches_pWrdPts, map_tracks, vIdxSupports, nSptImgs_desired, 10);
 
 	// 20150206, zhaokunz, try dense reconstruction //////////////////////////
 	vector<Mat> vDepths, vHxs, vHys, vScores, vVisis;
@@ -10838,80 +10983,6 @@ UINT NetworkOrientation(LPVOID param)
 
 	for (int i=0;i<pApp->m_vCams.size();i++)
 	{
-/* 		pApp->m_vCams[i].fx = 707.244864;
- 		pApp->m_vCams[i].fy = 707.135373;
- 		pApp->m_vCams[i].s  = 0;
- 		pApp->m_vCams[i].cx = 200.696825;
- 		pApp->m_vCams[i].cy = 154.045817;
- 
- 		pApp->m_vCams[i].m_K(0,0) = 707.244864;
- 		pApp->m_vCams[i].m_K(1,1) = 707.135373;
- 		pApp->m_vCams[i].m_K(0,1) = 0;
- 		pApp->m_vCams[i].m_K(0,2) = 200.696825;
- 		pApp->m_vCams[i].m_K(1,2) = 154.045817;
- 		pApp->m_vCams[i].m_K(2,2) = 1;
- 		pApp->m_vCams[i].m_bCalibed = true; */
-
-/*		pApp->m_vCams[i].fx = 1414.489728;
-		pApp->m_vCams[i].fy = 1414.270745;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 401.3936505;
-		pApp->m_vCams[i].cy = 308.091633;
-
-		pApp->m_vCams[i].m_K(0,0) = 1414.489728;
-		pApp->m_vCams[i].m_K(1,1) = 1414.270745;
-		pApp->m_vCams[i].m_K(0,1) = 0;
-		pApp->m_vCams[i].m_K(0,2) = 401.3936505;
-		pApp->m_vCams[i].m_K(1,2) = 308.091633;
-		pApp->m_vCams[i].m_K(2,2) = 1;
-		pApp->m_vCams[i].m_bCalibed = true;*/
-
-
-		// 20151125 沙盘重建
-// 		pApp->m_vCams[i].fx = 557.072909185350450;
-// 		pApp->m_vCams[i].fy = 557.404946420734060;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 397.172326465639740;
-// 		pApp->m_vCams[i].cy = 272.495109535585640;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 557.072909185350450;
-// 		pApp->m_vCams[i].m_K(1,1) = 557.404946420734060;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 397.172326465639740;
-// 		pApp->m_vCams[i].m_K(1,2) = 272.495109535585640;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
-
-		// 20151126 周博 UAV 数据 cx 2000.000000, cy 1335.000000, f 4091.504
-// 		pApp->m_vCams[i].fx = 4091.504*0.2;
-// 		pApp->m_vCams[i].fy = 4091.504*0.2;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 2000.000000*0.2;
-// 		pApp->m_vCams[i].cy = 1335.000000*0.2;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 4091.504*0.2;
-// 		pApp->m_vCams[i].m_K(1,1) = 4091.504*0.2;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 2000.000000*0.2;
-// 		pApp->m_vCams[i].m_K(1,2) = 1335.000000*0.2;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
-
-		// 20151206 橘子洲毛泽东像
-// 		pApp->m_vCams[i].fx = 849.812399662762910;
-//		pApp->m_vCams[i].fy = 849.028798494762330;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 401.558250358447480;
-// 		pApp->m_vCams[i].cy = 273.689303692577480;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 849.812399662762910;
-// 		pApp->m_vCams[i].m_K(1,1) = 849.028798494762330;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
-//		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
-
 		// 20161029
 		pApp->m_vCams[i].fx = pApp->m_vCams[i].m_K(0, 0) = pApp->m_fx;
 		pApp->m_vCams[i].fy = pApp->m_vCams[i].m_K(1, 1) = pApp->m_fy;
@@ -10919,73 +10990,7 @@ UINT NetworkOrientation(LPVOID param)
 		pApp->m_vCams[i].cx = pApp->m_vCams[i].m_K(0, 2) = pApp->m_cx;
 		pApp->m_vCams[i].cy = pApp->m_vCams[i].m_K(1, 2) = pApp->m_cy;
 		pApp->m_vCams[i].m_K(2, 2) = 1;
-		pApp->m_vCams[i].m_bCalibed = true;
-
-		// 20150212
-// 		pApp->m_vCams[i].fx = 1816.431947;
-// 		pApp->m_vCams[i].fy = 1816.448252;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 959.502819;
-// 		pApp->m_vCams[i].cy = 539.500942;
-
-		// temple sparse paras 1520.400000 0.000000 302.320000 0.000000 1525.900000 246.870000
-// 		pApp->m_vCams[i].fx = 1520.400000;
-// 		pApp->m_vCams[i].fy = 1525.900000;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 302.320000;
-// 		pApp->m_vCams[i].cy = 246.870000;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 1520.400000;
-// 		pApp->m_vCams[i].m_K(1,1) = 1525.900000;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 302.320000;
-// 		pApp->m_vCams[i].m_K(1,2) = 246.870000;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
-
-		// with sock on
-// 		pApp->m_vCams[i].fx = 1271.94;
-// 		pApp->m_vCams[i].fy = 1271.07;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 636.91;
-// 		pApp->m_vCams[i].cy = 365.85;
-
-		// without sock on
-// 		pApp->m_vCams[i].fx = 1287.83;
-// 		pApp->m_vCams[i].fy = 1292.60;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 628.30;
-// 		pApp->m_vCams[i].cy = 369.45;
-// 
-// 		pApp->m_vCams[i].m_K(0,0) = 1287.83;
-// 		pApp->m_vCams[i].m_K(1,1) = 1292.60;
-// 		pApp->m_vCams[i].m_K(0,1) = 0;
-// 		pApp->m_vCams[i].m_K(0,2) = 628.30;
-// 		pApp->m_vCams[i].m_K(1,2) = 369.45;
-// 		pApp->m_vCams[i].m_K(2,2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
-
-		// liu's data, pony
-// 		pApp->m_vCams[i].fx = 2126.9165;
-// 		pApp->m_vCams[i].fy = 2126.9079;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 1295.4475;
-// 		pApp->m_vCams[i].cy = 727.5050;
-
-// 		pApp->m_vCams[i].fx = 1414.489728;
-// 		pApp->m_vCams[i].fy = 1414.270745;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 401.3936505;
-// 		pApp->m_vCams[i].cy = 308.091633;
-
-// 		pApp->m_vCams[i].fx = 3954.7557192818421754;
-// 		pApp->m_vCams[i].fy = 3948.0083629740670403;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 1619.9232700857789951;
-// 		pApp->m_vCams[i].cy = 1151.4558912976590364;
-
-//		memset(pApp->m_vCams[i].k, 0, 5*sizeof(double));
-//		pApp->m_vCams[i].dist_type = 1;
+		pApp->m_vCams[i].m_bCalibed = true;		
 
 		// 20161029
 		pApp->m_vCams[i].k[0] = pApp->m_k1;
@@ -11490,4 +11495,148 @@ void CDeepVoidApp::On3dreconstructionDensereconstruction()
 // 	wrd3d.spinOnce();
 // 
 // //	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
+}
+
+void CDeepVoidApp::On3dview()
+{
+	// TODO: Add your command handler code here
+//	SfM_ZZK::Draw3DScene(m_wnd3d, m_ptcloud, m_map_pointcloud, m_vCams, m_map_tracks, 2);
+
+	// 初始化三维显示窗口
+	viz::Viz3d wnd3d("3D View");
+	wnd3d.setWindowSize(cv::Size(800, 600));
+	wnd3d.setWindowPosition(cv::Point(150, 150));
+	wnd3d.setBackgroundColor(); // black by default
+//	wnd3d.setBackgroundMeshLab(); // MeshLab style background
+
+	// 先显示三维点云
+	// 要显示出来的点云点及其颜色
+	int n_minInilier = 3;
+
+	vector<Point3d> pts_output;
+	vector<Point3i> colors_output;
+
+	// 统计看哪些点满足要求可以显示
+	for (auto iter_wrdpt = m_map_pointcloud.begin(); iter_wrdpt != m_map_pointcloud.end(); ++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = m_map_tracks.find(trackID);
+
+		double sumR = 0;
+		double sumG = 0;
+		double sumB = 0;
+
+		int count = 0;
+
+		for (auto iter_imgpt = iter_found_track->second.begin(); iter_imgpt != iter_found_track->second.end(); ++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second;
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			const cam_data & cam = m_vCams[I];
+
+			sumR += cam.m_feats.rgbs[i][2];
+			sumG += cam.m_feats.rgbs[i][1];
+			sumB += cam.m_feats.rgbs[i][0];
+
+			++count;
+		}
+
+		if (count < n_minInilier)
+		{
+			continue;
+		}
+
+		int R = (int)sumR / count;
+		int G = (int)sumG / count;
+		int B = (int)sumB / count;
+
+		Point3i color;
+		color.x = R;
+		color.y = G;
+		color.z = B;
+
+		pts_output.push_back(iter_wrdpt->second.m_pt);
+		colors_output.push_back(color);
+	}
+
+	int n_pts_output = pts_output.size();
+
+	Mat XYZs(1, n_pts_output, CV_64FC3), RGBs(1, n_pts_output, CV_8UC3);
+
+	for (int i = 0; i < n_pts_output; ++i)
+	{
+		Point3d XYZ = pts_output[i];
+		Point3i RGB = colors_output[i];
+
+		XYZs.at<Vec3d>(i).val[0] = XYZ.x;
+		XYZs.at<Vec3d>(i).val[1] = XYZ.y;
+		XYZs.at<Vec3d>(i).val[2] = XYZ.z;
+
+		RGBs.at<Vec3b>(i).val[0] = RGB.z;
+		RGBs.at<Vec3b>(i).val[1] = RGB.y;
+		RGBs.at<Vec3b>(i).val[2] = RGB.x;
+	}
+
+	viz::WCloud cld(XYZs, RGBs);
+//	viz::WCloud cld(XYZs, viz::Color::green());
+
+	wnd3d.showWidget("cloud", cld);
+
+	// 再显示相机坐标系及图像
+	int m = m_vCams.size();
+
+	viz::Color color = viz::Color::white(); // 默认画白色
+
+	vector<cv::Affine3d> imgTraj;
+
+	for (int i = 0; i < m; ++i)
+	{
+		const cam_data & cam = m_vCams[i];
+
+		if (!cam.m_bOriented) // 没有完成定向的图像就不显示
+		{
+			continue;
+		}
+
+		// Xc = R*Xw + t => Xw = R'(Xc - t)
+		// 将光心坐标 Xc=(0,0,0)代入，则有光心世界坐标 Xw = -R't
+		Matx31d C = -cam.m_R.t()*cam.m_t;
+
+		cv::Vec3d c;
+		c(0) = C(0);
+		c(1) = C(1);
+		c(2) = C(2);
+
+		cv::Affine3d pose(cam.m_R.t(), c); // 实际尝试发现这个 cv::Affine3d 中的所谓 t 应该是光心坐标，而旋转矩阵是从相机系往世界系转的。。。
+
+		imgTraj.push_back(pose);
+		
+		CString str = m_vImgPaths[i];
+
+		Mat img = imread(str.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
+		
+		str.Format("image %03d", i);
+
+		// 画视景锥，以及实测图像
+		wnd3d.showWidget(str.GetBuffer(), viz::WCameraPosition(cam.m_K, img, 1.0, color), pose);
+
+		str.Format("%d", i);
+
+		// 标出图像序号
+		wnd3d.showWidget(str.GetBuffer(), viz::WText3D(str.GetBuffer(), cv::Point3d(c), 0.5, true, color));
+	}
+
+	// 显示图像移动路径
+	// BOTH 是既画路径线PATH，又画坐标轴FRAMES
+	wnd3d.showWidget("image trajectory", viz::WTrajectory(imgTraj, viz::WTrajectory::BOTH, 1.0, color));
+
+	wnd3d.spin();
 }

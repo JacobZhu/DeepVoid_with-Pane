@@ -3956,7 +3956,7 @@ void derivatives::j_f_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// 输入：n个空
 	vector<Matx<double,2,1>> C(l); // 所有的 Cij 矩阵
 	vector<Matx21d> e(l); // 所有的 eij 残差向量
 
-	// 计算所有的 Aij、Bij 和 eij
+	// 计算所有的 Aij、Bij、Cij 和 eij
 	for (int i=0;i<n;++i)
 	{
 		Point4d XYZW = XYZWs[i];
@@ -3995,6 +3995,215 @@ void derivatives::j_f_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// 输入：n个空
 			f.at<double>(idx2+1) = dy;
 
 			double d = sqrt(dx*dx + dy*dy);
+
+			vds[*ptr] = d;
+
+			eij(0) = -dx;
+			eij(1) = -dy;
+
+			if (!j_fixed[j])
+			{
+				// 只有当 j 图不固定，参与优化时，才更新 Aij，否则不动作，这就要求所有的 Aij 在 A 中一开始就全部初始化为 0 矩阵
+				A[*ptr] = Aij;
+			}
+
+			if (!i_fixed[i])
+			{
+				// 只有当 i 点不固定，参与优化时，才更新 Bij，否则不动作，这就要求所有的 Bij 在 B 中一开始就全部初始化为 0 矩阵
+				B[*ptr] = Bij;
+			}
+
+			C[*ptr] = Cij;
+			e[*ptr] = eij;			
+		}
+	}
+
+	Matx<double,1,1> Q_tmp, ec_tmp;
+
+	// 按列扫，计算所有的 Uj、eaj、Wij、Q=sum(Qij)、Gj 和 ec
+	for (int j=0;j<m;++j)
+	{
+		int idx_start = j*6+1;
+
+		Matx<double,6,6> Uj;
+		Matx<double,1,6> Gj;
+		Matx<double,6,1> eaj;
+
+		for (int i=0;i<n;++i)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL == ptr)
+			{
+				// 如果 ptr == NULL，说明像点 xij 不存在
+				continue;
+			}
+
+			Matx<double,2,6> Aij = A[*ptr];
+			Matx<double,2,4> Bij = B[*ptr];
+			Matx<double,2,1> Cij = C[*ptr];
+			Matx22d cij = covInvs[*ptr];
+			Matx21d eij = e[*ptr];
+
+			Matx<double,6,2> Aijtcij = Aij.t()*cij;
+			Matx<double,1,2> Cijtcij = Cij.t()*cij;
+
+			Uj += Aijtcij*Aij;
+			eaj += Aijtcij*eij;
+			Q_tmp += Cijtcij*Cij;
+			Gj += Cijtcij*Aij;
+			ec_tmp += Cijtcij*eij;
+
+			Matx<double,6,4> Wij = Aijtcij*Bij;
+
+			W[*ptr] = Wij;
+		}
+
+		U[j] = Uj;
+		ea[j] = eaj;
+		G[j] = Gj;
+
+		for (int ii=0;ii<6;++ii)
+		{
+			g.at<double>(idx_start+ii) = -eaj(ii);
+		}
+	}
+
+	Q = Q_tmp;
+	ec = ec_tmp;
+
+	g.at<double>(0) = -ec(0);
+
+	int n_before = m*6+1;
+
+	// 按行扫，计算所有的 Vi 和 ebi
+	for (int i=0;i<n;++i)
+	{
+		int idx_start = i*4+n_before;
+
+		Matx<double,4,4> Vi;
+		Matx<double,1,4> Hi;
+		Matx<double,4,1> ebi;
+		
+		for (int j=0;j<m;++j)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL == ptr)
+			{
+				// 如果 ptr == NULL，说明像点 xij 不存在
+				continue;
+			}
+
+			Matx<double,2,4> Bij = B[*ptr];
+			Matx<double,2,1> Cij = C[*ptr];
+			Matx22d cij = covInvs[*ptr];
+			Matx21d eij = e[*ptr];
+
+			Matx<double,4,2> Bijtcij = Bij.t()*cij;
+
+			Vi += Bijtcij*Bij;
+			ebi += Bijtcij*eij;
+			Hi += Cij.t()*cij*Bij;
+		}
+
+		V[i] = Vi;
+		eb[i] = ebi;
+		H[i] = Hi;
+
+		for (int ii=0;ii<4;++ii)
+		{
+			g.at<double>(idx_start+ii) = -ebi(ii);
+		}
+	}
+}
+
+// 20200604, iteratively reweighted least square, IRLS
+// 迭代重加权模式，为了应对 outliers
+// 采用 Huber 权重
+void derivatives::j_f_f_w_t_XYZW_IRLS_Huber(const vector<Point4d> & XYZWs,				// 输入：n个空间点XYZW坐标
+											const vector<Matx33d> & Ks,					// 输入：m个图像内参数矩阵
+											const vector<Matx33d> & Rs,					// 输入：m个图像旋转矩阵
+											const vector<Matx31d> & ts,					// 输入：m个图像平移向量
+											const vector<Matx<double, 5, 1>> & dists,	// 输入：m个图像像差系数
+											const vector<int> & distTypes,				// 输入：m个图像的像差系数类型
+											const vector<Point2d> & xys,				// 输入：l个所有图像上的像点坐标，最多最多为 m*n 个
+											vector<Matx22d> & covInvs,					// 输出：l个所有像点坐标协方差矩阵的逆矩阵，也即各对角线元素 (i)=wi*wi，即每个观测量权重的平方，权重是由观测量自身的重投影残差来决定的
+											const vector<uchar> & j_fixed,				// 输入：m维向量，哪些图像的参数是固定的（j_fixed[j]=1），如果图像 j 参数固定，那么 Aij = 0 对于任何其中的观测点 i 都成立
+											const vector<uchar> & i_fixed,				// 输入：n维向量，哪些空间点坐标是固定的（i_fixed[i]=1），如果点 i 坐标固定，那么 Bij = 0 对于任何观测到该点的图像 j 都成立
+											const SparseMat & ptrMat,					// 输入：带一维存储索引的可视矩阵，ptrMat(i,j)存的是像点xij在xys向量中存储的位置索引，以及Aij，Bij和eij在各自向量中存储的位置索引
+											vector<Matx<double, 6, 6>> & U,				// 输出：m个Uj矩阵，仅跟图像参数有关
+											vector<Matx<double, 4, 4>> & V,				// 输出：n个Vi矩阵，仅跟空间点坐标有关
+											vector<Matx<double, 6, 4>> & W,				// 输出：l个Wij矩阵，同时跟空间点及其观测图像有关
+											Matx<double, 1, 1> & Q,						// 输出：唯一一个Q矩阵，只跟共参数有关
+											vector<Matx<double, 1, 6>> & G,				// 输出：m个Gj矩阵，同时和独有及共有图像参数有关
+											vector<Matx<double, 1, 4>> & H,				// 输出：n个Hi矩阵，同时和共有图像参数以及物点有关
+											vector<Matx<double, 6, 1>> & ea,			// 输出：m个eaj残差向量，仅跟图像参数有关
+											vector<Matx<double, 4, 1>> & eb,			// 输出：n个ebi残差向量，仅跟空间点坐标有关
+											Matx<double, 1, 1> & ec,					// 输出：唯一一个ec残差向量，仅跟共有图像参数有关
+											Mat & f,									// 输出：2*l个像点残差量，其实也就是评价的目标函数值
+											Mat & g,									// 输出：1+6*m+4*n维的参数梯度
+											vector<double> & vds,						// 输出：l个像点的重投影残差量
+											double tc /*= 3.0*/							// 输入：对于重投影残差 d 小于 tc 的观测量权重全定为1，否则定权重为 tc/d
+											)
+{
+	int n = XYZWs.size();	// 空间点个数
+	int m = Ks.size();		// 图像个数
+	int l = xys.size();		// 所有观测像点的个数
+
+	vector<Matx<double,2,6>> A(l); // 所有的 Aij 矩阵
+	vector<Matx<double,2,4>> B(l); // 所有的 Bij 矩阵
+	vector<Matx<double,2,1>> C(l); // 所有的 Cij 矩阵
+	vector<Matx21d> e(l); // 所有的 eij 残差向量
+
+	// 计算所有的 Aij、Bij、Cij 和 eij
+	for (int i=0;i<n;++i)
+	{
+		Point4d XYZW = XYZWs[i];
+
+		for (int j=0;j<m;++j)
+		{
+			const int * ptr = ptrMat.find<int>(i,j);
+
+			if (NULL==ptr) 
+			{
+				// 如果 ptr == NULL，说明像点 xij 不存在
+				continue;
+			}
+
+			Matx33d K = Ks[j];
+			Matx33d R = Rs[j];
+			Matx31d t = ts[j];
+			Matx<double,5,1> dist = dists[j];
+			int distType = distTypes[j];
+
+			Point2d xy = xys[*ptr];
+
+			Matx<double,2,6> Aij;
+			Matx<double,2,4> Bij;
+			Matx<double,2,1> Cij;
+			Matx21d eij;
+
+			double dx, dy;
+			
+			j_f_f_w_t_XYZW(XYZW.x, XYZW.y, XYZW.z, XYZW.w, xy.x, xy.y, 
+				K, R, t, dist(0), dist(1), dist(2), dist(3), dist(4), distType, Aij, Bij, Cij, dx, dy);
+
+			double d = sqrt(dx*dx + dy*dy);
+
+			// 依据重投影残差计算像点的 Huber 权重
+			double weight = weight_Huber(d,tc);
+			double weight2 = weight*weight;
+
+			int idx2 = 2*(*ptr);
+
+			// 加权的目标函数
+			f.at<double>(idx2)	 = weight*dx;
+			f.at<double>(idx2+1) = weight*dy;
+
+			// 给权值矩阵赋值
+			Matx22d & covInv = covInvs[*ptr];
+			covInv(0,0) = covInv(1,1) = weight2;
 
 			vds[*ptr] = d;
 
@@ -11138,6 +11347,139 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input
 	}
 }
 
+// 20200622，采用新的数据结构
+void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,// input:	all pairwise fundamental matrix F, matches and projective reconstruction
+								   MultiTracks & map_tracks									// output:	all the found tracks
+								   )
+{
+	//	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::vector<std::pair<std::pair<int,int>,int>> vec_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::map<std::pair<int,int>,int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	int n_features = 0; // number of all features
+
+	// 1. record all the weights between each IJ //////////////////////////////////////////////////////////////////////////////////
+	// and initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter= map_F_matches_pWrdPts.begin(); iter!= map_F_matches_pWrdPts.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second.first.second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		vec_w_IJ.push_back(make_pair(iter->first, w_IJ));
+		
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+				OneTrack map_one_track;
+				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+				OneTrack map_one_track;
+				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx,0)));
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// sort image pairs according to the number of matches found between them before merging
+	sort(vec_w_IJ.begin(),vec_w_IJ.end(),
+		[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second>b.second;});
+
+	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
+	for (auto iter_max=vec_w_IJ.begin();iter_max!=vec_w_IJ.end();++iter_max)
+	{
+		auto iter_max_IJ = map_F_matches_pWrdPts.find(iter_max->first);
+
+		const int & I = iter_max->first.first; // image I
+		const int & J = iter_max->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter_max_IJ->second.first.second; // the pairwise matches found between image I and J
+
+		// start merging
+		for (auto iter_matches_IJ=vec_matches_IJ.begin(); iter_matches_IJ!=vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks.find(iter_Jj->second);
+
+			OneTrack track_merged;
+			track_merged.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+			track_merged.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+			if (track_merged.size() < (iter_track_Ii->second.size() + iter_track_Jj->second.size()))
+			{
+				// this means that there are conflicts between these two tracks ie the merged track contains more than one feature in one image
+				// in this case we do not merge them
+				continue;
+			}
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Jj->second.begin(); iter!=iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Jj);
+			} 
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter=iter_track_Ii->second.begin(); iter!=iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first,iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Ii);
+			}
+		}
+	}
+}
+
 // 20151128，老的特征估计结构
 void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 								   MultiTracks_old & map_tracks				// output:	all the found tracks
@@ -12109,6 +12451,55 @@ void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,
 		[](const std::pair<std::pair<int,int>,int> & a, const std::pair<std::pair<int,int>,int> & b){return a.second>b.second;});
 }
 
+// 20200622, zhaokunz, 改用新的数据结构
+void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise matches
+										    const MultiTracks & map_tracks,								// input:	all the tracks
+										    vector<pair_ij_k> & pairs									// output:	pairs in descending order
+										    )
+{
+	pairs.clear();
+
+	for (auto iter_pair_match = map_F_matches_pWrdPts.begin(); iter_pair_match != map_F_matches_pWrdPts.end(); ++iter_pair_match)
+	{
+		int count = 0;
+
+		const int & I = iter_pair_match->first.first; // image I
+		const int & J = iter_pair_match->first.second; // image J
+
+		for (auto iter_track = map_tracks.begin(); iter_track != map_tracks.end(); ++iter_track)
+		{
+			const OneTrack & track = iter_track->second;
+
+			auto iter_find_I = track.find(I); // first try find image I in this track
+
+			if (iter_find_I == track.end())
+			{
+				continue;
+			}
+
+			auto iter_find_J = track.find(J); // if image I exist then try find image J in this track
+
+			if (iter_find_J == track.end())
+			{
+				continue;
+			}
+
+			count += track.size(); // if this track contains both imge I and J, then add the length of this track to pair (I,J)
+		}
+
+		pair_ij_k ij_k;
+		ij_k.first.first = I;
+		ij_k.first.second = J;
+		ij_k.second = count;
+
+		pairs.push_back(ij_k);
+	}
+
+	// sort image pairs according to the sum of track lengths in descending order
+	sort(pairs.begin(), pairs.end(),
+		[](const std::pair<std::pair<int, int>, int> & a, const std::pair<std::pair<int, int>, int> & b) {return a.second>b.second; });
+}
+
 // 20151108，新加入一幅图像后，要前方交会新的点
 void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	点云
 									  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
@@ -12743,7 +13134,9 @@ void SfM_ZZK::Draw3DScene(viz::Viz3d & wnd3d,						// output:	3D显示的窗口
 
 	wnd3d.showWidget("cloud", cld);
 
-//	wnd3d.spinOnce();
+	wnd3d.spinOnce();
+
+	
 
 //	viz::Viz3d wnd3dnew = viz::getWindowByName("3D Window");
 //	wnd3dnew.showWidget("cloud", cld);
@@ -15157,6 +15550,301 @@ void SBA_ZZK::optim_sparse_lm_f_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,					// 输
 	}
 
 	double err_rpj_final = sqrt(2*Fx/l);
+
+	if (info)
+	{
+		info[0] = err_rpj_init;
+		info[1] = err_rpj_final;
+		info[2] = g_norm;
+		info[3] = k;
+		info[4] = code;
+	}
+}
+
+// 20200607，iteratively reweighted least squares
+// 迭代重加权版本，采用 Huber 权重
+void SBA_ZZK::optim_sparse_lm_f_wj_tj_XiYiZiWi_IRLS_Huber(vector<Point3d> & XYZs,					// 输入兼输出：n个空间点坐标
+														  vector<Matx33d> & Ks,						// 输入兼输出：m个图像内参数矩阵
+														  vector<Matx33d> & Rs,						// 输入兼输出：m个图像旋转矩阵
+														  vector<Matx31d> & ts,						// 输入兼输出：m个图像平移向量
+														  const vector<Matx<double,5,1>> & dists,	// 输入：m个图像像差系数
+														  const vector<int> & distTypes,			// 输入：m个图像的像差系数类型
+														  const vector<Point2d> & xys,				// 输入：l个所有图像上的像点坐标，最多最多为 m*n 个
+														  vector<Matx22d> & covInvs,				// 输出：l个所有像点坐标协方差矩阵的逆矩阵，(i)=wi*wi
+														  const vector<uchar> & j_fixed,			// 输入：m维向量，哪些图像的参数是固定的（j_fixed[j]=1），如果图像 j 参数固定，那么 Aij = 0 对于任何其中的观测点 i 都成立
+														  const vector<uchar> & i_fixed,			// 输入：n维向量，哪些空间点坐标是固定的（i_fixed[i]=1），如果点 i 坐标固定，那么 Bij = 0 对于任何观测到该点的图像 j 都成立
+														  const SparseMat & ptrMat,					// 输入：带一维存储索引的可视矩阵，ptrMat(i,j)存的是像点xij在xys向量中存储的位置索引，以及Aij，Bij和eij在各自向量中存储的位置索引
+														  vector<double> & vds,						// 输出：每个像点的重投影残差
+														  double tc /*= 3.0*/,						// 输入：计算 Huber 权重时用到的常量
+														  double * info /*= NULL*/,					// output:	runtime info, 5-vector
+																									// info[0]:	the initial reprojection error
+																									// info[1]:	the final reprojection error
+																									// info[2]: final max gradient
+																									// info[3]: the number of iterations
+																									// info[4]: the termination code, 0: small gradient; 1: small correction; 2: max iteration 
+														  double tau /*= 1.0E-3*/,					// input:	The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+														  int maxIter /*= 64*/,						// input:	the maximum number of iterations
+														  double eps1 /*= 1.0E-8*/,					// input:	threshold
+														  double eps2 /*= 1.0E-12*/					// input:	threshold
+														  )
+{
+	int k = 0;		// 迭代次数索引
+	int v = 2;		// 更新 u 时需要用到的一个控制量      
+	double u;		// LM 优化算法中最关键的阻尼系数 (J'J + uI)h = -J'f
+	double r;		// gain ratio, 增益率，用来衡量近似展开式的好坏
+	double g_norm;  // 梯度的模
+	double h_norm;	// 改正量的模
+
+	double ratio_1_3 = 1.0/3.0;
+
+	bool found = false; // 标识是否已经满足迭代收敛条件
+	int code = 2; // termination code
+
+	int m = Ks.size(); // 图像个数
+	int n = XYZs.size(); // 物点个数
+	int l = xys.size(); // 所有像点个数
+	int M = 1+6*m+4*n; // 总优化参数个数
+	int N = 2*l; // 总观测方程个数
+
+	// Mat 结构
+	Mat f(N,1,CV_64FC1,Scalar(0));
+	Mat g(M,1,CV_64FC1,Scalar(0)),g_new(M,1,CV_64FC1,Scalar(0));
+	Mat h(M,1,CV_64FC1,Scalar(0));
+
+	// 迭代过程中使用的齐次物点坐标，因此由非齐次物点坐标拓展出齐次物点坐标
+	vector<Point4d> XYZWs;
+	for (int i=0;i<n;++i)
+	{
+		Point3d XYZ = XYZs[i];
+		Point4d XYZW;
+		XYZW.x = XYZ.x;
+		XYZW.y = XYZ.y;
+		XYZW.z = XYZ.z;
+		XYZW.w = 1;
+
+		XYZWs.push_back(XYZW);
+	}
+
+	// 把所有图像的初始等效焦距置为它们的均值
+	double sum_f = 0;
+	for (int j=0;j<m;++j)
+	{
+		Matx33d K = Ks[j];
+
+		sum_f += K(0,0);
+		sum_f += K(1,1);
+	}
+	double mean_f = 0.5*sum_f/m;
+	for (int j=0;j<m;++j)
+	{
+		Ks[j](0,0) = Ks[j](1,1) = mean_f;
+	}
+
+	// [U W; W' V] 是在当前状态下的 J'covInv J 矩阵，也即还未增广的法向方程系数矩阵
+	// [-ea; -eb] 则是当前状态下的参数梯度向量
+	// [U_new W_new; W_new' V_new] 则是存放的候选状态下的未增广法向方程系数矩阵
+	// [-ea_new; -eb_new] 则是存放的候选状态下的参数梯度向量
+	// 只有当候选状态相对于当前状态是使得目标函数值下降的时候，候选状态才能被采纳成为当前状态，即参数估计从当前状态正式移动到候选状态
+	// 也只有在此时，U_new V_new W_new ea_new eb_new 才正式取代 U V W ea eb
+	vector<Matx<double,6,6>> U(m),U_new(m);
+	vector<Matx<double,4,4>> V(n),V_new(n);
+	vector<Matx<double,6,4>> W(l),W_new(l);
+	Matx<double,1,1> Q, Q_new;
+	vector<Matx<double,1,6>> G(m),G_new(m);
+	vector<Matx<double,1,4>> H(n),H_new(n);
+	vector<Matx<double,6,1>> ea(m),ea_new(m);
+	vector<Matx<double,4,1>> eb(n),eb_new(n);
+	Matx<double,1,1> ec, ec_new;
+	vector<Matx<double,6,1>> da(m);
+	vector<Matx<double,4,1>> db(n);
+	Matx<double,1,1> dc;
+//	vector<double> vds(l);
+
+	derivatives::j_f_f_w_t_XYZW_IRLS_Huber(XYZWs, Ks, Rs, ts, dists, distTypes, xys, covInvs, j_fixed, i_fixed, ptrMat, U, V, W, Q, G, H, ea, eb, ec, f, g, vds, tc);
+
+	Mat tmp = 0.5*f.t()*f;
+	double Fx = tmp.at<double>(0);
+	double Fx_new, L0_Lh;
+
+	// 20200607，仅统计内点的重投影残差
+	int n_inliers = 0;
+	double sum_d2 = 0;
+	for (int i = 0; i < l; ++i)
+	{
+		// 20170831，不能从 f 中取值，因为 f 中已经乘了权重了，判断内点集，应该看原始的偏差值
+		double d = vds[i];
+
+		if (d >= tc)
+		{
+			continue;
+		}
+		++n_inliers;
+		sum_d2 += d*d;
+	}
+	double err_rpj_init = sqrt(sum_d2 / n_inliers);
+
+	g_norm = norm(g,NORM_INF);
+
+	// 梯度收敛，说明已在平坦区域
+	if (g_norm < eps1)
+	{
+		found = true;
+		code = 0;
+	}
+
+	vector<double> Aii;
+	Aii.push_back(Q(0));
+	for (int j=0;j<m;++j)
+	{
+		for (int ii=0;ii<6;++ii)
+		{
+			Aii.push_back(U[j](ii,ii));
+		}
+	}
+	for (int i=0;i<n;++i)
+	{
+		for (int ii=0;ii<4;++ii)
+		{
+			Aii.push_back(V[i](ii,ii));
+		}
+	}
+
+	auto iter = max_element(Aii.begin(),Aii.end());
+	double max_Aii = *iter;
+
+	u = tau * max_Aii; // initial miu
+
+	while (!found && k<maxIter)
+	{
+		++k;
+
+		// 基于当前所在状态下的 [U W; W' V] 以及梯度向量 [-ea; -eb] 和阻尼系数 u 来求解改正量
+		derivatives::solveSBA_1_6_4(u,ptrMat,U,V,W,Q,G,H,ea,eb,ec,da,db,dc,h); 
+
+		h_norm = norm(h);
+
+		if (h_norm < eps2) // 改正量收敛
+		{
+			found = true;
+			code = 1;
+		} 
+		else
+		{
+			vector<Matx33d> Ks_new = Ks;
+			vector<Matx33d> Rs_new = Rs;
+			vector<Matx31d> ts_new = ts;
+			vector<Point4d> XYZWs_new = XYZWs;
+
+			for (int jj=0;jj<m;++jj)
+			{
+				Ks_new[jj](0,0) += dc(0);
+				Ks_new[jj](1,1) += dc(0);
+
+				Matx<double,6,1> daj = da[jj];
+
+				Matx33d dR = calib::converse_rotvec_R(daj(0), daj(1), daj(2));
+
+				Rs_new[jj] = dR*Rs_new[jj];
+
+				ts_new[jj](0)+=daj(3);
+				ts_new[jj](1)+=daj(4);
+				ts_new[jj](2)+=daj(5);
+			}
+
+			for (int ii=0;ii<n;++ii)
+			{
+				Matx<double,4,1> dbi = db[ii];
+				XYZWs_new[ii].x += dbi(0);
+				XYZWs_new[ii].y += dbi(1);
+				XYZWs_new[ii].z += dbi(2);
+				XYZWs_new[ii].w += dbi(3);
+			}
+
+			// 基于改正量得到一候选参数估计，并评估候选参数估计处的目标函数，Jacobian 矩阵以及梯度向量
+			derivatives::j_f_f_w_t_XYZW_IRLS_Huber(XYZWs_new, Ks_new, Rs_new, ts_new, dists, distTypes, xys, covInvs, j_fixed, i_fixed,
+				ptrMat, U_new, V_new, W_new, Q_new, G_new, H_new, ea_new, eb_new, ec_new, f, g_new, vds, tc);
+
+			tmp = 0.5*f.t()*f;
+			Fx_new = tmp.at<double>(0); // 候选参数处的目标函数值
+
+			tmp = 0.5*h.t()*(u*h-g);
+			L0_Lh = tmp.at<double>(0); // 在当前参数处利用梯度和改正量预估的期望目标函数下降量
+
+			r = (Fx - Fx_new) / L0_Lh;
+
+			if (r>0)
+			{
+				// 采纳新参数
+				Ks = Ks_new;
+				Rs = Rs_new;
+				ts = ts_new;
+				XYZWs = XYZWs_new;
+
+				// 一并采纳新参数处的 Jacobian 矩阵和梯度向量
+				U = U_new;
+				V = V_new;
+				W = W_new;
+				Q = Q_new;
+				G = G_new;
+				H = H_new;
+				ea = ea_new;
+				eb = eb_new;
+				ec = ec_new;
+				g = g_new.clone();
+
+				// 还采纳新参数处的目标函数值
+				Fx = Fx_new;
+
+				g_norm = norm(g,NORM_INF);
+
+				if (g_norm < eps1) // 梯度收敛，说明抵达平坦区域
+				{
+					found = true;
+					code = 0;
+				}
+
+				double tmp_db = std::max(ratio_1_3, 1 - pow(2 * r - 1, 3));
+				u *= tmp_db;
+				v = 2;
+			} 
+			else
+			{
+				u *= v;
+				v *= 2;
+			}
+		}
+	}
+
+	// 把优化完的齐次物点坐标还原为非齐次物点坐标输出
+	for (int i=0;i<n;++i)
+	{
+		Point4d XYZW = XYZWs[i];
+		double w_1 = 1.0/XYZW.w;
+
+		Point3d XYZ;
+		XYZ.x = XYZW.x*w_1;
+		XYZ.y = XYZW.y*w_1;
+		XYZ.z = XYZW.z*w_1;
+
+		XYZs[i] = XYZ;
+	}
+
+	// 20200607，仅统计内点的重投影残差
+	n_inliers = 0;
+	sum_d2 = 0;
+	for (int i = 0; i < l; ++i)
+	{
+		// 20170831，不能从 f 中取值，因为 f 中已经乘了权重了，判断内点集，应该看原始的偏差值
+		double d = vds[i];
+
+		if (d >= tc)
+		{
+			continue;
+		}
+		++n_inliers;
+		sum_d2 += d*d;
+	}
+	double err_rpj_final = sqrt(sum_d2 / n_inliers);
 
 	if (info)
 	{
