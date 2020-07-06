@@ -495,7 +495,18 @@ UINT SfM(LPVOID param)
 		sort(keypts_sift.begin(), keypts_sift.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
 
 		// 再提取 fast 角点特征
-		cv::FAST(img, keypts_fast, 10, true, cv::FastFeatureDetector::TYPE_9_16);
+		// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
+		cv::Mat im_gray;
+		if (img.channels() < 3)
+		{
+			im_gray = img.clone();
+		}
+		else
+		{
+			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+		}
+ 
+		cv::FAST(im_gray, keypts_fast, 10, true, cv::FastFeatureDetector::TYPE_9_16);
 
 		// 按照 response 从大到小对 fast 特征点进行排序
 		sort(keypts_fast.begin(), keypts_fast.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
