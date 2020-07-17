@@ -1180,6 +1180,7 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 														   vector<cam_data> & cams,				// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
 														   SfM_ZZK::MultiTracks & map_tracks,	// 输入：所有的特征轨迹
+														   double & rltUctt_output,				// 输出：所有物点的综合相对不确定度水平
 														   int idx_refimg,						// input:	the reference image, whose R=I, and t =[0,0,0]'
 														   double tc /*= 1.5*/,					// input:	用来计算 Huber 权重的常量
 														   int itermax /*= 1024*/,				// 输入：最大迭代次数
@@ -1499,13 +1500,15 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 			}
 		}
 
-		if (nValid >= 1)
+		if (nValid >= 1) // 至少得有 1 个有效观测就可以算相对不确定度了
 		{
 			double rltUctt_overall = nValid*rms_sigma / sum_d;
 
 			double maxAng = maxAngleBetween3DVecs(vVecObsers);
 
 			vData.push_back(std::make_pair(rltUctt_overall, std::make_pair(nValid, maxAng)));
+
+			iter_objpt->second.m_rltUctt = rltUctt_overall; // 输出
 		}
 		
 		++i_tmp;
@@ -1515,7 +1518,7 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 	int nnn = vData.size();
 	int idx_median = 0.5*nnn;
 	std::sort(vData.begin(), vData.end(), [](const pair_rltUctt_nObsv_ang & a, const pair_rltUctt_nObsv_ang & b) {return a.first < b.first; });
-	double uctt_median = vData[idx_median].first;
+	rltUctt_output = vData[idx_median].first;
 
 // 	// 相对不确定度均值
 // 	double uctt_mean = std::accumulate(vRltUcttnObsv.begin(), vRltUcttnObsv.end(), 0.0,

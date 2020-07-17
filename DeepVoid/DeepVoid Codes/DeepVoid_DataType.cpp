@@ -3763,8 +3763,32 @@ void DeepVoid::getRGColorforRelativeUncertainty(double uctt, /* input: the given
 		// 计算 RG 色彩域的色相角
 		double ang = 90 * (uctt_log - worst_log) / (best_log - worst_log);
 
-		r = 255 * DeepVoid::cosd(ang);
-		g = 255 * DeepVoid::sind(ang);
-		b = 0;
+		if (ang < 45)
+		{
+			r = 255;
+			g = 255 * DeepVoid::tand(ang);
+			b = 0;
+		}
+		else
+		{
+			r = 255 / DeepVoid::tand(ang);
+			g = 255;
+			b = 0;
+		}
+
+		//r = 255 * DeepVoid::cosd(ang);
+		//g = 255 * DeepVoid::sind(ang);
+		//b = 0;
 	}	
+}
+
+void DeepVoid::getRGColorforRelativeUncertainty(double uctt, double val_worst, double val_best, int & r, int & g, int & b)
+{
+	uchar r_uchar, g_uchar, b_uchar;
+
+	getRGColorforRelativeUncertainty(uctt, val_worst, val_best, r_uchar, g_uchar, b_uchar);
+
+	r = (int)r_uchar;
+	g = (int)g_uchar;
+	b = (int)b_uchar;
 }

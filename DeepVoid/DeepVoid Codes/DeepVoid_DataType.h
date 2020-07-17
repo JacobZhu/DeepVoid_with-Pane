@@ -288,11 +288,13 @@ struct CloudPoint
 	Point3d m_pt;								// the 3d coordinates of this cloud point
 	vector<CloudPoint_ImgInfo> m_vImgInfos;		// all the image infos of this cloud point in all visible images
 	cv::Matx33d m_uncertaintyEllipsoid;			// 20200711, uncertainty ellipsoid, with each row being one of the three orthogonal semi-axes (1 sigma level)
+	double m_rltUctt;							// 20200717, the overall uncertainty sigma divided by mean observation distance
 
 	CloudPoint()
 	{
 		m_idx = -1;
 		m_pt.x = m_pt.y = m_pt.z = 0;
+		m_rltUctt = -1;
 	};
 
 	CloudPoint & operator = (const CloudPoint & otherPt)
@@ -303,6 +305,7 @@ struct CloudPoint
 			m_pt = otherPt.m_pt;
 			m_vImgInfos = otherPt.m_vImgInfos;
 			m_uncertaintyEllipsoid = otherPt.m_uncertaintyEllipsoid;
+			m_rltUctt = otherPt.m_rltUctt;
 		}
 
 		return *this;
@@ -844,6 +847,15 @@ void getRGColorforRelativeUncertainty(double uctt,		// input: the given relative
 									  uchar & r,			// output: the computed R
 									  uchar & g,			// output: the computed G
 									  uchar & b			// output: the computed B
+									  );
+
+// 20200717，给定相对不确定度水平，给出相应的色彩值（RG色彩域），服务于点云不确定度可视化
+void getRGColorforRelativeUncertainty(double uctt,		// input: the given relative uncertainty
+									  double val_worst,	// input: the worst value for relative uncertainty, which is set to color Red
+									  double val_best,	// input: the best value for relative uncertainty, which is set to color Green
+									  int & r,			// output: the computed R
+									  int & g,			// output: the computed G
+									  int & b			// output: the computed B
 									  );
 
 }

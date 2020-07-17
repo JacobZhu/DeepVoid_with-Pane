@@ -700,14 +700,14 @@ UINT SfM(LPVOID param)
 		pApp->m_vCams[i].fx = f;
 		pApp->m_vCams[i].fy = f;
 		pApp->m_vCams[i].s = 0;
-		pApp->m_vCams[i].cx = 299.5/*399.5*/;
-		pApp->m_vCams[i].cy = 399.5/*299.5*/;
+		pApp->m_vCams[i].cx = /*299.5*/399.5;
+		pApp->m_vCams[i].cy = /*399.5*/299.5;
 
 		pApp->m_vCams[i].m_K(0, 0) = f;
 		pApp->m_vCams[i].m_K(1, 1) = f;
 		pApp->m_vCams[i].m_K(0, 1) = 0;
-		pApp->m_vCams[i].m_K(0, 2) = 299.5/*399.5*/;
-		pApp->m_vCams[i].m_K(1, 2) = 399.5/*299.5*/;
+		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
+		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
 		pApp->m_vCams[i].m_K(2, 2) = 1;
 		pApp->m_vCams[i].m_bCalibed = true;
 
@@ -1147,12 +1147,12 @@ UINT SfM(LPVOID param)
 
 			// 2. 稀疏光束法平差。只利用现有的物点，还没有利用新加入的图像前方交会新的物点
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
-			double info[10];
+			double info[10], rltUctt;
 			try
 			{
 //				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 				// 20200607 同时优化所有图像共有的等效焦距 f
-				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 			}
 			catch (cv::Exception & e)
 			{
@@ -1161,8 +1161,8 @@ UINT SfM(LPVOID param)
 				str+="	error happened in SBA";
 				AfxMessageBox(str);
 			}
-			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
-				map_pointcloud.size(), info[0], info[1], info[3], info[4]);
+			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt (1 sigma): %f",
+				map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt);
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
@@ -1221,12 +1221,12 @@ UINT SfM(LPVOID param)
 
 	// 最后总的来一次稀疏光束法平差
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
-	double info[10];
+	double info[10], rltUctt;
 //	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
 	// 20200607 同时优化所有图像共有的等效焦距 f
-	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
-	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
-		map_pointcloud.size(), info[0], info[1], info[3], info[4]);
+	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt (1 sigma): %f",
+		map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 	std::map<int,int> hist_cloudpoint_inlier;
@@ -11531,12 +11531,16 @@ void CDeepVoidApp::On3dview()
 	colors.push_back(viz::Color::Color(255, 0, 255));	// 品
 	colors.push_back(viz::Color::Color(0, 255, 255));	// 黄
 
+	// 可视化的最差相对不确定度和最优相对不确定度
+	double rltUctt_worst = 0.3;
+	double rltUctt_best = 0.001;
+
 	// 显示多少倍sigma的不确定度椭球
 	double nSigma = 3.0;
 
 	// 先显示三维点云
 	// 要显示出来的点云点及其颜色
-	int n_minInilier = 3;
+	int n_minInilier = 2;
 
 	vector<Point3d> pts_output;
 	vector<Point3i> colors_output;
@@ -11588,35 +11592,39 @@ void CDeepVoidApp::On3dview()
 		color.y = G;
 		color.z = B;
 
+		// 20200717，根据相对不确定度大小输出颜色 //////////////////////////
+		DeepVoid::getRGColorforRelativeUncertainty(iter_wrdpt->second.m_rltUctt, rltUctt_worst, rltUctt_best, color.x, color.y, color.z);
+		//////////////////////////////////////////////////////////////////
+
 		pts_output.push_back(iter_wrdpt->second.m_pt);
 		colors_output.push_back(color);
 
 		// 20200712，把物点位置不确定度椭球可视化
-		Matx31d XYZ;
-		XYZ(0) = iter_wrdpt->second.m_pt.x;
-		XYZ(1) = iter_wrdpt->second.m_pt.y;
-		XYZ(2) = iter_wrdpt->second.m_pt.z;
+		//Matx31d XYZ;
+		//XYZ(0) = iter_wrdpt->second.m_pt.x;
+		//XYZ(1) = iter_wrdpt->second.m_pt.y;
+		//XYZ(2) = iter_wrdpt->second.m_pt.z;
 
-		Point3d ptStart, ptEnd;
-		// 有 3 个互为正交的轴要画
-		for (int ii = 0; ii < 3; ++ii)
-		{
-			Matx31d vec = nSigma*iter_wrdpt->second.m_uncertaintyEllipsoid.row(ii).t();
-			Matx31d XYZ_start = XYZ - vec;
-			Matx31d XYZ_end = XYZ + vec;
+		//Point3d ptStart, ptEnd;
+		//// 有 3 个互为正交的轴要画
+		//for (int ii = 0; ii < 3; ++ii)
+		//{
+		//	Matx31d vec = nSigma*iter_wrdpt->second.m_uncertaintyEllipsoid.row(ii).t();
+		//	Matx31d XYZ_start = XYZ - vec;
+		//	Matx31d XYZ_end = XYZ + vec;
 
-			ptStart.x = XYZ_start(0);
-			ptStart.y = XYZ_start(1);
-			ptStart.z = XYZ_start(2);
+		//	ptStart.x = XYZ_start(0);
+		//	ptStart.y = XYZ_start(1);
+		//	ptStart.z = XYZ_start(2);
 
-			ptEnd.x = XYZ_end(0);
-			ptEnd.y = XYZ_end(1);
-			ptEnd.z = XYZ_end(2);
+		//	ptEnd.x = XYZ_end(0);
+		//	ptEnd.y = XYZ_end(1);
+		//	ptEnd.z = XYZ_end(2);
 
-			str.Format("wrdpt ellipsoid %d	%d", pts_output.size() - 1, ii);
+		//	str.Format("wrdpt ellipsoid %d	%d", pts_output.size() - 1, ii);
 
-			wnd3d.showWidget(str.GetBuffer(), viz::WLine(ptStart, ptEnd, colors[ii]));
-		}
+		//	wnd3d.showWidget(str.GetBuffer(), viz::WLine(ptStart, ptEnd, colors[ii]));
+		//}
 	}
 
 	int n_pts_output = pts_output.size();
