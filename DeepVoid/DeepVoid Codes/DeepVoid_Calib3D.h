@@ -3123,4 +3123,12 @@ void get_pos_focalpt_ydir(const Matx33d & R,		// input: rotation matrix
 
 //////////////////////////////////////////////////////////////////////////
 
+// 20200716，任意给定两个向量，计算其夹角大小（0-180°）
+double angleBetween3DVecs(const Matx31d & v1, const Matx31d & v2);
+double angleBetween3DVecs(const Matx13d & v1, const Matx13d & v2);
+
+// 20200716，给出输入任意两个向量之间的最大夹角值（0-180°）
+double maxAngleBetween3DVecs(const vector<Matx31d> & vs);
+double maxAngleBetween3DVecs(const vector<Matx13d> & vs);
+
 }

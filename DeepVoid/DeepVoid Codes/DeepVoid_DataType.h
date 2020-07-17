@@ -287,6 +287,7 @@ struct CloudPoint
 	int m_idx;									// the global index of this cloud point in the whole point cloud
 	Point3d m_pt;								// the 3d coordinates of this cloud point
 	vector<CloudPoint_ImgInfo> m_vImgInfos;		// all the image infos of this cloud point in all visible images
+	cv::Matx33d m_uncertaintyEllipsoid;			// 20200711, uncertainty ellipsoid, with each row being one of the three orthogonal semi-axes (1 sigma level)
 
 	CloudPoint()
 	{
@@ -301,6 +302,7 @@ struct CloudPoint
 			m_idx = otherPt.m_idx;
 			m_pt = otherPt.m_pt;
 			m_vImgInfos = otherPt.m_vImgInfos;
+			m_uncertaintyEllipsoid = otherPt.m_uncertaintyEllipsoid;
 		}
 
 		return *this;
@@ -342,6 +344,8 @@ struct cam_data
 	Features m_feats;		// image features
 
 	Features m_subFeats;	// image sub feature set
+
+	cv::Matx33d m_optCtrUncertEllipsoid; // 20200711, uncertainty ellipsoid of the optical center, with each row being one of the three orthogonal semi - axes(1 sigma level)
 
 	cam_data()
 	{
@@ -388,6 +392,9 @@ struct cam_data
 			dist_type = otherCam.dist_type;
 
 			m_feats = otherCam.m_feats;
+			m_subFeats = otherCam.m_subFeats;
+
+			m_optCtrUncertEllipsoid = otherCam.m_optCtrUncertEllipsoid;
 
 			m_K = otherCam.m_K;
 			m_R = otherCam.m_R;
@@ -829,5 +836,14 @@ void drawMatchesRefImg(const cv::Mat & img1,								// input: the reference/left
 					   const Scalar & matchColor = Scalar(0, 255, 0),		// input: the color of the matched points connecting lines 
 					   const Scalar & singlePointColor = Scalar(0, 0, 255)	// input: the color of the unmatched points
 					   );
+
+// 20200717，给定相对不确定度水平，给出相应的色彩值（RG色彩域），服务于点云不确定度可视化
+void getRGColorforRelativeUncertainty(double uctt,		// input: the given relative uncertainty
+									  double val_worst,	// input: the worst value for relative uncertainty, which is set to color Red
+									  double val_best,	// input: the best value for relative uncertainty, which is set to color Green
+									  uchar & r,			// output: the computed R
+									  uchar & g,			// output: the computed G
+									  uchar & b			// output: the computed B
+									  );
 
 }

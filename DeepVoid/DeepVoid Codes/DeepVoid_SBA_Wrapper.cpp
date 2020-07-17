@@ -1236,9 +1236,9 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 	dists.push_back(cam_ref.m_dist);
 	distTypes.push_back(cam_ref.dist_type);
 
-	for (int i=0;i<cams.size();++i)
+	for (int i = 0; i < cams.size(); ++i)
 	{
-		if (!cams[i].m_bOriented || i==idx_refimg)
+		if (!cams[i].m_bOriented || i == idx_refimg)
 		{
 			continue;
 		}
@@ -1257,14 +1257,14 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 	vector<Point3d> XYZs;
 	
 	// 20200607，n行m列的稀疏矩阵，用于存储各点于各图像上的可见性，其实不单单是可见性，其元素值其实为每个像点在像点坐标向量中的序号
-	int sizes[] = {n, m};
-	SparseMat ptrMat(2,sizes,CV_32SC1);
+	int sizes[] = { n, m };
+	SparseMat ptrMat(2, sizes, CV_32SC1);
 
 	// 按可视矩阵按行扫描扫得的各像点坐标
 	vector<Point2d> vImgPts_vmask;
 
 	int i_tmp=0;
-	for (auto iter_objpt=map_pointcloud.begin();iter_objpt!=map_pointcloud.end();++iter_objpt)
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
 	{
 		const int & trackID = iter_objpt->first;
 
@@ -1292,7 +1292,7 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 			imgpt.y = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.y;
 			vImgPts_vmask.push_back(imgpt);
 
-			ptrMat.ref<int>(i_tmp,j) = vImgPts_vmask.size()-1;
+			ptrMat.ref<int>(i_tmp, j) = vImgPts_vmask.size() - 1;
 		}
 
 		++i_tmp;
@@ -1305,14 +1305,14 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 	// 20200607 内外参数应该有别，共有参数一般为内参数，不怎么存在参数固定不优化的情形
 	// 20200607 22:30，真正跟到计算Jacobian的函数中看，就知道j_fixed只对每幅图像独有的A类参数起作用
 	// 即约束Aij是否为空，图像共有参数是C类参数，对应的Jacobian是Cij。
-	vector<uchar> j_fixed(m),i_fixed(n);
+	vector<uchar> j_fixed(m), i_fixed(n);
 	j_fixed[0] = 1;
 
 	// covInv 存放每个观测像点的不确定度（协方差矩阵）的逆矩阵，其实也就是每个观测像点的权值矩阵
 	Matx22d cov;
-	cov(0,0) = cov(1,1) = 1;
+	cov(0, 0) = cov(1, 1) = 1;
 	vector<Matx22d> covInvs;
-	for (int k=0;k<l;++k)
+	for (int k = 0; k < l; ++k)
 	{
 		covInvs.push_back(cov);
 	}
@@ -1323,11 +1323,21 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 
 	vector<double> vds(l);
 
-//	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
 	SBA_ZZK::optim_sparse_lm_f_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
+
+	// 20200709，给出参数估计的协方差阵，也就是不确定度，或者内符合精度 /////////////////////////////////////////////////////////////////////////////////////////////
+	vector<Matx<double, 6, 6>> cov_a;		// m个图像独有参数的协方差阵
+	vector<Matx<double, 3, 3>> cov_b;		// n个空间点的坐标的协方差阵
+	Matx<double, 1, 1> cov_c;				// 共参数的协方差阵
+	vector<Matx<double, 1, 6>> cov_ca;		// 图像共参数和各图像独有参数之间的协方差阵
+
+	derivatives::covarianceSBA_f_wj_cj_XiYiZi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, cov_a, cov_b, cov_c, cov_ca);
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	
 	// 下面还要将优化完的参数和点坐标全部赋回去
-	for (int i=0;i<m;++i)
+	double sum2_sigmaOptCtr = 0;
+
+	for (int i = 0; i < m; ++i)
 	{
 		int idxcam = vIdxCams[i];
 
@@ -1341,18 +1351,91 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 		cam.s = cam.m_K(0, 1);
 	
 		cam.m_R = Rs[i];
-		cam.m_t = ts[i];		
+		cam.m_t = ts[i];
+
+		// 20200712，把光心位置协方差矩阵取出来 ///////////////////////////////////////////
+		const Matx<double, 6, 6> & cov_img = cov_a[i];
+
+		Matx33d cov_optctr;
+
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			int iiplus3 = ii + 3;
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cov_optctr(ii, jj) = cov_img(iiplus3, jj + 3);
+			}
+		}
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		//	@param eigenvalues output vector of eigenvalues of the same type as src; the eigenvalues are stored in the descending order.
+		//	@param eigenvectors output matrix of eigenvectors; it has the same size and type as src;
+		//	the eigenvectors are stored as subsequent matrix rows, in the same order as the corresponding eigenvalues.
+		cv::eigen(cov_optctr, eigenVals, eigenVecs);
+		cv::Scalar sum2 = cv::sum(eigenVals);
+
+		sum2_sigmaOptCtr += sum2.val[0];
+
+		// 输出光心位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cam.m_optCtrUncertEllipsoid(ii, jj) = vec(jj);
+			}
+		}
 	}
+
+	double rms_sigmaOptCtr = std::sqrt(sum2_sigmaOptCtr / (m - 1));
 
 	// 用固定阈值来判断内外点
 	double sigma3 = tc;
+//	double sum2_sigmaObjPt = 0;
+
+	typedef std::pair<int, double> pair_nObsv_ang;
+	typedef std::pair<double, pair_nObsv_ang> pair_rltUctt_nObsv_ang;
+
+//	vector<double> vRltUctt; // 20200715，存储每个物点的平均相对不确定度大小
+	vector<pair_rltUctt_nObsv_ang> vData; // 20200715，存储每个物点的平均相对不确定度大小，及其有效被观测次数
 
 	i_tmp=0;
-	for (auto iter_objpt=map_pointcloud.begin();iter_objpt!=map_pointcloud.end();++iter_objpt)
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
 	{
 		Point3d XYZ = XYZs[i_tmp];
 
 		iter_objpt->second.m_pt = XYZ;
+
+		// 20200712，把当前物点的协方差阵取出来 ///////////////////////////////////////
+		const Matx33d & cov_objpt = cov_b[i_tmp];
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		cv::eigen(cov_objpt, eigenVals, eigenVecs);
+
+		cv::Scalar sum2 = cv::sum(eigenVals);
+		double sum2_all = sum2.val[0];
+
+//		sum2_sigmaObjPt += sum2_all;
+
+		double rms_sigma = std::sqrt(sum2_all); // sigma = sqrt(sigma1^2 + sigma2^2 + sigma3^2)
+
+		// 输出物点位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				iter_objpt->second.m_uncertaintyEllipsoid(ii, jj) = vec(jj);
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////////		
 
 		auto iter_found_track = map_tracks.find(iter_objpt->first);
 
@@ -1361,11 +1444,16 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 		mXYZ(1) = XYZ.y;
 		mXYZ(2) = XYZ.z;
 
-		for (int j=0;j<m;++j)
-		{
-			const int * ptr = ptrMat.find<int>(i_tmp,j);
+		int nValid = 0; // 当前有多少个合理的观测值
+		double sum_d = 0;
 
-			if (NULL==ptr) 
+		vector<Matx31d> vVecObsers;
+
+		for (int j = 0; j < m; ++j)
+		{
+			const int * ptr = ptrMat.find<int>(i_tmp, j);
+
+			if (NULL == ptr)
 			{
 				// 如果 ptr == NULL，说明像点 xij 不存在
 				continue;
@@ -1379,15 +1467,30 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 			if (rpjerr < sigma3)
 			{
 				// 20151227，重投影残差足够小还不行，还得位于该图像正前方，否则该图像依然会被判为外点
-				Matx31d mXYZ_C = Rs[j] * mXYZ + ts[j];
+				const Matx33d & R = Rs[j];
+				const Matx31d & t = ts[j];
 
-				if (mXYZ_C(2)<=0)
+				Matx31d mXYZ_C = R*mXYZ + t;
+
+				if (mXYZ_C(2) <= 0)
 				{
 					iter_found_img->second.second = 0; // 物点位于图像后方
 				}
 				else
 				{
 					iter_found_img->second.second = 1; // 物点位于图像前方
+
+					// 20200716，记录下当前图像对物点的观测方向（在世界系中给出）
+					Matx31d C = -R.t()*t;
+					Matx31d vecObser = mXYZ - C;
+					vVecObsers.push_back(vecObser);
+
+					// 有效时，算下观测距离
+					double d = cv::norm(mXYZ_C, cv::NormTypes::NORM_L2);
+
+					sum_d += d;
+
+					++nValid;
 				}
 			} 
 			else
@@ -1396,8 +1499,35 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 			}
 		}
 
+		if (nValid >= 1)
+		{
+			double rltUctt_overall = nValid*rms_sigma / sum_d;
+
+			double maxAng = maxAngleBetween3DVecs(vVecObsers);
+
+			vData.push_back(std::make_pair(rltUctt_overall, std::make_pair(nValid, maxAng)));
+		}
+		
 		++i_tmp;
 	}
+
+	// 相对不确定度中值
+	int nnn = vData.size();
+	int idx_median = 0.5*nnn;
+	std::sort(vData.begin(), vData.end(), [](const pair_rltUctt_nObsv_ang & a, const pair_rltUctt_nObsv_ang & b) {return a.first < b.first; });
+	double uctt_median = vData[idx_median].first;
+
+// 	// 相对不确定度均值
+// 	double uctt_mean = std::accumulate(vRltUcttnObsv.begin(), vRltUcttnObsv.end(), 0.0,
+// 		[](const double & a, const pair_rltUctt_nObsv & b) {return a + b.first; }) / nnn;
+// 
+// 	// 相对不确定度的RMS
+// 	double sum2_rltUctt = std::accumulate(vRltUctt.begin(), vRltUctt.end(), 0.0, [](const double & a, const double & b) {return a + b*b; });
+// 
+// 	double uctt_rms = std::sqrt(sum2_rltUctt / nnn);
+// 
+// 	// 这是用的每个物点的绝对不确定度的综合RMS，没有排除尺度的影响
+// 	double rms_sigmaObjPt = std::sqrt(sum2_sigmaObjPt / n);
 
 	return l;
 }

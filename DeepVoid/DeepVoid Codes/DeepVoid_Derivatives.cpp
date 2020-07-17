@@ -12508,7 +12508,7 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 									  double thresh_inlier /*= 1.5*/			// input:	用来判断内点的重投影残差阈值
 									  )
 {
-	// 统计有哪些需要进行前方交互的特征轨迹
+	// 统计有哪些需要进行前方交会的特征轨迹
 	typedef std::pair<Point3d,std::pair<int,double>> pair_XYZ_n_e; // <XYZi, ni, ei> 分别存储候选物点的坐标、内点个数和重投影残差
 	typedef std::vector<pair_XYZ_n_e> vec_wrdpt_candidate;
 	// 这里是统计的需要进行前方交会的特征轨迹

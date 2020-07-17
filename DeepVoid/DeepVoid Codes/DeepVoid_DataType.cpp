@@ -3732,3 +3732,39 @@ void DeepVoid::drawMatchesRefImg(const cv::Mat & img1,									// input: the ref
 	cv::drawKeypoints(outImg, matchedKeyPts1, outImg, matchColor);
 	cv::drawKeypoints(outImg, matchedFASTPts1, outImg, Scalar(255, 255, 0));
 }
+
+// 20200717，给定相对不确定度水平，给出相应的色彩值（RG色彩域），服务于点云不确定度可视化
+void DeepVoid::getRGColorforRelativeUncertainty(double uctt, /* input: the given relative uncertainty */ 
+												double val_worst, /* input: the worst value for relative uncertainty, which is set to color Red */ 
+												double val_best, /* input: the best value for relative uncertainty, which is set to color Green */
+												uchar & r, /* output: the computed R */ 
+												uchar & g, /* output: the computed G */ 
+												uchar & b /* output: the computed B */
+												)
+{
+	double uctt_log = -std::log10(uctt);
+	double worst_log = -std::log10(val_worst);
+	double best_log = -std::log10(val_best);
+
+	if (uctt_log < worst_log)
+	{
+		r = 255;
+		g = 0;
+		b = 0;
+	} 
+	else if (uctt_log > best_log)
+	{
+		r = 0;
+		g = 255;
+		b = 0;
+	} 
+	else
+	{
+		// 计算 RG 色彩域的色相角
+		double ang = 90 * (uctt_log - worst_log) / (best_log - worst_log);
+
+		r = 255 * DeepVoid::cosd(ang);
+		g = 255 * DeepVoid::sind(ang);
+		b = 0;
+	}	
+}

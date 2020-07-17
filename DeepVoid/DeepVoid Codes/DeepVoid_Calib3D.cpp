@@ -40894,3 +40894,74 @@ void DeepVoid::get_pos_focalpt_ydir(const Matx33d & R,		// input: rotation matri
 	y_dir.y = Xw(1);
 	y_dir.z = Xw(2);
 }
+
+// 20200716，任意给定两个向量，计算其夹角大小（0-180°）
+double DeepVoid::angleBetween3DVecs(const Matx31d & v1, const Matx31d & v2)
+{
+	double n1 = cv::norm(v1);
+	double n2 = cv::norm(v2);
+
+	cv::Matx<double, 1, 1> cosa = v1.t() * v2;
+	double tmp = cosa(0) / (n1*n2);
+
+	if (tmp > 1)
+	{
+		tmp = 1;
+	}
+	if (tmp < -1)
+	{
+		tmp = -1;
+	}
+
+	double ang = std::acos(tmp)*R2D; // 0-180
+
+	return ang;
+}
+
+double DeepVoid::angleBetween3DVecs(const Matx13d & v1, const Matx13d & v2)
+{
+	return angleBetween3DVecs(v1.t(), v2.t());
+}
+
+// 20200716，给出输入任意两个向量之间的最大夹角值（0-180°）
+double DeepVoid::maxAngleBetween3DVecs(const vector<Matx31d>& vs)
+{
+	int n = vs.size();
+
+	if (n < 2)
+	{
+		return -100;
+	}
+
+	vector<double> angs;
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Matx31d & v1 = vs[i];
+
+		for (int j = i + 1; j < n; ++j)
+		{
+			const Matx31d & v2 = vs[j];
+
+			angs.push_back(angleBetween3DVecs(v1, v2));
+		}
+	}
+
+	std::sort(angs.begin(), angs.end(), [](const double & a, const double & b) {return a > b; });
+
+	return angs[0];
+}
+
+double DeepVoid::maxAngleBetween3DVecs(const vector<Matx13d> & vs)
+{
+	vector<Matx31d> vts;
+
+	int n = vs.size();
+
+	for (int i = 0; i < n; ++i)
+	{
+		vts.push_back(vs[i].t());
+	}
+
+	return maxAngleBetween3DVecs(vts);
+}

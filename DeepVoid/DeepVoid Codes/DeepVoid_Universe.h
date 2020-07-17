@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <numeric> // 20200715, in order to use std::accumulate()
 #include <omp.h> // 20150211, to use OpenMP
 
 #include "DeepVoid Codes/DeepVoid_DataType.h"

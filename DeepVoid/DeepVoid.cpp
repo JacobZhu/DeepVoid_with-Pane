@@ -436,7 +436,7 @@ UINT SfM(LPVOID param)
 	int i,j,k,ii,jj;
 
 	int nSubFeats = 150; // Changchang Wu 文章中该值是 100，考虑到 sift 特征点有不少是重的（存在不同的特征主方向），因此这里放宽到 150
-	int nMaxFeats = 8192; // 参考 Changchang Wu 的文章
+	int nMaxFeats = 2048/*8192*/; // 参考 Changchang Wu 的文章
 
 	CString strInfo;
 
@@ -662,53 +662,54 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20151206 橘子洲毛泽东像
-		//double fx = /*1100*/849.812399662762910;
-		//double fy = /*1100*/849.028798494762330;
-		//pApp->m_vCams[i].fx = fx;
-		//pApp->m_vCams[i].fy = fy;
-		//pApp->m_vCams[i].s  = 0;
-		//pApp->m_vCams[i].cx = 401.558250358447480;
-		//pApp->m_vCams[i].cy = 273.689303692577480;
-
-		//pApp->m_vCams[i].m_K(0,0) = fx;
-		//pApp->m_vCams[i].m_K(1,1) = fy;
-		//pApp->m_vCams[i].m_K(0,1) = 0;
-		//pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
-		//pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
-		//pApp->m_vCams[i].m_K(2,2) = 1;
-		//pApp->m_vCams[i].m_bCalibed = true;
+// 		double fx = /*1100*/849.812399662762910;
+// 		double fy = /*1100*/849.028798494762330;
+// 		pApp->m_vCams[i].fx = fx;
+// 		pApp->m_vCams[i].fy = fy;
+// 		pApp->m_vCams[i].s  = 0;
+// 		pApp->m_vCams[i].cx = 401.558250358447480;
+// 		pApp->m_vCams[i].cy = 273.689303692577480;
+// 
+// 		pApp->m_vCams[i].m_K(0,0) = fx;
+// 		pApp->m_vCams[i].m_K(1,1) = fy;
+// 		pApp->m_vCams[i].m_K(0,1) = 0;
+// 		pApp->m_vCams[i].m_K(0,2) = 401.558250358447480;
+// 		pApp->m_vCams[i].m_K(1,2) = 273.689303692577480;
+// 		pApp->m_vCams[i].m_K(2,2) = 1;
+// 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200519 涿州测量
-		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
-		pApp->m_vCams[i].fx = f;
-		pApp->m_vCams[i].fy = f;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 501.5;
-		pApp->m_vCams[i].cy = 500.5;
-
-		pApp->m_vCams[i].m_K(0, 0) = f;
-		pApp->m_vCams[i].m_K(1, 1) = f;
-		pApp->m_vCams[i].m_K(0, 1) = 0;
-		pApp->m_vCams[i].m_K(0, 2) = 501.5;
-		pApp->m_vCams[i].m_K(1, 2) = 500.5;
-		pApp->m_vCams[i].m_K(2, 2) = 1;
-		pApp->m_vCams[i].m_bCalibed = true;
-
-		// 20200626 四时田园“马雕塑”
-		//double f = /*521.2902*/657.1836;
+		//double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
 		//pApp->m_vCams[i].fx = f;
 		//pApp->m_vCams[i].fy = f;
-		//pApp->m_vCams[i].s = 0;
-		//pApp->m_vCams[i].cx = 399.5;
-		//pApp->m_vCams[i].cy = 299.5;
+		//pApp->m_vCams[i].s  = 0;
+		//pApp->m_vCams[i].cx = 501.5;
+		//pApp->m_vCams[i].cy = 500.5;
 
 		//pApp->m_vCams[i].m_K(0, 0) = f;
 		//pApp->m_vCams[i].m_K(1, 1) = f;
 		//pApp->m_vCams[i].m_K(0, 1) = 0;
-		//pApp->m_vCams[i].m_K(0, 2) = 399.5;
-		//pApp->m_vCams[i].m_K(1, 2) = 299.5;
+		//pApp->m_vCams[i].m_K(0, 2) = 501.5;
+		//pApp->m_vCams[i].m_K(1, 2) = 500.5;
 		//pApp->m_vCams[i].m_K(2, 2) = 1;
 		//pApp->m_vCams[i].m_bCalibed = true;
+
+		// 20200626 四时田园“马雕塑”
+		// iphone se2 rear camera parameters
+		double f = /*521.2902*/657.1836;
+		pApp->m_vCams[i].fx = f;
+		pApp->m_vCams[i].fy = f;
+		pApp->m_vCams[i].s = 0;
+		pApp->m_vCams[i].cx = 299.5/*399.5*/;
+		pApp->m_vCams[i].cy = 399.5/*299.5*/;
+
+		pApp->m_vCams[i].m_K(0, 0) = f;
+		pApp->m_vCams[i].m_K(1, 1) = f;
+		pApp->m_vCams[i].m_K(0, 1) = 0;
+		pApp->m_vCams[i].m_K(0, 2) = 299.5/*399.5*/;
+		pApp->m_vCams[i].m_K(1, 2) = 399.5/*299.5*/;
+		pApp->m_vCams[i].m_K(2, 2) = 1;
+		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -11520,6 +11521,19 @@ void CDeepVoidApp::On3dview()
 	wnd3d.setBackgroundColor(); // black by default
 //	wnd3d.setBackgroundMeshLab(); // MeshLab style background
 
+	CString str;
+
+	viz::Color color = viz::Color::white(); // 默认画白色
+
+	// 画不确定度椭球的颜色
+	vector<viz::Color> colors;
+	colors.push_back(viz::Color::Color(255, 255, 0));	// 青
+	colors.push_back(viz::Color::Color(255, 0, 255));	// 品
+	colors.push_back(viz::Color::Color(0, 255, 255));	// 黄
+
+	// 显示多少倍sigma的不确定度椭球
+	double nSigma = 3.0;
+
 	// 先显示三维点云
 	// 要显示出来的点云点及其颜色
 	int n_minInilier = 3;
@@ -11576,6 +11590,33 @@ void CDeepVoidApp::On3dview()
 
 		pts_output.push_back(iter_wrdpt->second.m_pt);
 		colors_output.push_back(color);
+
+		// 20200712，把物点位置不确定度椭球可视化
+		Matx31d XYZ;
+		XYZ(0) = iter_wrdpt->second.m_pt.x;
+		XYZ(1) = iter_wrdpt->second.m_pt.y;
+		XYZ(2) = iter_wrdpt->second.m_pt.z;
+
+		Point3d ptStart, ptEnd;
+		// 有 3 个互为正交的轴要画
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx31d vec = nSigma*iter_wrdpt->second.m_uncertaintyEllipsoid.row(ii).t();
+			Matx31d XYZ_start = XYZ - vec;
+			Matx31d XYZ_end = XYZ + vec;
+
+			ptStart.x = XYZ_start(0);
+			ptStart.y = XYZ_start(1);
+			ptStart.z = XYZ_start(2);
+
+			ptEnd.x = XYZ_end(0);
+			ptEnd.y = XYZ_end(1);
+			ptEnd.z = XYZ_end(2);
+
+			str.Format("wrdpt ellipsoid %d	%d", pts_output.size() - 1, ii);
+
+			wnd3d.showWidget(str.GetBuffer(), viz::WLine(ptStart, ptEnd, colors[ii]));
+		}
 	}
 
 	int n_pts_output = pts_output.size();
@@ -11602,9 +11643,7 @@ void CDeepVoidApp::On3dview()
 	wnd3d.showWidget("cloud", cld);
 
 	// 再显示相机坐标系及图像
-	int m = m_vCams.size();
-
-	viz::Color color = viz::Color::white(); // 默认画白色
+	int m = m_vCams.size();	
 
 	vector<cv::Affine3d> imgTraj;
 
@@ -11630,7 +11669,7 @@ void CDeepVoidApp::On3dview()
 
 		imgTraj.push_back(pose);
 		
-		CString str = m_vImgPaths[i];
+		str = m_vImgPaths[i];
 
 		Mat img = imread(str.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
 		
@@ -11643,6 +11682,28 @@ void CDeepVoidApp::On3dview()
 
 		// 标出图像序号
 		wnd3d.showWidget(str.GetBuffer(), viz::WText3D(str.GetBuffer(), cv::Point3d(c), 0.5, true, color));
+
+		// 20200712，把光心位置不确定度椭球可视化
+		Point3d ptStart, ptEnd;
+		// 有 3 个互为正交的轴要画
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx31d vec = nSigma*cam.m_optCtrUncertEllipsoid.row(ii).t();
+			Matx31d XYZ_start = C - vec;
+			Matx31d XYZ_end = C + vec;
+
+			ptStart.x = XYZ_start(0);
+			ptStart.y = XYZ_start(1);
+			ptStart.z = XYZ_start(2);
+
+			ptEnd.x = XYZ_end(0);
+			ptEnd.y = XYZ_end(1);
+			ptEnd.z = XYZ_end(2);
+
+			str.Format("%d	%d", i, ii);
+
+			wnd3d.showWidget(str.GetBuffer(), viz::WLine(ptStart, ptEnd, colors[ii]));
+		}
 	}
 
 	// 显示图像移动路径
