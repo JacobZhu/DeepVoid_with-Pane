@@ -41,7 +41,8 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 	for (int i = 0; i < nCount; ++i)
 	{
 		char * pData = (char *)GetItemData(i);
-		if(pData)
+
+		if (pData)
 		{
 			free(pData);
 		}
@@ -50,7 +51,11 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 	for (int j = 0; j < theApp.m_vPImgCocs.size(); ++j)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[j];
-		pDoc->OnCloseDocument(); // close all the opened original images
+
+		if (pDoc)
+		{
+			pDoc->OnCloseDocument(); // close all the opened original images
+		}		
 	}
 
 	DeleteAllItems();
@@ -58,6 +63,7 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 	theApp.m_vCams.clear();		// delete all corresponding cam data
 	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
 	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
+	theApp.m_vPImgCocs.clear();
 
 	m_w = w;
 	m_h = h;
@@ -86,7 +92,8 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 	for (int i = 0; i < nCount; ++i)
 	{
 		char * pData = (char *)GetItemData(i);
-		if(pData)
+
+		if (pData)
 		{
 			free(pData);
 		}
@@ -95,7 +102,11 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 	for (int j = 0; j < theApp.m_vPImgCocs.size(); ++j)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[j];
-		pDoc->OnCloseDocument(); // close all the opened original images
+
+		if (pDoc)
+		{
+			pDoc->OnCloseDocument(); // close all the opened original images
+		}		
 	}
 
 	DeleteAllItems();
@@ -103,6 +114,7 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 	theApp.m_vCams.clear();		// delete all corresponding cam data
 	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
 	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
+	theApp.m_vPImgCocs.clear();
 
 	SetExtendedStyle(LVS_EX_CHECKBOXES);
 
@@ -228,6 +240,7 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 	// 20200719，把图保留在内存里
 	theApp.m_imgsOriginal.push_back(image);
 	theApp.m_imgsProcessed.push_back(image.clone()); // 20200720，如果不是 clone 的话，两张图就共用一个图像数据块
+	theApp.m_vPImgCocs.push_back(NULL);
 	
 	return TRUE;
 }
@@ -286,7 +299,17 @@ void CImageListCtrl::OpenSelImages(void)
 
 		CString strFileName = GetFileNameOnly(strDir);
 
-		auto iter_found = std::find_if(theApp.m_vPImgCocs.begin(), theApp.m_vPImgCocs.end(), [strFileName](const CImageDoc * p) {return p->GetTitle() == strFileName; });
+		auto iter_found = std::find_if(theApp.m_vPImgCocs.begin(), theApp.m_vPImgCocs.end(), [strFileName](const CImageDoc * p) 
+		{
+			if (p)
+			{
+				return p->GetTitle() == strFileName;
+			}
+			else
+			{
+				return false;
+			}
+		});
 
 		if (iter_found != theApp.m_vPImgCocs.end())
 		{
@@ -302,7 +325,8 @@ void CImageListCtrl::OpenSelImages(void)
 // 			continue;
 // 		}
 
-		theApp.m_vPImgCocs.push_back(pDoc);
+//		theApp.m_vPImgCocs.push_back(pDoc);
+		theApp.m_vPImgCocs[nItem] = pDoc;
 
 		pDoc->SetTitle(strFileName); // set document title
 		pDoc->m_pImgOriginal = &theApp.m_imgsOriginal[nItem];	// 20200719，ImageDoc 类中不再存放图像，图像统一全存在 theApp 图像向量容器中

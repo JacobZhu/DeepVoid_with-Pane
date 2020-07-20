@@ -136,7 +136,7 @@ void CImageDoc::OnFeaturesSurf()
 void CImageDoc::OnCloseDocument()
 {
 	// TODO: Add your specialized code here and/or call the base class
-	for (int i = 0; i < theApp.m_vPImgCocs.size(); ++i)
+	/*for (int i = 0; i < theApp.m_vPImgCocs.size(); ++i)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[i];
 		if (pDoc == this)
@@ -144,6 +144,13 @@ void CImageDoc::OnCloseDocument()
 			theApp.m_vPImgCocs.erase(theApp.m_vPImgCocs.begin() + i);
 			break;
 		}
+	}*/
+
+	auto iter_found = std::find_if(theApp.m_vPImgCocs.begin(), theApp.m_vPImgCocs.end(), [this](const CImageDoc * p) {return p == this; });
+
+	if (iter_found != theApp.m_vPImgCocs.end())
+	{
+		*iter_found = NULL;
 	}
 
 	CDocument::OnCloseDocument();
