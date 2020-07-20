@@ -19,7 +19,7 @@ public:
 	int m_idxImgDisplayScale;
 	BOOL m_bDragImg;
 
-	BOOL m_bShowHandled;				// if currently the handled image is showing
+	BOOL m_bShowProcessed;				// if currently the handled image is showing
 
 	void SetImageScrollSize(void);
 

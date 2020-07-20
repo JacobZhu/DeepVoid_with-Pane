@@ -37,8 +37,8 @@ END_MESSAGE_MAP()
 BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 {
 	int nCount = GetItemCount();
-	int i;
-	for (i=0;i<nCount;i++)
+	
+	for (int i = 0; i < nCount; ++i)
 	{
 		char * pData = (char *)GetItemData(i);
 		if(pData)
@@ -47,8 +47,7 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 		}
 	}
 
-	int j;
-	for (j=0;j<theApp.m_vPImgCocs.size();j++)
+	for (int j = 0; j < theApp.m_vPImgCocs.size(); ++j)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[j];
 		pDoc->OnCloseDocument(); // close all the opened original images
@@ -57,6 +56,8 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 	DeleteAllItems();
 	m_imgList.DeleteImageList();
 	theApp.m_vCams.clear();		// delete all corresponding cam data
+	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
+	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
 
 	m_w = w;
 	m_h = h;
@@ -81,8 +82,8 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 BOOL CImageListCtrl::InitImgListCtrl(void)
 {
 	int nCount = GetItemCount();
-	int i;
-	for (i=0;i<nCount;i++)
+
+	for (int i = 0; i < nCount; ++i)
 	{
 		char * pData = (char *)GetItemData(i);
 		if(pData)
@@ -91,8 +92,7 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 		}
 	}
 
-	int j;
-	for (j=0;j<theApp.m_vPImgCocs.size();j++)
+	for (int j = 0; j < theApp.m_vPImgCocs.size(); ++j)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[j];
 		pDoc->OnCloseDocument(); // close all the opened original images
@@ -101,6 +101,8 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 	DeleteAllItems();
 	m_imgList.DeleteImageList();
 	theApp.m_vCams.clear();		// delete all corresponding cam data
+	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
+	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
 
 	SetExtendedStyle(LVS_EX_CHECKBOXES);
 
@@ -149,15 +151,15 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 	if (8 == bpp)
 	{
 		RGBQUAD * palette = bmi->bmiColors;
-		int i;
-		for (i=0;i<256;i++)
+		
+		for (int i = 0; i < 256; ++i)
 		{
 			palette[i].rgbBlue = palette[i].rgbGreen = palette[i].rgbRed = (BYTE)i;
 			palette[i].rgbReserved = 0;
 		}
 	}
 
-	if ((img_w*img_c)%4 != 0 && image.isContinuous())
+	if ((img_w*img_c) % 4 != 0 && image.isContinuous())
 	{
 		CvSize size;
 		size.width = img_w;	size.height = img_h;
@@ -222,6 +224,10 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 	// add a new corresponding cam_data
 	cam_data cam;
 	theApp.m_vCams.push_back(cam);
+
+	// 20200719，把图保留在内存里
+	theApp.m_imgsOriginal.push_back(image);
+	theApp.m_imgsProcessed.push_back(image.clone()); // 20200720，如果不是 clone 的话，两张图就共用一个图像数据块
 	
 	return TRUE;
 }
@@ -241,8 +247,8 @@ void CImageListCtrl::DeleteSelImages(void)
 			str.Format(_T("%s"), pData);
 			str = str.Trim();
 			str = GetFileNameOnly(str);
-			int i;
-			for (i=0;i<theApp.m_vPImgCocs.size();i++)
+			
+			for (int i = 0; i < theApp.m_vPImgCocs.size(); ++i)
 			{
 				CImageDoc * pDoc = theApp.m_vPImgCocs[i];
 				if(str.CompareNoCase(pDoc->GetTitle()) == 0) // if corresponding original image has been opened then close this image first
@@ -257,7 +263,9 @@ void CImageListCtrl::DeleteSelImages(void)
 
 		DeleteItem(nItem);
 
-		theApp.m_vCams.erase(theApp.m_vCams.begin()+nItem); // delete corresponding cam_data
+		theApp.m_vCams.erase(theApp.m_vCams.begin() + nItem); // delete corresponding cam_data
+		theApp.m_imgsOriginal.erase(theApp.m_imgsOriginal.begin() + nItem); // delete all corresponding original images
+		theApp.m_imgsProcessed.erase(theApp.m_imgsProcessed.begin() + nItem); // delete all corresponding processed images
 
 		pos = GetFirstSelectedItemPosition();
 	}
@@ -270,24 +278,45 @@ void CImageListCtrl::OpenSelImages(void)
 	while (pos)
 	{
 		int nItem = GetNextSelectedItem(pos);
+
 		char * pDir = (char *)GetItemData(nItem);
 
 		CString strDir;
 		strDir.Format(_T("%s"), pDir);
 
-		CImageDoc * pDoc = (CImageDoc *)theApp.CreateDocument(theApp.m_pTemplateImgDoc);
+		CString strFileName = GetFileNameOnly(strDir);
 
-		if (!(pDoc->m_image = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED)).data)
+		auto iter_found = std::find_if(theApp.m_vPImgCocs.begin(), theApp.m_vPImgCocs.end(), [strFileName](const CImageDoc * p) {return p->GetTitle() == strFileName; });
+
+		if (iter_found != theApp.m_vPImgCocs.end())
 		{
-			pDoc->OnCloseDocument(); // if the image is unreadable, then close this document
 			continue;
 		}
 
+		CImageDoc * pDoc = (CImageDoc *)theApp.CreateDocument(theApp.m_pTemplateImgDoc);
+
+		// 20200719，在 AddOneImage 时已经把图都全读进内存了，这里不再需要读图像文件了。
+// 		if (!(pDoc->m_image = imread(strDir.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED)).data)
+// 		{
+// 			pDoc->OnCloseDocument(); // if the image is unreadable, then close this document
+// 			continue;
+// 		}
+
 		theApp.m_vPImgCocs.push_back(pDoc);
 
-		pDoc->SetTitle(GetFileNameOnly(strDir)); // set document title
-		pDoc->m_pImgView->m_pImage = &pDoc->m_image;
-		pDoc->m_pFeatures = &theApp.m_vCams[nItem].m_feats; // associate the doc's feature struct pointer with corresponding cam_data's feature struct
+		pDoc->SetTitle(strFileName); // set document title
+		pDoc->m_pImgOriginal = &theApp.m_imgsOriginal[nItem];	// 20200719，ImageDoc 类中不再存放图像，图像统一全存在 theApp 图像向量容器中
+		pDoc->m_pImgProcessed = &theApp.m_imgsProcessed[nItem];	// 20200719，ImageDoc 类中不再存放图像，图像统一全存在 theApp 图像向量容器中
+		if (pDoc->m_pImgView->m_bShowProcessed)
+		{
+			pDoc->m_pImgView->m_pImage = pDoc->m_pImgProcessed/*&pDoc->m_image*/; // 20200719
+		} 
+		else
+		{
+			pDoc->m_pImgView->m_pImage = pDoc->m_pImgOriginal;
+		}
+		pDoc->m_pCam = &theApp.m_vCams[nItem];
+//		pDoc->m_pFeatures = &theApp.m_vCams[nItem].m_feats; // associate the doc's feature struct pointer with corresponding cam_data's feature struct
 		pDoc->m_pImgView->SetImageScrollSize();
 		pDoc->m_pImgView->Invalidate(FALSE);
 	}
@@ -300,7 +329,7 @@ void CImageListCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	switch(nChar) 
 	{
 	case VK_DELETE:
-		DeleteSelImages();
+//		DeleteSelImages(); // 20200719，不再让随便删除图像了。
 		break;
 
 	case VK_RETURN:
@@ -314,8 +343,8 @@ void CImageListCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	if ((nChar == 'a' || nChar == 'A') && GetKeyState(VK_CONTROL))
 	{
 		int count = GetItemCount();
-		int i;
-		for (i=0; i<count; i++)
+		
+		for (int i = 0; i < count; ++i)
 		{
 			SetItemState(i, LVIS_SELECTED, LVIS_SELECTED);
 		}
@@ -328,8 +357,8 @@ void CImageListCtrl::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 void CImageListCtrl::OnDestroy()
 {
 	int nCount = GetItemCount();
-	int i;
-	for (i=0;i<nCount;i++)
+	
+	for (int i = 0; i < nCount; ++i)
 	{
 		char * pData = (char *)GetItemData(i);
 		if(pData)

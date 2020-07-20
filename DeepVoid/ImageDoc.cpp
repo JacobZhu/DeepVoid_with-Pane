@@ -17,7 +17,10 @@ IMPLEMENT_DYNCREATE(CImageDoc, CDocument)
 CImageDoc::CImageDoc()
 {
 	m_pImgView = NULL;
-	m_pFeatures = NULL;
+	m_pImgOriginal = NULL;
+	m_pImgProcessed = NULL;
+	m_pCam = NULL;
+//	m_pFeatures = NULL;
 }
 
 BOOL CImageDoc::OnNewDocument()
@@ -133,13 +136,12 @@ void CImageDoc::OnFeaturesSurf()
 void CImageDoc::OnCloseDocument()
 {
 	// TODO: Add your specialized code here and/or call the base class
-	int i;
-	for (i=0;i<theApp.m_vPImgCocs.size();i++)
+	for (int i = 0; i < theApp.m_vPImgCocs.size(); ++i)
 	{
 		CImageDoc * pDoc = theApp.m_vPImgCocs[i];
 		if (pDoc == this)
 		{
-			theApp.m_vPImgCocs.erase(theApp.m_vPImgCocs.begin()+i);
+			theApp.m_vPImgCocs.erase(theApp.m_vPImgCocs.begin() + i);
 			break;
 		}
 	}

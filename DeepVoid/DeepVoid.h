@@ -27,6 +27,9 @@ public:
 	CMainFrame * m_pMainFrame;	// zhaokunz, 20140302, direct mainframe pointer, no need to convert pointer type
 	vector <CImageDoc *> m_vPImgCocs;
 
+	std::vector<cv::Mat> m_imgsOriginal; // 20200719，还是把选择的图像都读进内存
+	std::vector<cv::Mat> m_imgsProcessed;// 20200719，这是内容相较于原图已经发生变化的图，比方说画了提取的特征点在上面的图
+
 	ULONG_PTR m_gdiplusToken; // zhaokunz, 20140226, add GDI+
 
 	CString m_pathStereoImg0;

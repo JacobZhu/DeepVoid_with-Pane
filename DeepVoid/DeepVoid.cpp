@@ -436,7 +436,7 @@ UINT SfM(LPVOID param)
 	int i,j,k,ii,jj;
 
 	int nSubFeats = 150; // Changchang Wu 文章中该值是 100，考虑到 sift 特征点有不少是重的（存在不同的特征主方向），因此这里放宽到 150
-	int nMaxFeats = 2048/*8192*/; // 参考 Changchang Wu 的文章
+	int nMaxFeats = /*4096*//*2048*/8192; // 参考 Changchang Wu 的文章
 
 	CString strInfo;
 
@@ -475,6 +475,7 @@ UINT SfM(LPVOID param)
 		imgHeight = img.rows;
 			
 		cam_data & cam = pApp->m_vCams[i];
+		cv::Mat & imgDraw = pApp->m_imgsProcessed[i];
 
 		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
 		// create a feature class
@@ -542,7 +543,23 @@ UINT SfM(LPVOID param)
 		cam.m_feats.descriptors = descrps_all.rowRange(cv::Range(0, nSmaller));
 
 		cam.m_feats.type = Feature_SIFT_FAST;
+		
+		// 按类别画到图里去
+		int markerSize = 5;
+		int thickness = 1;
+		cv::LineTypes lineType = cv::LineTypes::FILLED;
 
+		for (auto iter = cam.m_feats.key_points.begin(); iter != cam.m_feats.key_points.end(); ++iter)
+		{
+			if (fabs(iter->angle + 1) < 1.0E-12) // 目前来看只有 fast 特征点的 angle 恒为-1，sift 特征点角度的取值范围为0-360°
+			{
+				cv::drawMarker(imgDraw, iter->pt, cv::Scalar(0, 255, 255), cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
+				continue;
+			}
+
+			cv::drawMarker(imgDraw, iter->pt, cv::Scalar(0, 255, 0), cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
+		}
+		
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 		KeyPoint kpt_pre;
 		kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
@@ -1147,12 +1164,12 @@ UINT SfM(LPVOID param)
 
 			// 2. 稀疏光束法平差。只利用现有的物点，还没有利用新加入的图像前方交会新的物点
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
-			double info[10], rltUctt;
+			double info[10], rltUctt, uctt_f;
 			try
 			{
 //				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 				// 20200607 同时优化所有图像共有的等效焦距 f
-				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 			}
 			catch (cv::Exception & e)
 			{
@@ -1161,8 +1178,8 @@ UINT SfM(LPVOID param)
 				str+="	error happened in SBA";
 				AfxMessageBox(str);
 			}
-			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt (1 sigma): %f",
-				map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt);
+			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+				map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
@@ -1221,12 +1238,12 @@ UINT SfM(LPVOID param)
 
 	// 最后总的来一次稀疏光束法平差
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
-	double info[10], rltUctt;
+	double info[10], rltUctt, uctt_f;
 //	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
 	// 20200607 同时优化所有图像共有的等效焦距 f
-	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
-	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt (1 sigma): %f",
-		map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt);
+	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+		map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 	std::map<int,int> hist_cloudpoint_inlier;

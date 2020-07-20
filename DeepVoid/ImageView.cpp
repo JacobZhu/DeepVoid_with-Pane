@@ -19,7 +19,7 @@ CImageView::CImageView()
 	m_idxImgDisplayScale = FITSCALENUM;
 
 	m_bDragImg = FALSE;
-	m_bShowHandled = FALSE;
+	m_bShowProcessed = TRUE;
 }
 
 CImageView::~CImageView()
@@ -272,19 +272,19 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		OnHScroll(SB_LINERIGHT,0,NULL);
 		break;
 	case VK_SPACE:
-		if (m_pMVSDoc->m_imgHandled.empty())
+// 		if (m_pMVSDoc->m_imgHandled.empty())
+// 		{
+// 			return;
+// 		}
+		if (!m_bShowProcessed)
 		{
-			return;
-		}
-		if (!m_bShowHandled)
-		{
-			m_pImage = &m_pMVSDoc->m_imgHandled;
-			m_bShowHandled = TRUE;
+			m_pImage = m_pMVSDoc->m_pImgProcessed;
+			m_bShowProcessed = TRUE;
 		} 
 		else
 		{
-			m_pImage = &m_pMVSDoc->m_image;
-			m_bShowHandled = FALSE;
+			m_pImage = m_pMVSDoc->m_pImgOriginal;
+			m_bShowProcessed = FALSE;
 		}
 		Invalidate(TRUE);
 		break;

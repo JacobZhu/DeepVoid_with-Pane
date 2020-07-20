@@ -12,10 +12,10 @@ public:
 	virtual ~CImageDoc();
 
 	CImageView * m_pImgView;			// related view class
-	cv::Mat m_image;					// corresponding image
-	cv::Mat m_imgHandled;				// image has been handled with
-	// Features m_features;				// features
-	Features * m_pFeatures;				// feature struct pointer to corresponding cam_data's feature struct
+	cv::Mat * m_pImgOriginal;			// pointer to original image
+	cv::Mat * m_pImgProcessed;			// pointer to processed image
+	DeepVoid::cam_data * m_pCam;		// pointer to cam_data structure
+//	Features * m_pFeatures;				// feature struct pointer to corresponding cam_data's feature struct
 
 
 #ifndef _WIN32_WCE
