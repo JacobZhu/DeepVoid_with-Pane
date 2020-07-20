@@ -9,7 +9,6 @@
 
 #include "resource.h"       // main symbols
 
-
 // CDeepVoidApp:
 // See DeepVoid.cpp for the implementation of this class
 //
@@ -132,3 +131,7 @@ public:
 };
 
 extern CDeepVoidApp theApp;
+
+extern HCURSOR hCursorArrow;
+extern HCURSOR hCursorCross;
+extern HCURSOR hCursorGrab;

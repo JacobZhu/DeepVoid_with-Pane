@@ -20,6 +20,8 @@ CImageView::CImageView()
 
 	m_bDragImg = FALSE;
 	m_bShowProcessed = TRUE;
+
+	m_bStartExtractPt = FALSE;
 }
 
 CImageView::~CImageView()
@@ -33,6 +35,8 @@ BEGIN_MESSAGE_MAP(CImageView, CScrollView)
 	ON_WM_MOUSEWHEEL()
 	ON_WM_MOUSEMOVE()
 	ON_WM_KEYDOWN()
+	ON_WM_LBUTTONDOWN()
+	ON_WM_SETCURSOR()
 END_MESSAGE_MAP()
 
 
@@ -111,6 +115,53 @@ void CImageView::SetImageScrollSize(void)
 	scrollSize.cy = m_pImage->rows * ImageDisplayScales[m_idxImgDisplayScale];
 
 	SetScrollSizes(MM_TEXT, scrollSize);
+}
+
+cv::Point2d CImageView::ExtractPoint(int * pFlag)
+{
+	m_flagPointExtracted = 0;
+	m_bStartExtractPt = TRUE;
+	SetCursor(hCursorCross);
+
+	MSG msg;
+	do
+	{
+		GetMessage(&msg,NULL,0, 0);
+		if(msg.message == WM_COMMAND)
+		{
+// 			if(msg.wParam == ID_PANDU_STOP)
+// 			{
+// 				m_flagPointSelected = -1;
+// 			}
+		}
+		else
+		{
+			if(msg.message == WM_KEYDOWN)
+			{
+				if (msg.wParam == VK_ESCAPE)
+				{
+					m_flagPointExtracted = -1;	
+				} 
+			
+				SendMessage(msg.message,msg.wParam,msg.lParam);
+			}
+			else
+			{
+				DispatchMessage(&msg);
+			}
+		}
+	} while(m_flagPointExtracted == 0);
+
+	m_bStartExtractPt = FALSE;
+
+	if (pFlag)
+	{
+		(*pFlag) = m_flagPointExtracted;
+	}
+
+	SetCursor(hCursorArrow);
+
+	return m_ptExtracted;
 }
 
 
@@ -211,7 +262,7 @@ void CImageView::OnMouseMove(UINT nFlags, CPoint point)
 	int lPX = ( (pX) < 0 ? ((int)(pX-0.5)) : ((int)(pX+0.5)) ); // round it
 	int lPY = ( (pY) < 0 ? ((int)(pY-0.5)) : ((int)(pY+0.5)) ); // round it
 	
-	if (lPX<0 || lPY<0 || lPX>=m_pImage->cols || lPY>=m_pImage->rows)
+	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
 	{
 		return;
 	}
@@ -293,4 +344,65 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	}
 
 	CScrollView::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+
+void CImageView::OnLButtonDown(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	if (!m_pImage || m_pImage->empty())
+	{
+		return;
+	}
+
+	CPoint scrollPosition;
+	scrollPosition = GetScrollPosition();
+
+	double pX = (point.x + scrollPosition.x) / (ImageDisplayScales[m_idxImgDisplayScale]);
+	double pY = (point.y + scrollPosition.y) / (ImageDisplayScales[m_idxImgDisplayScale]);
+	int lPX = ((pX) < 0 ? ((int)(pX - 0.5)) : ((int)(pX + 0.5))); // round it
+	int lPY = ((pY) < 0 ? ((int)(pY - 0.5)) : ((int)(pY + 0.5))); // round it
+
+	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
+	{
+		return;
+	}
+
+	if (m_bStartExtractPt)
+	{
+		m_ptExtracted.x = pX;
+		m_ptExtracted.y = pY;
+//		Invalidate(FALSE); // 要等所提的点已经画到图像中了再刷新
+		m_flagPointExtracted = 1;
+	}
+
+	CScrollView::OnLButtonDown(nFlags, point);
+}
+
+
+BOOL CImageView::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	//设置鼠标形状的命令SetCursor在这个OnSetCursor里面才是有效的
+	if (nHitTest == HTCLIENT)
+	{
+		if (m_bDragImg)
+		{
+			SetCursor(hCursorGrab);
+		}
+		else if (m_bStartExtractPt)
+		{
+			SetCursor(hCursorCross);
+		}
+		else
+		{
+			SetCursor(hCursorArrow);
+		}
+
+		return TRUE;
+	}
+
+	return CScrollView::OnSetCursor(pWnd, nHitTest, message);
 }

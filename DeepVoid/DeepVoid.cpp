@@ -25,6 +25,9 @@
 #define new DEBUG_NEW
 #endif
 
+HCURSOR hCursorArrow;
+HCURSOR hCursorCross;
+HCURSOR hCursorGrab;
 
 // CDeepVoidApp
 
@@ -239,6 +242,10 @@ BOOL CDeepVoidApp::InitInstance()
 	// zhaokunz, 20140226, add GDI+
 	GdiplusStartupInput gdiplusStartupInput;
 	GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
+
+	hCursorArrow = LoadStandardCursor(IDC_ARROW);
+	hCursorCross = LoadStandardCursor(IDC_CROSS);
+	hCursorGrab = LoadStandardCursor(IDC_HAND);
 
 	return TRUE;
 }
@@ -706,37 +713,37 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200519 涿州测量
-		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+// 		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+// 		pApp->m_vCams[i].fx = f;
+// 		pApp->m_vCams[i].fy = f;
+// 		pApp->m_vCams[i].s  = 0;
+// 		pApp->m_vCams[i].cx = 501.5;
+// 		pApp->m_vCams[i].cy = 500.5;
+// 
+// 		pApp->m_vCams[i].m_K(0, 0) = f;
+// 		pApp->m_vCams[i].m_K(1, 1) = f;
+// 		pApp->m_vCams[i].m_K(0, 1) = 0;
+// 		pApp->m_vCams[i].m_K(0, 2) = 501.5;
+// 		pApp->m_vCams[i].m_K(1, 2) = 500.5;
+// 		pApp->m_vCams[i].m_K(2, 2) = 1;
+// 		pApp->m_vCams[i].m_bCalibed = true;
+
+		// 20200626 四时田园“马雕塑”
+		// iphone se2 rear camera parameters
+		double f = /*521.2902*/657.1836;
 		pApp->m_vCams[i].fx = f;
 		pApp->m_vCams[i].fy = f;
-		pApp->m_vCams[i].s  = 0;
-		pApp->m_vCams[i].cx = 501.5;
-		pApp->m_vCams[i].cy = 500.5;
+		pApp->m_vCams[i].s = 0;
+		pApp->m_vCams[i].cx = /*299.5*/399.5;
+		pApp->m_vCams[i].cy = /*399.5*/299.5;
 
 		pApp->m_vCams[i].m_K(0, 0) = f;
 		pApp->m_vCams[i].m_K(1, 1) = f;
 		pApp->m_vCams[i].m_K(0, 1) = 0;
-		pApp->m_vCams[i].m_K(0, 2) = 501.5;
-		pApp->m_vCams[i].m_K(1, 2) = 500.5;
+		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
+		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
 		pApp->m_vCams[i].m_K(2, 2) = 1;
 		pApp->m_vCams[i].m_bCalibed = true;
-
-		// 20200626 四时田园“马雕塑”
-		// iphone se2 rear camera parameters
-		//double f = /*521.2902*/657.1836;
-		//pApp->m_vCams[i].fx = f;
-		//pApp->m_vCams[i].fy = f;
-		//pApp->m_vCams[i].s = 0;
-		//pApp->m_vCams[i].cx = /*299.5*/399.5;
-		//pApp->m_vCams[i].cy = /*399.5*/299.5;
-
-		//pApp->m_vCams[i].m_K(0, 0) = f;
-		//pApp->m_vCams[i].m_K(1, 1) = f;
-		//pApp->m_vCams[i].m_K(0, 1) = 0;
-		//pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
-		//pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
-		//pApp->m_vCams[i].m_K(2, 2) = 1;
-		//pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -11540,6 +11547,22 @@ void CDeepVoidApp::On3dview()
 {
 	// TODO: Add your command handler code here
 //	SfM_ZZK::Draw3DScene(m_wnd3d, m_ptcloud, m_map_pointcloud, m_vCams, m_map_tracks, 2);
+
+	for (int i = 0; i < m_vCams.size(); ++i)
+	{
+		CImageDoc * pDoc = m_vPImgCocs[i];
+
+		cv::Mat & image = m_imgsProcessed[i];
+
+		int flag;
+
+		cv::Point2d pt = pDoc->m_pImgView->ExtractPoint(&flag);
+
+		cv::drawMarker(image, pt, cv::Scalar(255,255,255), cv::MarkerTypes::MARKER_CROSS, 5, 1, 4);
+
+		pDoc->m_pImgView->Invalidate(FALSE);
+	}
+	return;
 
 	// 初始化三维显示窗口
 	viz::Viz3d wnd3d("3D View");
