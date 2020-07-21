@@ -65,11 +65,17 @@ void CImageDoc::ExtractPointsContinuously()
 {
 	int flag = 0;
 
-	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+	std::vector<cv::KeyPoint> keypts;
 
 	do
 	{
 		cv::Point2d pt = m_pImgView->ExtractPoint(&flag);
+
+		if (flag != 1)
+		{
+			continue;
+		}
+
 		cv::Point2i pt_int;
 
 		pt_int.x = (int)pt.x;
@@ -78,28 +84,53 @@ void CImageDoc::ExtractPointsContinuously()
 		cv::drawMarker(*m_pImgProcessed, pt_int, cv::Scalar(255, 255, 255),
 			cv::MarkerTypes::MARKER_CROSS, 5, 1, cv::LineTypes::LINE_4);
 
-		cv::KeyPoint keypt;
-		keypt.pt.x = pt.x;
-		keypt.pt.y = pt.y;
-
 		m_pImgView->m_pImage = m_pImgProcessed;
 		m_pImgView->m_bShowProcessed = TRUE;
 
 		m_pImgView->Invalidate(FALSE);
 
-		//
-		// 生成特征描述向量
-		//cv::Mat descrps;
-		//f2d->compute(*m_pImgProcessed, keypt, descrps);
+		cv::KeyPoint keypt;
+		keypt.pt.x = pt.x;
+		keypt.pt.y = pt.y;
 
-		//// 暂时先合成个大的
-		//vector<KeyPoint> keypts_all = keypts_sift;
-		//keypts_all.insert(keypts_all.end(), keypts_fast.begin(), keypts_fast.end());
-
-		//cv::Mat descrps_all = descrps_sift.clone();
-		//descrps_all.push_back(descrps_fast);
-
+		keypts.push_back(keypt);
 	} while (flag != -1);
+
+	std::vector<cv::KeyPoint> & keypts_all = m_pCam->m_featsManual.key_points;
+	cv::Mat & descrps_all = m_pCam->m_featsManual.descriptors;
+
+	int nOld = keypts_all.size();
+	int nNew = keypts.size();
+
+	// 生成特征描述向量
+	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+	
+	cv::Mat descrps;
+	f2d->compute(*m_pImgOriginal, keypts, descrps);
+
+	// 合入已有的手提特征点向量	
+	keypts_all.insert(keypts_all.end(), keypts.begin(), keypts.end());	
+	descrps_all.push_back(descrps);
+
+	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+	for (int i = 0; i < nNew; ++i)
+	{
+		const cv::KeyPoint & keypt = keypts[i];
+
+		m_pCam->m_featsManual.tracks.push_back(-1);
+		m_pCam->m_featsManual.idx_pt.push_back(i + nOld);
+
+		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+		uchar r, g, b;
+		Vec3b rgb;
+		if (BilinearInterp(*m_pImgOriginal, keypt.pt.x, keypt.pt.y, r, g, b))
+		{
+			rgb[0] = b;
+			rgb[1] = g;
+			rgb[2] = r;
+		}
+		m_pCam->m_featsManual.rgbs.push_back(rgb);
+	}
 }
 
 void CImageDoc::Serialize(CArchive& ar)
