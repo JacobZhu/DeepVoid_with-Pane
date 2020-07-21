@@ -259,8 +259,10 @@ void CImageView::OnMouseMove(UINT nFlags, CPoint point)
 
 	double pX = (point.x + scrollPosition.x) / (ImageDisplayScales[m_idxImgDisplayScale]);
 	double pY = (point.y + scrollPosition.y) / (ImageDisplayScales[m_idxImgDisplayScale]);
-	int lPX = ( (pX) < 0 ? ((int)(pX-0.5)) : ((int)(pX+0.5)) ); // round it
-	int lPY = ( (pY) < 0 ? ((int)(pY-0.5)) : ((int)(pY+0.5)) ); // round it
+//	int lPX = ( (pX) < 0 ? ((int)(pX-0.5)) : ((int)(pX+0.5)) ); // round it
+//	int lPY = ( (pY) < 0 ? ((int)(pY-0.5)) : ((int)(pY+0.5)) ); // round it
+	int lPX = (int)pX;
+	int lPY = (int)pY;
 	
 	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
 	{
@@ -361,13 +363,13 @@ void CImageView::OnLButtonDown(UINT nFlags, CPoint point)
 
 	double pX = (point.x + scrollPosition.x) / (ImageDisplayScales[m_idxImgDisplayScale]);
 	double pY = (point.y + scrollPosition.y) / (ImageDisplayScales[m_idxImgDisplayScale]);
-	int lPX = ((pX) < 0 ? ((int)(pX - 0.5)) : ((int)(pX + 0.5))); // round it
-	int lPY = ((pY) < 0 ? ((int)(pY - 0.5)) : ((int)(pY + 0.5))); // round it
-
-	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
-	{
-		return;
-	}
+//	int lPX = (int)pX;
+//	int lPY = (int)pY;
+//
+//	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
+//	{
+//		return;
+//	}
 
 	if (m_bStartExtractPt)
 	{

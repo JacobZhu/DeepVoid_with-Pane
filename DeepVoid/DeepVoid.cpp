@@ -11550,17 +11550,24 @@ void CDeepVoidApp::On3dview()
 
 	for (int i = 0; i < m_vCams.size(); ++i)
 	{
-		CImageDoc * pDoc = m_vPImgCocs[i];
+		CImageDoc * pDoc = m_vPImgCocs[i];		
 
-		cv::Mat & image = m_imgsProcessed[i];
+		if (pDoc)
+		{
+			cv::Mat & image = m_imgsProcessed[i];
 
-		int flag;
+			int flag;
 
-		cv::Point2d pt = pDoc->m_pImgView->ExtractPoint(&flag);
+			cv::Point2d pt = pDoc->m_pImgView->ExtractPoint(&flag);
 
-		cv::drawMarker(image, pt, cv::Scalar(255,255,255), cv::MarkerTypes::MARKER_CROSS, 5, 1, 4);
+			cv::Point2i pt_int;
+			pt_int.x = (int)pt.x;
+			pt_int.y = (int)pt.y;
 
-		pDoc->m_pImgView->Invalidate(FALSE);
+			cv::drawMarker(image, pt_int, cv::Scalar(255, 255, 255), cv::MarkerTypes::MARKER_CROSS, 5, 1, 4);
+
+			pDoc->m_pImgView->Invalidate(FALSE);
+		}		
 	}
 	return;
 
