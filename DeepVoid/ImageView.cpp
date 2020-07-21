@@ -345,6 +345,11 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 	}
 
+	if ((nChar == 'e' || nChar == 'E') && GetKeyState(VK_CONTROL))
+	{
+		m_pMVSDoc->ExtractPointsContinuously();
+	}
+
 	CScrollView::OnKeyDown(nChar, nRepCnt, nFlags);
 }
 

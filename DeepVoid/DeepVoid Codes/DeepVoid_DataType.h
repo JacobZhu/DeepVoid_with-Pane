@@ -348,6 +348,8 @@ struct cam_data
 
 	Features m_subFeats;	// image sub feature set
 
+	Features m_featsManual; // features extracted manually
+
 	cv::Matx33d m_optCtrUncertEllipsoid; // 20200711, uncertainty ellipsoid of the optical center, with each row being one of the three orthogonal semi - axes(1 sigma level)
 
 	cam_data()
@@ -396,6 +398,7 @@ struct cam_data
 
 			m_feats = otherCam.m_feats;
 			m_subFeats = otherCam.m_subFeats;
+			m_featsManual = otherCam.m_featsManual;
 
 			m_optCtrUncertEllipsoid = otherCam.m_optCtrUncertEllipsoid;
 

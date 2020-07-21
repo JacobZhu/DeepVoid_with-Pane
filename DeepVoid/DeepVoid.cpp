@@ -11548,29 +11548,6 @@ void CDeepVoidApp::On3dview()
 	// TODO: Add your command handler code here
 //	SfM_ZZK::Draw3DScene(m_wnd3d, m_ptcloud, m_map_pointcloud, m_vCams, m_map_tracks, 2);
 
-	for (int i = 0; i < m_vCams.size(); ++i)
-	{
-		CImageDoc * pDoc = m_vPImgCocs[i];		
-
-		if (pDoc)
-		{
-			cv::Mat & image = m_imgsProcessed[i];
-
-			int flag;
-
-			cv::Point2d pt = pDoc->m_pImgView->ExtractPoint(&flag);
-
-			cv::Point2i pt_int;
-			pt_int.x = (int)pt.x;
-			pt_int.y = (int)pt.y;
-
-			cv::drawMarker(image, pt_int, cv::Scalar(255, 255, 255), cv::MarkerTypes::MARKER_CROSS, 5, 1, 4);
-
-			pDoc->m_pImgView->Invalidate(FALSE);
-		}		
-	}
-	return;
-
 	// 初始化三维显示窗口
 	viz::Viz3d wnd3d("3D View");
 	wnd3d.setWindowSize(cv::Size(800, 600));

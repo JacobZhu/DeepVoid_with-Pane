@@ -17,6 +17,8 @@ public:
 	DeepVoid::cam_data * m_pCam;		// pointer to cam_data structure
 //	Features * m_pFeatures;				// feature struct pointer to corresponding cam_data's feature struct
 
+	void ExtractPointsContinuously();	// continuously extract image points manually until 'ESC' being pressed
+
 
 #ifndef _WIN32_WCE
 	virtual void Serialize(CArchive& ar);   // overridden for document i/o

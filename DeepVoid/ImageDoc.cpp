@@ -61,6 +61,47 @@ void CImageDoc::Dump(CDumpContext& dc) const
 #ifndef _WIN32_WCE
 // CImageDoc serialization
 
+void CImageDoc::ExtractPointsContinuously()
+{
+	int flag = 0;
+
+	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+
+	do
+	{
+		cv::Point2d pt = m_pImgView->ExtractPoint(&flag);
+		cv::Point2i pt_int;
+
+		pt_int.x = (int)pt.x;
+		pt_int.y = (int)pt.y;
+
+		cv::drawMarker(*m_pImgProcessed, pt_int, cv::Scalar(255, 255, 255),
+			cv::MarkerTypes::MARKER_CROSS, 5, 1, cv::LineTypes::LINE_4);
+
+		cv::KeyPoint keypt;
+		keypt.pt.x = pt.x;
+		keypt.pt.y = pt.y;
+
+		m_pImgView->m_pImage = m_pImgProcessed;
+		m_pImgView->m_bShowProcessed = TRUE;
+
+		m_pImgView->Invalidate(FALSE);
+
+		//
+		// 生成特征描述向量
+		//cv::Mat descrps;
+		//f2d->compute(*m_pImgProcessed, keypt, descrps);
+
+		//// 暂时先合成个大的
+		//vector<KeyPoint> keypts_all = keypts_sift;
+		//keypts_all.insert(keypts_all.end(), keypts_fast.begin(), keypts_fast.end());
+
+		//cv::Mat descrps_all = descrps_sift.clone();
+		//descrps_all.push_back(descrps_fast);
+
+	} while (flag != -1);
+}
+
 void CImageDoc::Serialize(CArchive& ar)
 {
 	if (ar.IsStoring())
