@@ -24,10 +24,21 @@ public:
 	BOOL m_bStartExtractPt;		//是否开始接收左键选的点坐标
 	int m_flagPointExtracted;	// 仿效小钟的提点函数返回的标志，0 表示未提点并一直等待提点，1 表示已经完成提点，-1 表示取消提点
 
+	BOOL m_bShowAll;
+	BOOL m_bShowSIFT;
+	BOOL m_bShowFAST;
+	BOOL m_bShowManual;
+	BOOL m_bShowID;
+
 	cv::Point2d m_ptExtracted;	//存放每次选取的图像点坐标
 
 	void SetImageScrollSize(void);
 	cv::Point2d ExtractPoint(int * pFlag = NULL);
+
+	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
+		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfSize = 5);
+	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
+		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
 
 
 public:

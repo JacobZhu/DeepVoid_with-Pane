@@ -22,6 +22,12 @@ CImageView::CImageView()
 	m_bShowProcessed = TRUE;
 
 	m_bStartExtractPt = FALSE;
+
+	m_bShowAll = TRUE;
+	m_bShowSIFT = TRUE;
+	m_bShowFAST = TRUE;
+	m_bShowManual = TRUE;
+	m_bShowID = TRUE;
 }
 
 CImageView::~CImageView()
@@ -63,6 +69,42 @@ void CImageView::OnDraw(CDC* pDC)
 	}
 
 	DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * ImageDisplayScales[m_idxImgDisplayScale], m_pImage->rows * ImageDisplayScales[m_idxImgDisplayScale]);
+
+	if (!m_bShowAll)
+	{
+		return;
+	}
+
+// 	CPoint scrollPosition;
+// 	scrollPosition = GetScrollPosition();
+
+	double x, y;
+
+	if (m_bShowSIFT)
+	{
+
+	}
+
+	if (m_bShowFAST)
+	{
+
+	}
+
+	if (m_bShowManual)
+	{
+		int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
+
+		for (int i = 0; i < n; ++i)
+		{
+			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsManual.key_points[i];
+
+			x = keypt.pt.x*ImageDisplayScales[m_idxImgDisplayScale];
+			y = keypt.pt.y*ImageDisplayScales[m_idxImgDisplayScale];
+
+			DrawCross(x, y, 0, 255, 0, i, m_bShowID, 0, 1, 5);
+			DrawCircle(x, y, 255, 255, 0, i, m_bShowID, 0, 1, 3);
+		}
+	}
 }
 
 
@@ -162,6 +204,69 @@ cv::Point2d CImageView::ExtractPoint(int * pFlag)
 	SetCursor(hCursorArrow);
 
 	return m_ptExtracted;
+}
+
+void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
+	BOOL bShowID, int penStyle /*= PS_SOLID*/, int nWidth /*= 1*/, int halfLength /*= 5*/)
+{
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+	CPen newPen(penStyle, nWidth, RGB(r, g, b));
+	
+	CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX - halfLength, ptY);
+	dc.LineTo(ptX + halfLength, ptY);
+	dc.MoveTo(ptX, ptY - halfLength);
+	dc.LineTo(ptX, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*halfLength + 0.5);
+		int y_offset = int(3 * halfLength + 0.5);
+
+		dc.SetTextColor(RGB(r, g, b));
+		dc.SetBkMode(TRANSPARENT);
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+
+	dc.SelectObject(pOldPen);
+}
+
+void CImageView::DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int nRadius)
+{
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+	CPen newPen(penStyle, nWidth, RGB(r, g, b));
+	
+	CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX + nRadius, ptY);
+	dc.AngleArc(ptX, ptY, nRadius, 0, 360);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*nRadius + 0.5);
+		int y_offset = int(3 * nRadius + 0.5);
+
+		dc.SetTextColor(RGB(r, g, b));
+		dc.SetBkMode(TRANSPARENT);
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+
+	dc.SelectObject(pOldPen);
 }
 
 
@@ -368,19 +473,18 @@ void CImageView::OnLButtonDown(UINT nFlags, CPoint point)
 
 	double pX = (point.x + scrollPosition.x) / (ImageDisplayScales[m_idxImgDisplayScale]);
 	double pY = (point.y + scrollPosition.y) / (ImageDisplayScales[m_idxImgDisplayScale]);
-//	int lPX = (int)pX;
-//	int lPY = (int)pY;
-//
-//	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
-//	{
-//		return;
-//	}
+	int lPX = (int)pX;
+	int lPY = (int)pY;
+
+	if (lPX < 0 || lPY < 0 || lPX >= m_pImage->cols || lPY >= m_pImage->rows)
+	{
+		return;
+	}
 
 	if (m_bStartExtractPt)
 	{
 		m_ptExtracted.x = pX;
 		m_ptExtracted.y = pY;
-//		Invalidate(FALSE); // 要等所提的点已经画到图像中了再刷新
 		m_flagPointExtracted = 1;
 	}
 

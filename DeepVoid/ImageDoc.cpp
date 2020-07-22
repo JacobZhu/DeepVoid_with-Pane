@@ -65,6 +65,10 @@ void CImageDoc::ExtractPointsContinuously()
 {
 	int flag = 0;
 
+	std::vector<cv::KeyPoint> & keypts_all = m_pCam->m_featsManual.key_points;
+	
+	int nOld = keypts_all.size(); // 之前已有多少点
+
 	std::vector<cv::KeyPoint> keypts;
 
 	do
@@ -76,31 +80,30 @@ void CImageDoc::ExtractPointsContinuously()
 			continue;
 		}
 
-		cv::Point2i pt_int;
+// 		cv::Point2i pt_int;
+// 
+// 		pt_int.x = (int)pt.x;
+// 		pt_int.y = (int)pt.y;
+// 
+// 		cv::drawMarker(*m_pImgProcessed, pt_int, cv::Scalar(255, 255, 255),
+// 			cv::MarkerTypes::MARKER_CROSS, 5, 1, cv::LineTypes::LINE_4);
+// 
+// 		m_pImgView->m_pImage = m_pImgProcessed;
+// 		m_pImgView->m_bShowProcessed = TRUE;
 
-		pt_int.x = (int)pt.x;
-		pt_int.y = (int)pt.y;
-
-		cv::drawMarker(*m_pImgProcessed, pt_int, cv::Scalar(255, 255, 255),
-			cv::MarkerTypes::MARKER_CROSS, 5, 1, cv::LineTypes::LINE_4);
-
-		m_pImgView->m_pImage = m_pImgProcessed;
-		m_pImgView->m_bShowProcessed = TRUE;
-
-		m_pImgView->Invalidate(FALSE);
+//		m_pImgView->Invalidate(FALSE);
 
 		cv::KeyPoint keypt;
 		keypt.pt.x = pt.x;
 		keypt.pt.y = pt.y;
 
 		keypts.push_back(keypt);
+		keypts_all.push_back(keypt);
+
+		m_pImgView->Invalidate(FALSE);
 	} while (flag != -1);
-
-	std::vector<cv::KeyPoint> & keypts_all = m_pCam->m_featsManual.key_points;
-	cv::Mat & descrps_all = m_pCam->m_featsManual.descriptors;
-
-	int nOld = keypts_all.size();
-	int nNew = keypts.size();
+		
+	int nNew = keypts.size(); // 新增点数
 
 	// 生成特征描述向量
 	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
@@ -109,7 +112,8 @@ void CImageDoc::ExtractPointsContinuously()
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
 	// 合入已有的手提特征点向量	
-	keypts_all.insert(keypts_all.end(), keypts.begin(), keypts.end());	
+//	keypts_all.insert(keypts_all.end(), keypts.begin(), keypts.end());
+	cv::Mat & descrps_all = m_pCam->m_featsManual.descriptors;
 	descrps_all.push_back(descrps);
 
 	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
