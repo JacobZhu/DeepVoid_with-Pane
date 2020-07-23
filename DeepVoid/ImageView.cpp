@@ -27,7 +27,7 @@ CImageView::CImageView()
 	m_bShowSIFT = TRUE;
 	m_bShowFAST = TRUE;
 	m_bShowManual = TRUE;
-	m_bShowID = TRUE;
+	m_bShowID = FALSE;
 
 	m_nPenWidth = 1;		// CDC pen width
 	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
@@ -505,9 +505,17 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 	}
 
-	if ((nChar == 'e' || nChar == 'E') && GetKeyState(VK_CONTROL))
+	if (GetKeyState(VK_CONTROL))
 	{
-		m_pMVSDoc->ExtractPointsContinuously();
+		if (nChar == 'e' || nChar == 'E')
+		{
+			m_pMVSDoc->ExtractPointsContinuously();
+		}
+		
+		if (nChar == 'q' || nChar == 'Q')
+		{
+			m_pMVSDoc->ExtractSiftFeatures();
+		}
 	}
 
 	if (nChar == 'z' || nChar == 'Z') // 切换是否显示各种特征
@@ -520,7 +528,7 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			m_bShowAll = TRUE;
 		}
-		Invalidate(FALSE);
+		Invalidate(TRUE); // TRUE 才能让原本画出图像边框的 text 重绘
 	}
 
 	if (nChar == 'x' || nChar == 'X') // 切换是否显示特征编号
@@ -533,7 +541,7 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			m_bShowID = TRUE;
 		}
-		Invalidate(FALSE);
+		Invalidate(TRUE);
 	}
 
 	if (nChar == 'c' || nChar == 'C') // 切换是否显示 sift 特征
@@ -546,7 +554,7 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			m_bShowSIFT = TRUE;
 		}
-		Invalidate(FALSE);
+		Invalidate(TRUE);
 	}
 
 	if (nChar == 'v' || nChar == 'V') // 切换是否显示 fast 特征
@@ -559,7 +567,7 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			m_bShowFAST = TRUE;
 		}
-		Invalidate(FALSE);
+		Invalidate(TRUE);
 	}
 
 	if (nChar == 'b' || nChar == 'B') // 切换是否显示手提点
@@ -572,7 +580,7 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			m_bShowManual = TRUE;
 		}
-		Invalidate(FALSE);
+		Invalidate(TRUE);
 	}
 
 	CScrollView::OnKeyDown(nChar, nRepCnt, nFlags);

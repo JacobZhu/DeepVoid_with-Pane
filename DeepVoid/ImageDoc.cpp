@@ -20,7 +20,13 @@ CImageDoc::CImageDoc()
 	m_pImgOriginal = NULL;
 	m_pImgProcessed = NULL;
 	m_pCam = NULL;
-//	m_pFeatures = NULL;
+
+	// parameters for sift feature extraction
+	m_nfeaturesSift = 0;	// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+	m_nOctaveLayersSift = 3;	// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+	m_contrastThresholdSift = 0.03/*0.01*//*0.04*/;	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+	m_edgeThresholdSift = 10;	// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+	m_sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
 }
 
 BOOL CImageDoc::OnNewDocument()
@@ -93,7 +99,7 @@ void CImageDoc::ExtractPointsContinuously()
 	int nNew = keypts.size(); // 新增点数
 
 	// 生成特征描述向量
-	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(0, 3, 0.01);
+	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 	
 	cv::Mat descrps;
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
@@ -120,6 +126,66 @@ void CImageDoc::ExtractPointsContinuously()
 			rgb[2] = r;
 		}
 		m_pCam->m_featsManual.rgbs.push_back(rgb);
+	}
+}
+
+void CImageDoc::ExtractSiftFeatures()
+{
+	Features & feats = m_pCam->m_featsSIFT;
+	feats.clear(); // 先把之前的清掉
+
+	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+
+	// 先提取 sift 特征点
+	f2d->detect(*m_pImgOriginal, feats.key_points);
+
+	// 按特征 size 从大到小对 sift 特征点进行排序
+	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+
+	m_pImgView->Invalidate(FALSE);
+
+	// 生成特征描述向量
+	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
+
+	feats.type = Feature_SIFT;
+
+	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+	int n = feats.key_points.size();
+	KeyPoint kpt_pre;
+	kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
+	kpt_pre.size = -1000;
+	int idx_imgPt;
+	for (int i = 0; i < n; ++i)
+	{
+		feats.tracks.push_back(-1);
+
+		KeyPoint kpt_cur = feats.key_points[i];
+		if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
+			&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
+		{
+			// indicating that current keypoint is identical to the previous keypoint
+			feats.idx_pt.push_back(idx_imgPt);
+		}
+		else
+		{
+			feats.idx_pt.push_back(i);
+			idx_imgPt = i;
+		}
+
+		kpt_pre.pt.x = kpt_cur.pt.x;
+		kpt_pre.pt.y = kpt_cur.pt.y;
+		kpt_pre.size = kpt_cur.size;
+
+		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+		uchar r, g, b;
+		Vec3b rgb;
+		if (BilinearInterp(*m_pImgOriginal, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
+		{
+			rgb[0] = b;
+			rgb[1] = g;
+			rgb[2] = r;
+		}
+		feats.rgbs.push_back(rgb);
 	}
 }
 

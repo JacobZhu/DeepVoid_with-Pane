@@ -483,7 +483,7 @@ UINT SfM(LPVOID param)
 			
 		cam_data & cam = pApp->m_vCams[i];
 //		cv::Mat & imgDraw = pApp->m_imgsProcessed[i];
-		const CImageDoc * pDoc = pApp->m_vPImgCocs[i];
+//		const CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
 		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
 		// create a feature class

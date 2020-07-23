@@ -15,9 +15,16 @@ public:
 	cv::Mat * m_pImgOriginal;			// pointer to original image
 	cv::Mat * m_pImgProcessed;			// pointer to processed image
 	DeepVoid::cam_data * m_pCam;		// pointer to cam_data structure
-//	Features * m_pFeatures;				// feature struct pointer to corresponding cam_data's feature struct
+	
+	// parameters for sift feature extraction
+	int m_nfeaturesSift;
+	int m_nOctaveLayersSift;
+	double m_contrastThresholdSift;
+	double m_edgeThresholdSift;
+	double m_sigmaSift;
 
 	void ExtractPointsContinuously();	// continuously extract image points manually until 'ESC' being pressed
+	void ExtractSiftFeatures();			// automatically extract sift features
 
 
 #ifndef _WIN32_WCE

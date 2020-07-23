@@ -242,6 +242,15 @@ struct Features
 	{
 		*this = feat;
 	};
+
+	void clear(void)
+	{
+		key_points.clear();
+		descriptors.release();
+		tracks.clear();
+		idx_pt.clear();
+		rgbs.clear();
+	};
 };
 
 struct CloudPoint_ImgInfo
