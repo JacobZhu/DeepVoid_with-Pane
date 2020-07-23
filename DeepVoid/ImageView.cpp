@@ -19,7 +19,7 @@ CImageView::CImageView()
 	m_idxImgDisplayScale = FITSCALENUM;
 
 	m_bDragImg = FALSE;
-	m_bShowProcessed = TRUE;
+	m_bShowProcessed = FALSE;
 
 	m_bStartExtractPt = FALSE;
 
@@ -85,8 +85,6 @@ void CImageView::OnDraw(CDC* pDC)
 // 	CPoint scrollPosition;
 // 	scrollPosition = GetScrollPosition();
 
-	double x, y;
-
 	if (m_bShowSIFT) // 显示 sift 特征点
 	{
 		int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
@@ -95,8 +93,8 @@ void CImageView::OnDraw(CDC* pDC)
 		{
 			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
 
-			x = keypt.pt.x*scale;
-			y = keypt.pt.y*scale;
+			double x = keypt.pt.x*scale;
+			double y = keypt.pt.y*scale;
 
 			DrawCircle(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicRadius*scale);
 		}
@@ -110,8 +108,8 @@ void CImageView::OnDraw(CDC* pDC)
 		{
 			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsFAST.key_points[i];
 
-			x = keypt.pt.x*scale;
-			y = keypt.pt.y*scale;
+			double x = keypt.pt.x*scale;
+			double y = keypt.pt.y*scale;
 
 			DrawCross(x, y, 0, 255, 255, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*sqrt2inv*scale);
 		}
@@ -125,8 +123,8 @@ void CImageView::OnDraw(CDC* pDC)
 		{
 			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsManual.key_points[i];
 
-			x = keypt.pt.x*scale;
-			y = keypt.pt.y*scale;
+			double x = keypt.pt.x*scale;
+			double y = keypt.pt.y*scale;
 
 			DrawCrosshair(x, y, 255, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*scale);
 		}
@@ -460,6 +458,22 @@ void CImageView::OnMouseMove(UINT nFlags, CPoint point)
 void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
 	// TODO: Add your message handler code here and/or call default
+
+	if (nChar == VK_SPACE) // 切换原图和预处理图像显示。注意这里是不要求图像不为空的，否则从空图像是切换不回来原图的。
+	{
+		if (!m_bShowProcessed)
+		{
+			m_pImage = m_pMVSDoc->m_pImgProcessed;
+			m_bShowProcessed = TRUE;
+		}
+		else
+		{
+			m_pImage = m_pMVSDoc->m_pImgOriginal;
+			m_bShowProcessed = FALSE;
+		}
+		Invalidate(TRUE);
+	}
+
 	if (!m_pImage || m_pImage->empty())
 	{
 		return;
@@ -486,23 +500,6 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 	case VK_RIGHT:
 		OnHScroll(SB_LINERIGHT,0,NULL);
-		break;
-	case VK_SPACE:
-// 		if (m_pMVSDoc->m_imgHandled.empty())
-// 		{
-// 			return;
-// 		}
-		if (!m_bShowProcessed)
-		{
-			m_pImage = m_pMVSDoc->m_pImgProcessed;
-			m_bShowProcessed = TRUE;
-		} 
-		else
-		{
-			m_pImage = m_pMVSDoc->m_pImgOriginal;
-			m_bShowProcessed = FALSE;
-		}
-		Invalidate(TRUE);
 		break;
 	default:
 		break;

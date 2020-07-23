@@ -482,7 +482,7 @@ UINT SfM(LPVOID param)
 		imgHeight = img.rows;
 			
 		cam_data & cam = pApp->m_vCams[i];
-		cv::Mat & imgDraw = pApp->m_imgsProcessed[i];
+//		cv::Mat & imgDraw = pApp->m_imgsProcessed[i];
 		const CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
 		// reference: http://stackoverflow.com/questions/27533203/how-do-i-use-sift-in-opencv-3-0-with-c
@@ -553,29 +553,29 @@ UINT SfM(LPVOID param)
 		cam.m_feats.type = Feature_SIFT_FAST;
 		
 		// 按类别画到图里去
-		int markerSize = 5;
-		int thickness = 1;
-		cv::LineTypes lineType = cv::LineTypes::LINE_4;
-		cv::Scalar color_fast = cv::Scalar(0, 255, 255);
-		cv::Scalar color_sift = cv::Scalar(0, 255, 0);
-		cv::Scalar color_manual = cv::Scalar(255, 255, 255);
+		//int markerSize = 5;
+		//int thickness = 1;
+		//cv::LineTypes lineType = cv::LineTypes::LINE_4;
+		//cv::Scalar color_fast = cv::Scalar(0, 255, 255);
+		//cv::Scalar color_sift = cv::Scalar(0, 255, 0);
+		//cv::Scalar color_manual = cv::Scalar(255, 255, 255);
 
-		for (auto iter = cam.m_feats.key_points.begin(); iter != cam.m_feats.key_points.end(); ++iter)
-		{
-			if (fabs(iter->angle + 1) < 1.0E-12) // 目前来看只有 fast 特征点的 angle 恒为-1，sift 特征点角度的取值范围为0-360°
-			{
-				cv::drawMarker(imgDraw, iter->pt, color_fast, cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
-				continue;
-			}
+		//for (auto iter = cam.m_feats.key_points.begin(); iter != cam.m_feats.key_points.end(); ++iter)
+		//{
+		//	if (fabs(iter->angle + 1) < 1.0E-12) // 目前来看只有 fast 特征点的 angle 恒为-1，sift 特征点角度的取值范围为0-360°
+		//	{
+		//		cv::drawMarker(imgDraw, iter->pt, color_fast, cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
+		//		continue;
+		//	}
 
-			cv::drawMarker(imgDraw, iter->pt, color_sift, cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
-		}
+		//	cv::drawMarker(imgDraw, iter->pt, color_sift, cv::MarkerTypes::MARKER_CROSS, markerSize, thickness, lineType);
+		//}
 
-		// 把画了特征点的图像显示出来
-		if (pDoc)
-		{
-			pDoc->m_pImgView->Invalidate(TRUE);
-		}		
+		//// 把画了特征点的图像显示出来
+		//if (pDoc)
+		//{
+		//	pDoc->m_pImgView->Invalidate(TRUE);
+		//}		
 		
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 		KeyPoint kpt_pre;

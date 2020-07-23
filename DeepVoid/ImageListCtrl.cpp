@@ -239,7 +239,7 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 
 	// 20200719，把图保留在内存里
 	theApp.m_imgsOriginal.push_back(image);
-	theApp.m_imgsProcessed.push_back(image.clone()); // 20200720，如果不是 clone 的话，两张图就共用一个图像数据块
+	theApp.m_imgsProcessed.push_back(cv::Mat()/*image.clone()*/); // 20200720，如果不是 clone 的话，两张图就共用一个图像数据块
 	theApp.m_vPImgCocs.push_back(NULL);
 	
 	return TRUE;
@@ -333,14 +333,14 @@ void CImageListCtrl::OpenSelImages(void)
 		pDoc->m_pImgProcessed = &theApp.m_imgsProcessed[nItem];	// 20200719，ImageDoc 类中不再存放图像，图像统一全存在 theApp 图像向量容器中
 		if (pDoc->m_pImgView->m_bShowProcessed)
 		{
-			pDoc->m_pImgView->m_pImage = pDoc->m_pImgProcessed/*&pDoc->m_image*/; // 20200719
+			pDoc->m_pImgView->m_pImage = pDoc->m_pImgProcessed; // 20200719
 		} 
 		else
 		{
 			pDoc->m_pImgView->m_pImage = pDoc->m_pImgOriginal;
 		}
 		pDoc->m_pCam = &theApp.m_vCams[nItem];
-//		pDoc->m_pFeatures = &theApp.m_vCams[nItem].m_feats; // associate the doc's feature struct pointer with corresponding cam_data's feature struct
+
 		pDoc->m_pImgView->SetImageScrollSize();
 		pDoc->m_pImgView->Invalidate(FALSE);
 	}

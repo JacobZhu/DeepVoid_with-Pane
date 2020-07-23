@@ -80,19 +80,6 @@ void CImageDoc::ExtractPointsContinuously()
 			continue;
 		}
 
-// 		cv::Point2i pt_int;
-// 
-// 		pt_int.x = (int)pt.x;
-// 		pt_int.y = (int)pt.y;
-// 
-// 		cv::drawMarker(*m_pImgProcessed, pt_int, cv::Scalar(255, 255, 255),
-// 			cv::MarkerTypes::MARKER_CROSS, 5, 1, cv::LineTypes::LINE_4);
-// 
-// 		m_pImgView->m_pImage = m_pImgProcessed;
-// 		m_pImgView->m_bShowProcessed = TRUE;
-
-//		m_pImgView->Invalidate(FALSE);
-
 		cv::KeyPoint keypt;
 		keypt.pt.x = pt.x;
 		keypt.pt.y = pt.y;
@@ -112,7 +99,6 @@ void CImageDoc::ExtractPointsContinuously()
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
 	// 合入已有的手提特征点向量	
-//	keypts_all.insert(keypts_all.end(), keypts.begin(), keypts.end());
 	cv::Mat & descrps_all = m_pCam->m_featsManual.descriptors;
 	descrps_all.push_back(descrps);
 
