@@ -713,20 +713,20 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200519 涿州测量
-// 		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
-// 		pApp->m_vCams[i].fx = f;
-// 		pApp->m_vCams[i].fy = f;
-// 		pApp->m_vCams[i].s  = 0;
-// 		pApp->m_vCams[i].cx = 501.5;
-// 		pApp->m_vCams[i].cy = 500.5;
-// 
-// 		pApp->m_vCams[i].m_K(0, 0) = f;
-// 		pApp->m_vCams[i].m_K(1, 1) = f;
-// 		pApp->m_vCams[i].m_K(0, 1) = 0;
-// 		pApp->m_vCams[i].m_K(0, 2) = 501.5;
-// 		pApp->m_vCams[i].m_K(1, 2) = 500.5;
-// 		pApp->m_vCams[i].m_K(2, 2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
+ 		//double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+ 		//pApp->m_vCams[i].fx = f;
+ 		//pApp->m_vCams[i].fy = f;
+ 		//pApp->m_vCams[i].s  = 0;
+ 		//pApp->m_vCams[i].cx = 501.5;
+ 		//pApp->m_vCams[i].cy = 500.5;
+ 
+ 		//pApp->m_vCams[i].m_K(0, 0) = f;
+ 		//pApp->m_vCams[i].m_K(1, 1) = f;
+ 		//pApp->m_vCams[i].m_K(0, 1) = 0;
+ 		//pApp->m_vCams[i].m_K(0, 2) = 501.5;
+ 		//pApp->m_vCams[i].m_K(1, 2) = 500.5;
+ 		//pApp->m_vCams[i].m_K(2, 2) = 1;
+ 		//pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200626 四时田园“马雕塑”
 		// iphone se2 rear camera parameters

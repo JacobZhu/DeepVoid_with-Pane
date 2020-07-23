@@ -165,6 +165,8 @@ inline int ceil_fast_noshift(double fp)
 
 const float ImageDisplayScales[] = {0.03125, 0.0625, 0.125, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10, 20, 25};
 
+const double sqrt2inv = 0.70710678118654752440084436210485; // 1/sqrt(2)
+
 // zhaokunz, 20140226
 enum ChildFrmLayoutType
 {
@@ -345,9 +347,9 @@ struct cam_data
 	int dist_type;          // distortion type, 0 is Weng's, 1 is D.C.Brown's
 
 	Features m_feats;		// image features
-
 	Features m_subFeats;	// image sub feature set
-
+	Features m_featsSIFT;	// sift blob features extracted automatically
+	Features m_featsFAST;	// fast corner features extracted automatically
 	Features m_featsManual; // features extracted manually
 
 	cv::Matx33d m_optCtrUncertEllipsoid; // 20200711, uncertainty ellipsoid of the optical center, with each row being one of the three orthogonal semi - axes(1 sigma level)
@@ -398,6 +400,8 @@ struct cam_data
 
 			m_feats = otherCam.m_feats;
 			m_subFeats = otherCam.m_subFeats;
+			m_featsSIFT = otherCam.m_featsSIFT;
+			m_featsFAST = otherCam.m_featsFAST;
 			m_featsManual = otherCam.m_featsManual;
 
 			m_optCtrUncertEllipsoid = otherCam.m_optCtrUncertEllipsoid;

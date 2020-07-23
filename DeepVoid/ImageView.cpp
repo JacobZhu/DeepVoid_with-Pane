@@ -28,6 +28,11 @@ CImageView::CImageView()
 	m_bShowFAST = TRUE;
 	m_bShowManual = TRUE;
 	m_bShowID = TRUE;
+
+	m_nPenWidth = 1;		// CDC pen width
+	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
+	m_nBasicHalfLength = 2;	// 1 倍显示倍率下十字丝半长轴的像素跨度
+	m_nBasicRadius = 2;		// 1 倍显示倍率下圆圈的半径像素跨度
 }
 
 CImageView::~CImageView()
@@ -68,7 +73,9 @@ void CImageView::OnDraw(CDC* pDC)
 		return;
 	}
 
-	DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * ImageDisplayScales[m_idxImgDisplayScale], m_pImage->rows * ImageDisplayScales[m_idxImgDisplayScale]);
+	float scale = ImageDisplayScales[m_idxImgDisplayScale];
+
+	DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * scale, m_pImage->rows * scale);
 
 	if (!m_bShowAll)
 	{
@@ -80,17 +87,37 @@ void CImageView::OnDraw(CDC* pDC)
 
 	double x, y;
 
-	if (m_bShowSIFT)
+	if (m_bShowSIFT) // 显示 sift 特征点
 	{
+		int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
 
+		for (int i = 0; i < n; ++i)
+		{
+			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
+
+			x = keypt.pt.x*scale;
+			y = keypt.pt.y*scale;
+
+			DrawCircle(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicRadius*scale);
+		}
 	}
 
-	if (m_bShowFAST)
+	if (m_bShowFAST) // 显示 fast 角点特征
 	{
+		int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
 
+		for (int i = 0; i < n; ++i)
+		{
+			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsFAST.key_points[i];
+
+			x = keypt.pt.x*scale;
+			y = keypt.pt.y*scale;
+
+			DrawCross(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*sqrt2inv*scale);
+		}
 	}
 
-	if (m_bShowManual)
+	if (m_bShowManual) // 显示手提点
 	{
 		int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
 
@@ -98,11 +125,10 @@ void CImageView::OnDraw(CDC* pDC)
 		{
 			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsManual.key_points[i];
 
-			x = keypt.pt.x*ImageDisplayScales[m_idxImgDisplayScale];
-			y = keypt.pt.y*ImageDisplayScales[m_idxImgDisplayScale];
+			x = keypt.pt.x*scale;
+			y = keypt.pt.y*scale;
 
-			DrawCross(x, y, 0, 255, 0, i, m_bShowID, 0, 1, 5);
-			DrawCircle(x, y, 255, 255, 0, i, m_bShowID, 0, 1, 3);
+			DrawCrosshair(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*scale);
 		}
 	}
 }
@@ -206,7 +232,7 @@ cv::Point2d CImageView::ExtractPoint(int * pFlag)
 	return m_ptExtracted;
 }
 
-void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
+void CImageView::DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, int id,
 	BOOL bShowID, int penStyle /*= PS_SOLID*/, int nWidth /*= 1*/, int halfLength /*= 5*/)
 {
 	CClientDC dc(this);
@@ -229,7 +255,39 @@ void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id
 		strTmp.Format("%d", id);
 
 		int x_offset = int(0.6*halfLength + 0.5);
-		int y_offset = int(3 * halfLength + 0.5);
+		int y_offset = int(1 * halfLength + 0.5);
+
+		dc.SetTextColor(RGB(r, g, b));
+		dc.SetBkMode(TRANSPARENT);
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+
+	dc.SelectObject(pOldPen);
+}
+
+void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int halfLength)
+{
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+	CPen newPen(penStyle, nWidth, RGB(r, g, b));
+
+	CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX - halfLength, ptY - halfLength);
+	dc.LineTo(ptX + halfLength, ptY + halfLength);
+	dc.MoveTo(ptX + halfLength, ptY - halfLength);
+	dc.LineTo(ptX - halfLength, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.4*halfLength + 0.5);
+		int y_offset = int(1.3 * halfLength + 0.5);
 
 		dc.SetTextColor(RGB(r, g, b));
 		dc.SetBkMode(TRANSPARENT);
@@ -259,7 +317,7 @@ void CImageView::DrawCircle(double x, double y, uchar r, uchar g, uchar b, int i
 		strTmp.Format("%d", id);
 
 		int x_offset = int(0.6*nRadius + 0.5);
-		int y_offset = int(3 * nRadius + 0.5);
+		int y_offset = int(1 * nRadius + 0.5);
 
 		dc.SetTextColor(RGB(r, g, b));
 		dc.SetBkMode(TRANSPARENT);

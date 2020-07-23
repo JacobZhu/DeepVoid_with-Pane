@@ -30,13 +30,20 @@ public:
 	BOOL m_bShowManual;
 	BOOL m_bShowID;
 
+	int m_nPenWidth;		// CDC pen width
+	int m_penStyle;			// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
+	int m_nBasicHalfLength;	// 1 倍显示倍率下十字丝半长轴的像素跨度
+	int m_nBasicRadius;		// 1 倍显示倍率下圆圈的半径像素跨度
+
 	cv::Point2d m_ptExtracted;	//存放每次选取的图像点坐标
 
 	void SetImageScrollSize(void);
 	cv::Point2d ExtractPoint(int * pFlag = NULL);
 
+	void DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, int id,
+		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
-		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfSize = 5);
+		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
 
