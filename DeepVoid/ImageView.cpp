@@ -113,7 +113,7 @@ void CImageView::OnDraw(CDC* pDC)
 			x = keypt.pt.x*scale;
 			y = keypt.pt.y*scale;
 
-			DrawCross(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*sqrt2inv*scale);
+			DrawCross(x, y, 0, 255, 255, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*sqrt2inv*scale);
 		}
 	}
 
@@ -128,7 +128,7 @@ void CImageView::OnDraw(CDC* pDC)
 			x = keypt.pt.x*scale;
 			y = keypt.pt.y*scale;
 
-			DrawCrosshair(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*scale);
+			DrawCrosshair(x, y, 255, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*scale);
 		}
 	}
 }
@@ -511,6 +511,71 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 	if ((nChar == 'e' || nChar == 'E') && GetKeyState(VK_CONTROL))
 	{
 		m_pMVSDoc->ExtractPointsContinuously();
+	}
+
+	if (nChar == 'z' || nChar == 'Z') // 切换是否显示各种特征
+	{
+		if (m_bShowAll)
+		{
+			m_bShowAll = FALSE;
+		} 
+		else
+		{
+			m_bShowAll = TRUE;
+		}
+		Invalidate(FALSE);
+	}
+
+	if (nChar == 'x' || nChar == 'X') // 切换是否显示特征编号
+	{
+		if (m_bShowID)
+		{
+			m_bShowID = FALSE;
+		}
+		else
+		{
+			m_bShowID = TRUE;
+		}
+		Invalidate(FALSE);
+	}
+
+	if (nChar == 'c' || nChar == 'C') // 切换是否显示 sift 特征
+	{
+		if (m_bShowSIFT)
+		{
+			m_bShowSIFT = FALSE;
+		}
+		else
+		{
+			m_bShowSIFT = TRUE;
+		}
+		Invalidate(FALSE);
+	}
+
+	if (nChar == 'v' || nChar == 'V') // 切换是否显示 fast 特征
+	{
+		if (m_bShowFAST)
+		{
+			m_bShowFAST = FALSE;
+		}
+		else
+		{
+			m_bShowFAST = TRUE;
+		}
+		Invalidate(FALSE);
+	}
+
+	if (nChar == 'b' || nChar == 'B') // 切换是否显示手提点
+	{
+		if (m_bShowManual)
+		{
+			m_bShowManual = FALSE;
+		}
+		else
+		{
+			m_bShowManual = TRUE;
+		}
+		Invalidate(FALSE);
 	}
 
 	CScrollView::OnKeyDown(nChar, nRepCnt, nFlags);
