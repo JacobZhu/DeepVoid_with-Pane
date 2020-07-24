@@ -28,6 +28,7 @@ CImageView::CImageView()
 	m_bShowFAST = TRUE;
 	m_bShowManual = TRUE;
 	m_bShowID = FALSE;
+	m_bShowInfo = TRUE;
 
 	m_nPenWidth = 1;		// CDC pen width
 	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
@@ -67,6 +68,39 @@ void CImageView::OnDraw(CDC* pDC)
 {
 	CDocument* pDoc = GetDocument();
 	// TODO: add draw code here
+
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+
+	dc.SetBkMode(TRANSPARENT);
+
+	if (m_bShowInfo) // ÏÔÊ¾ info
+	{
+		dc.SetTextColor(RGB(0, 255, 0));
+
+		CString strAll, str;
+
+		if (m_bShowProcessed)
+		{
+			strAll += "¡¾SPACE¡¿Image shown:	Processed\n";
+		}
+		else
+		{
+			strAll += "¡¾SPACE¡¿Image shown:	Original\n";
+		}
+
+		if (m_bShowAll)
+		{
+			strAll += "¡¾Z¡¿Show all:	Yes\n";
+		}
+		else
+		{
+			strAll += "¡¾Z¡¿Show all:	No\n";
+		}
+		
+		m_info.Format("%d", id);
+		dc.TextOut(0, 0, m_info);
+	}	
 	
 	if (!m_pImage || m_pImage->empty())
 	{
@@ -263,6 +297,28 @@ void CImageView::DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, in
 	dc.SelectObject(pOldPen);
 }
 
+void CImageView::DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL bShowID, int halfLength)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX - halfLength, ptY);
+	dc.LineTo(ptX + halfLength, ptY);
+	dc.MoveTo(ptX, ptY - halfLength);
+	dc.LineTo(ptX, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*halfLength + 0.5);
+		int y_offset = int(1 * halfLength + 0.5);
+
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
 void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int halfLength)
 {
 	CClientDC dc(this);
@@ -295,6 +351,28 @@ void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id
 	dc.SelectObject(pOldPen);
 }
 
+void CImageView::DrawCross(CClientDC & dc, double x, double y, int id, BOOL bShowID, int halfLength)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX - halfLength, ptY - halfLength);
+	dc.LineTo(ptX + halfLength, ptY + halfLength);
+	dc.MoveTo(ptX + halfLength, ptY - halfLength);
+	dc.LineTo(ptX - halfLength, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.4*halfLength + 0.5);
+		int y_offset = int(1.3 * halfLength + 0.5);
+
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
 void CImageView::DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int nRadius)
 {
 	CClientDC dc(this);
@@ -325,6 +403,51 @@ void CImageView::DrawCircle(double x, double y, uchar r, uchar g, uchar b, int i
 	dc.SelectObject(pOldPen);
 }
 
+void CImageView::DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID, int nRadius)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.MoveTo(ptX + nRadius, ptY);
+	dc.AngleArc(ptX, ptY, nRadius, 0, 360);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*nRadius + 0.5);
+		int y_offset = int(1 * nRadius + 0.5);
+
+		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
+void CImageView::DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b, int penStyle, int nWidth)
+{
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+	CPen newPen(penStyle, nWidth, RGB(r, g, b));
+
+	CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.SetTextColor(RGB(r, g, b));
+	dc.SetBkMode(TRANSPARENT);
+	dc.TextOut(ptX, ptY, info);
+
+	dc.SelectObject(pOldPen);
+}
+
+void CImageView::DrawInfo(CClientDC & dc, const CString & info, double x, double y)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	dc.TextOut(ptX, ptY, info);
+}
 
 BOOL CImageView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
@@ -515,6 +638,11 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		if (nChar == 'q' || nChar == 'Q')
 		{
 			m_pMVSDoc->ExtractSiftFeatures();
+		}
+
+		if (nChar == 't' || nChar == 'T')
+		{
+			m_pMVSDoc->ExtractFASTFeatures();
 		}
 	}
 

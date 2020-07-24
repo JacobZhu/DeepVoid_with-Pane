@@ -23,8 +23,14 @@ public:
 	double m_edgeThresholdSift;
 	double m_sigmaSift;
 
+	// parameters for FAST feature extraction
+	int m_thresholdFast;
+	bool m_nonmaxSuppressionFast;
+	int m_typeFast;
+
 	void ExtractPointsContinuously();	// continuously extract image points manually until 'ESC' being pressed
 	void ExtractSiftFeatures();			// automatically extract sift features
+	void ExtractFASTFeatures();			// automatically extract sift features
 
 
 #ifndef _WIN32_WCE

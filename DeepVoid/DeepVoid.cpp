@@ -550,7 +550,7 @@ UINT SfM(LPVOID param)
 		cam.m_feats.key_points.insert(cam.m_feats.key_points.end(), keypts_all.begin(), keypts_all.begin() + nSmaller);
 		cam.m_feats.descriptors = descrps_all.rowRange(cv::Range(0, nSmaller));
 
-		cam.m_feats.type = Feature_SIFT_FAST;
+		cam.m_feats.type = Feature_SIFTFAST_SIFT;
 		
 		// 按类别画到图里去
 		//int markerSize = 5;
@@ -627,7 +627,7 @@ UINT SfM(LPVOID param)
 			subFeats.idx_pt.insert(subFeats.idx_pt.end(), feats.idx_pt.begin(), feats.idx_pt.begin() + nSubFeats);
 			subFeats.tracks.insert(subFeats.tracks.end(), feats.tracks.begin(), feats.tracks.begin() + nSubFeats);
 			subFeats.rgbs.insert(subFeats.rgbs.end(), feats.rgbs.begin(), feats.rgbs.begin() + nSubFeats);
-			subFeats.type = Feature_SIFT_FAST;
+			subFeats.type = Feature_SIFTFAST_SIFT;
 		}
 		///////////////////////////////////////////////////////////////////////////////
 
@@ -10984,7 +10984,7 @@ UINT NetworkOrientation(LPVOID param)
 //
 //		sift(img, mask, pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[i].m_feats.descriptors);
 
-		pApp->m_vCams[i].m_feats.type = Feature_SIFT;
+		pApp->m_vCams[i].m_feats.type = Feature_SIFT_SIFT;
 
 		KeyPoint kpt_pre;
 		kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;

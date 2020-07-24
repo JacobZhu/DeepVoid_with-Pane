@@ -27,6 +27,11 @@ CImageDoc::CImageDoc()
 	m_contrastThresholdSift = 0.03/*0.01*//*0.04*/;	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
 	m_edgeThresholdSift = 10;	// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
 	m_sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+
+	// parameters for FAST feature extraction
+	m_thresholdFast = 20; // threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
+	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
+	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 }
 
 BOOL CImageDoc::OnNewDocument()
@@ -104,6 +109,8 @@ void CImageDoc::ExtractPointsContinuously()
 	cv::Mat descrps;
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
+	m_pCam->m_featsManual.type = Feature_MANUAL_SIFT; // manual keypoints + sift descriptors
+
 	// 合入已有的手提特征点向量	
 	cv::Mat & descrps_all = m_pCam->m_featsManual.descriptors;
 	descrps_all.push_back(descrps);
@@ -136,7 +143,7 @@ void CImageDoc::ExtractSiftFeatures()
 
 	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
-	// 先提取 sift 特征点
+	// 提取 sift 特征点
 	f2d->detect(*m_pImgOriginal, feats.key_points);
 
 	// 按特征 size 从大到小对 sift 特征点进行排序
@@ -147,7 +154,7 @@ void CImageDoc::ExtractSiftFeatures()
 	// 生成特征描述向量
 	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
 
-	feats.type = Feature_SIFT;
+	feats.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
 
 	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 	int n = feats.key_points.size();
@@ -180,6 +187,58 @@ void CImageDoc::ExtractSiftFeatures()
 		uchar r, g, b;
 		Vec3b rgb;
 		if (BilinearInterp(*m_pImgOriginal, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
+		{
+			rgb[0] = b;
+			rgb[1] = g;
+			rgb[2] = r;
+		}
+		feats.rgbs.push_back(rgb);
+	}
+}
+
+void CImageDoc::ExtractFASTFeatures()
+{
+	Features & feats = m_pCam->m_featsFAST;
+	feats.clear(); // 先把之前的清掉
+
+	// 提取 fast 角点特征
+	// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
+	cv::Mat im_gray;
+	if (m_pImgOriginal->channels() < 3)
+	{
+		im_gray = m_pImgOriginal->clone();
+	}
+	else
+	{
+		cv::cvtColor(*m_pImgOriginal, im_gray, CV_RGB2GRAY);
+	}
+
+	cv::FAST(im_gray, feats.key_points, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast);
+
+	// 按照 response 从大到小对 fast 特征点进行排序
+	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+
+	m_pImgView->Invalidate(FALSE);
+
+	// 生成特征描述向量
+	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
+
+	feats.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
+
+	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+	int n = feats.key_points.size();
+	for (int i = 0; i < n; ++i)
+	{
+		const cv::KeyPoint & keypt = feats.key_points[i];
+
+		feats.tracks.push_back(-1);
+		feats.idx_pt.push_back(i);
+
+		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+		uchar r, g, b;
+		Vec3b rgb;
+		if (BilinearInterp(*m_pImgOriginal, keypt.pt.x, keypt.pt.y, r, g, b))
 		{
 			rgb[0] = b;
 			rgb[1] = g;

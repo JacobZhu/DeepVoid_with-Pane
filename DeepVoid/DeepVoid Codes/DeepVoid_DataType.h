@@ -185,9 +185,11 @@ CString GetFileNameOnly(CString filePath);
 
 enum FeatureType
 {
-	Feature_SIFT       = 0,     
-	Feature_SURF       = 1,
-	Feature_SIFT_FAST  = 2,
+	Feature_SIFT_SIFT      = 0,     
+	Feature_SURF_SURF      = 1,
+	Feature_FAST_SIFT	   = 2,
+	Feature_MANUAL_SIFT	   = 3,
+	Feature_SIFTFAST_SIFT  = 4,
 };
 
 struct Features
@@ -216,7 +218,7 @@ struct Features
 
 	Features()
 	{
-		type = Feature_SIFT;
+		type = Feature_SIFT_SIFT;
 	};
 
 	Features & operator = (const Features & otherFeat)

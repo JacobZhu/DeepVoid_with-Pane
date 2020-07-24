@@ -19,6 +19,8 @@ public:
 	int m_idxImgDisplayScale;
 	BOOL m_bDragImg;
 
+	CString m_info;				// CDC display some infos
+
 	BOOL m_bShowProcessed;		// if currently the handled image is showing
 
 	BOOL m_bStartExtractPt;		//是否开始接收左键选的点坐标
@@ -29,6 +31,7 @@ public:
 	BOOL m_bShowFAST;
 	BOOL m_bShowManual;
 	BOOL m_bShowID;
+	BOOL m_bShowInfo;
 
 	int m_nPenWidth;		// CDC pen width
 	int m_penStyle;			// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
@@ -42,10 +45,23 @@ public:
 
 	void DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
+	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
+	void DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+
 	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
+	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
+	void DrawCross(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+	
 	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
+	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
+	void DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
+
+	void DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b,
+		int penStyle = PS_SOLID, int nWidth = 1);
+	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
+	void DrawInfo(CClientDC & dc, const CString & info, double x, double y);
 
 
 public:
