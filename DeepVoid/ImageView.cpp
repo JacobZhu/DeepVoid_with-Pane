@@ -68,99 +68,121 @@ void CImageView::OnDraw(CDC* pDC)
 {
 	CDocument* pDoc = GetDocument();
 	// TODO: add draw code here
-
-	CClientDC dc(this);
-	OnPrepareDC(&dc);
-
-	dc.SetBkMode(TRANSPARENT);
-
-	if (m_bShowInfo) // 显示 info
-	{
-		dc.SetTextColor(RGB(0, 255, 0));
-
-		CString strAll, str;
-
-		if (m_bShowProcessed)
-		{
-			strAll += "【SPACE】Image shown:	Processed\n";
-		}
-		else
-		{
-			strAll += "【SPACE】Image shown:	Original\n";
-		}
-
-		if (m_bShowAll)
-		{
-			strAll += "【Z】Show all:	Yes\n";
-		}
-		else
-		{
-			strAll += "【Z】Show all:	No\n";
-		}
-		
-		m_info.Format("%d", id);
-		dc.TextOut(0, 0, m_info);
-	}	
-	
-	if (!m_pImage || m_pImage->empty())
-	{
-		return;
-	}
-
 	float scale = ImageDisplayScales[m_idxImgDisplayScale];
 
-	DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * scale, m_pImage->rows * scale);
-
-	if (!m_bShowAll)
+	// 1、最先把图像显示出来，怕画晚了把后续的综合信息以及图像特征给覆盖掉了
+	if (m_pImage && !m_pImage->empty())
 	{
-		return;
+		DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * scale, m_pImage->rows * scale);
 	}
+	
+	CClientDC dc(this);
+	OnPrepareDC(&dc);
+	dc.SetBkMode(TRANSPARENT);
 
-// 	CPoint scrollPosition;
-// 	scrollPosition = GetScrollPosition();
-
-	if (m_bShowSIFT) // 显示 sift 特征点
+	// 2、再把综合信息显示出来
+	if (m_bShowInfo) // 显示 info
 	{
-		int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
+		CFont font;
+		font.CreateFont(
+			20,
+			0,
+			0,
+			0,
+			FW_HEAVY,
+			FALSE,
+			FALSE,
+			0,
+			ANSI_CHARSET,
+			OUT_DEFAULT_PRECIS,
+			CLIP_DEFAULT_PRECIS,
+			DEFAULT_QUALITY,
+			DEFAULT_PITCH | FF_SWISS,
+			_T("Arial"));
 
-		for (int i = 0; i < n; ++i)
+		CFont * pOldFont = (CFont *)dc.SelectObject(&font);
+
+//		dc.SetTextColor(RGB(218, 165, 32)); // goldenrod, Hex code: #DAA520
+//		dc.SetTextColor(RGB(255, 215, 0)); // gold, Hex code: #FFD700
+//		dc.SetTextColor(RGB(255, 165, 0)); // orange, Hex code: #FFA500
+//		dc.SetTextColor(RGB(192, 192, 192)); // silver, Hex code: #C0C0C0
+//		dc.SetTextColor(RGB(255, 255, 240)); // ivory, Hex code: #FFFFF0
+//		dc.SetTextColor(RGB(240, 128, 128)); // lightcoral, Hex code: #F08080
+		dc.SetTextColor(RGB(135, 206, 235)); // skyblue, Hex code: #87CEEB
+		DrawInfo(dc);
+
+		dc.SelectObject(pOldFont);
+
+		font.DeleteObject();
+	}
+	
+	// 3、再把所有图像几何特征画出来
+	if (m_pImage && !m_pImage->empty() && m_bShowAll)
+	{
+		if (m_bShowSIFT) // 显示 sift 特征点
 		{
-			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
+			int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
 
-			double x = keypt.pt.x*scale;
-			double y = keypt.pt.y*scale;
+			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 0));
+			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
 
-			DrawCircle(x, y, 0, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicRadius*scale);
+			for (int i = 0; i < n; ++i)
+			{
+				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
+
+				double x = keypt.pt.x*scale;
+				double y = keypt.pt.y*scale;
+
+				DrawCircle(dc, x, y, i, m_bShowID, m_nBasicRadius*scale);
+			}
+
+			dc.SelectObject(pOldPen);
+
+			newPen.DeleteObject();
 		}
-	}
 
-	if (m_bShowFAST) // 显示 fast 角点特征
-	{
-		int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
-
-		for (int i = 0; i < n; ++i)
+		if (m_bShowFAST) // 显示 fast 角点特征
 		{
-			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsFAST.key_points[i];
+			int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
 
-			double x = keypt.pt.x*scale;
-			double y = keypt.pt.y*scale;
+			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 255));
+			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
 
-			DrawCross(x, y, 0, 255, 255, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*sqrt2inv*scale);
+			for (int i = 0; i < n; ++i)
+			{
+				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsFAST.key_points[i];
+
+				double x = keypt.pt.x*scale;
+				double y = keypt.pt.y*scale;
+
+				DrawCross(dc, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+			}
+
+			dc.SelectObject(pOldPen);
+
+			newPen.DeleteObject();
 		}
-	}
 
-	if (m_bShowManual) // 显示手提点
-	{
-		int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
-
-		for (int i = 0; i < n; ++i)
+		if (m_bShowManual) // 显示手提点
 		{
-			const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsManual.key_points[i];
+			int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
 
-			double x = keypt.pt.x*scale;
-			double y = keypt.pt.y*scale;
+			CPen newPen(m_penStyle, m_nPenWidth, RGB(255, 255, 0));
+			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
 
-			DrawCrosshair(x, y, 255, 255, 0, i, m_bShowID, m_penStyle, m_nPenWidth, m_nBasicHalfLength*scale);
+			for (int i = 0; i < n; ++i)
+			{
+				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsManual.key_points[i];
+
+				double x = keypt.pt.x*scale;
+				double y = keypt.pt.y*scale;
+
+				DrawCrosshair(dc, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+			}
+
+			dc.SelectObject(pOldPen);
+
+			newPen.DeleteObject();
 		}
 	}
 }
@@ -449,6 +471,106 @@ void CImageView::DrawInfo(CClientDC & dc, const CString & info, double x, double
 	dc.TextOut(ptX, ptY, info);
 }
 
+void CImageView::DrawInfo(CClientDC & dc)
+{
+	CString strAll, str;
+
+	if (m_bShowProcessed)
+	{
+		str.Format("【SPACE】Image shown: Processed\n");
+		strAll += str;
+	}
+	else
+	{
+		strAll += "【SPACE】Image shown: Original\n";
+	}
+
+	if (m_bShowAll)
+	{
+		strAll += "【Z】Show all: Yes\n";
+	}
+	else
+	{
+		strAll += "【Z】Show all: No\n";
+	}
+
+	if (m_bShowID)
+	{
+		strAll += "【X】Show ID: Yes\n";
+	}
+	else
+	{
+		strAll += "【X】Show ID: No\n";
+	}
+
+	if (m_bShowSIFT)
+	{
+		strAll += "【C】Show sift: Yes ";
+	}
+	else
+	{
+		strAll += "【C】Show sift: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	if (m_bShowFAST)
+	{
+		strAll += "【V】Show FAST: Yes ";
+	}
+	else
+	{
+		strAll += "【V】Show FAST: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	if (m_bShowManual)
+	{
+		strAll += "【B】Show Manual: Yes ";
+	}
+	else
+	{
+		strAll += "【B】Show Manual: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	CPoint scrollPos = GetScrollPosition();
+
+	CRect rectText;
+	rectText.top = scrollPos.y;
+	rectText.left = scrollPos.x;
+	rectText.bottom = scrollPos.y + 300;
+	rectText.right = scrollPos.x + 300;
+
+	dc.DrawText(strAll, &rectText, DT_LEFT | DT_EXTERNALLEADING | DT_WORDBREAK);
+}
+
 BOOL CImageView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
 	// TODO: Add your message handler code here and/or call default
@@ -724,8 +846,7 @@ void CImageView::OnLButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 
-	CPoint scrollPosition;
-	scrollPosition = GetScrollPosition();
+	CPoint scrollPosition = GetScrollPosition();
 
 	double pX = (point.x + scrollPosition.x) / (ImageDisplayScales[m_idxImgDisplayScale]);
 	double pY = (point.y + scrollPosition.y) / (ImageDisplayScales[m_idxImgDisplayScale]);

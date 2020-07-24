@@ -62,6 +62,7 @@ public:
 		int penStyle = PS_SOLID, int nWidth = 1);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 	void DrawInfo(CClientDC & dc, const CString & info, double x, double y);
+	void DrawInfo(CClientDC & dc);
 
 
 public:
