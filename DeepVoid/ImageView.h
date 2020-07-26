@@ -42,35 +42,36 @@ public:
 	int m_nWidthInfoRect;
 
 	CRect m_rectInfo;
+	CPoint m_ptPreGrab;
 
 	cv::Point2d m_ptExtracted;	//存放每次选取的图像点坐标
 
 	void SetImageScrollSize(void);
 	cv::Point2d ExtractPoint(int * pFlag = NULL);
 
-	void DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, int id,
-		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
+//	void DrawCrosshair(double x, double y, uchar r, uchar g, uchar b, int id,
+//		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
-	void DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+//	void DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 	void DrawCrosshair(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 
-	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
-		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
+//	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
+//		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
-	void DrawCross(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+//	void DrawCross(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 	void DrawCross(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 	
-	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
-		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
+//	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
+//		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
-	void DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
+//	void DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
 	void DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
 
-	void DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b,
-		int penStyle = PS_SOLID, int nWidth = 1);
+//	void DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b,
+//		int penStyle = PS_SOLID, int nWidth = 1);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
-	void DrawInfo(CClientDC & dc, const CString & info, double x, double y);
-	void DrawInfo(CClientDC & dc);
+//	void DrawInfo(CClientDC & dc, const CString & info, double x, double y);
+//	void DrawInfo(CClientDC & dc);
 	void DrawInfo(CDC * pDC, CRect & rect);
 
 
@@ -97,4 +98,6 @@ public:
 	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+	afx_msg void OnMButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnMButtonUp(UINT nFlags, CPoint point);
 };
