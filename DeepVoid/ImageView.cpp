@@ -34,6 +34,9 @@ CImageView::CImageView()
 	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
 	m_nBasicHalfLength = 2;	// 1 倍显示倍率下十字丝半长轴的像素跨度
 	m_nBasicRadius = 2;		// 1 倍显示倍率下圆圈的半径像素跨度
+	m_nHeightInfoFont = 20;
+	m_nHeightInfoRect = 120; // 字体高度20，该参数120意味着最多显示 6 行字
+	m_nWidthInfoRect = 270;
 }
 
 CImageView::~CImageView()
@@ -49,6 +52,8 @@ BEGIN_MESSAGE_MAP(CImageView, CScrollView)
 	ON_WM_KEYDOWN()
 	ON_WM_LBUTTONDOWN()
 	ON_WM_SETCURSOR()
+	ON_WM_HSCROLL()
+	ON_WM_VSCROLL()
 END_MESSAGE_MAP()
 
 
@@ -76,16 +81,17 @@ void CImageView::OnDraw(CDC* pDC)
 		DisplayImage(pDC, *m_pImage, 0, 0, m_pImage->cols * scale, m_pImage->rows * scale);
 	}
 	
-	CClientDC dc(this);
-	OnPrepareDC(&dc);
-	dc.SetBkMode(TRANSPARENT);
+// 	CClientDC dc(this);
+// 	OnPrepareDC(&dc);
+// 	dc.SetBkMode(TRANSPARENT);
+	pDC->SetBkMode(TRANSPARENT);
 
 	// 2、再把综合信息显示出来
 	if (m_bShowInfo) // 显示 info
 	{
 		CFont font;
 		font.CreateFont(
-			20,
+			m_nHeightInfoFont,
 			0,
 			0,
 			0,
@@ -98,20 +104,29 @@ void CImageView::OnDraw(CDC* pDC)
 			CLIP_DEFAULT_PRECIS,
 			DEFAULT_QUALITY,
 			DEFAULT_PITCH | FF_SWISS,
-			_T("Arial"));
+			_T("Arial Black"));
 
-		CFont * pOldFont = (CFont *)dc.SelectObject(&font);
+		CFont * pOldFont = (CFont *)pDC->SelectObject(&font);
 
-//		dc.SetTextColor(RGB(218, 165, 32)); // goldenrod, Hex code: #DAA520
-//		dc.SetTextColor(RGB(255, 215, 0)); // gold, Hex code: #FFD700
-//		dc.SetTextColor(RGB(255, 165, 0)); // orange, Hex code: #FFA500
-//		dc.SetTextColor(RGB(192, 192, 192)); // silver, Hex code: #C0C0C0
-//		dc.SetTextColor(RGB(255, 255, 240)); // ivory, Hex code: #FFFFF0
-//		dc.SetTextColor(RGB(240, 128, 128)); // lightcoral, Hex code: #F08080
-		dc.SetTextColor(RGB(135, 206, 235)); // skyblue, Hex code: #87CEEB
-		DrawInfo(dc);
+//		pDC->SetTextColor(RGB(218, 165, 32)); // goldenrod, Hex code: #DAA520
+		pDC->SetTextColor(RGB(255, 215, 0)); // gold, Hex code: #FFD700
+//		pDC->SetTextColor(RGB(255, 165, 0)); // orange, Hex code: #FFA500
+//		pDC->SetTextColor(RGB(192, 192, 192)); // silver, Hex code: #C0C0C0
+//		pDC->SetTextColor(RGB(255, 255, 240)); // ivory, Hex code: #FFFFF0
+//		pDC->SetTextColor(RGB(240, 128, 128)); // lightcoral, Hex code: #F08080
+//		pDC->SetTextColor(RGB(135, 206, 235)); // skyblue, Hex code: #87CEEB
 
-		dc.SelectObject(pOldFont);
+		CPoint scrollPos = GetScrollPosition();
+
+//		CRect rectInfo;
+		m_rectInfo.top = scrollPos.y;
+		m_rectInfo.left = scrollPos.x;
+		m_rectInfo.bottom = m_rectInfo.top + m_nHeightInfoRect;
+		m_rectInfo.right = m_rectInfo.left + m_nWidthInfoRect;
+
+		DrawInfo(pDC, m_rectInfo);
+
+		pDC->SelectObject(pOldFont);
 
 		font.DeleteObject();
 	}
@@ -124,7 +139,9 @@ void CImageView::OnDraw(CDC* pDC)
 			int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 0));
-			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
+
+			pDC->SetTextColor(RGB(0, 255, 0));
 
 			for (int i = 0; i < n; ++i)
 			{
@@ -133,10 +150,10 @@ void CImageView::OnDraw(CDC* pDC)
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCircle(dc, x, y, i, m_bShowID, m_nBasicRadius*scale);
+				DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
 			}
 
-			dc.SelectObject(pOldPen);
+			pDC->SelectObject(pOldPen);
 
 			newPen.DeleteObject();
 		}
@@ -146,7 +163,9 @@ void CImageView::OnDraw(CDC* pDC)
 			int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 255));
-			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
+
+			pDC->SetTextColor(RGB(0, 255, 255));
 
 			for (int i = 0; i < n; ++i)
 			{
@@ -155,10 +174,10 @@ void CImageView::OnDraw(CDC* pDC)
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCross(dc, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+				DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
 			}
 
-			dc.SelectObject(pOldPen);
+			pDC->SelectObject(pOldPen);
 
 			newPen.DeleteObject();
 		}
@@ -168,7 +187,9 @@ void CImageView::OnDraw(CDC* pDC)
 			int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(255, 255, 0));
-			CPen * pOldPen = (CPen *)dc.SelectObject(&newPen);
+			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
+
+			pDC->SetTextColor(RGB(255, 255, 0));
 
 			for (int i = 0; i < n; ++i)
 			{
@@ -177,10 +198,10 @@ void CImageView::OnDraw(CDC* pDC)
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCrosshair(dc, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+				DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
 			}
 
-			dc.SelectObject(pOldPen);
+			pDC->SelectObject(pOldPen);
 
 			newPen.DeleteObject();
 		}
@@ -341,6 +362,28 @@ void CImageView::DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL 
 	}
 }
 
+void CImageView::DrawCrosshair(CDC * pDC, double x, double y, int id, BOOL bShowID, int halfLength)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	pDC->MoveTo(ptX - halfLength, ptY);
+	pDC->LineTo(ptX + halfLength, ptY);
+	pDC->MoveTo(ptX, ptY - halfLength);
+	pDC->LineTo(ptX, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*halfLength + 0.5);
+		int y_offset = int(1 * halfLength + 0.5);
+
+		pDC->TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
 void CImageView::DrawCross(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int halfLength)
 {
 	CClientDC dc(this);
@@ -395,6 +438,28 @@ void CImageView::DrawCross(CClientDC & dc, double x, double y, int id, BOOL bSho
 	}
 }
 
+void CImageView::DrawCross(CDC * pDC, double x, double y, int id, BOOL bShowID, int halfLength)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	pDC->MoveTo(ptX - halfLength, ptY - halfLength);
+	pDC->LineTo(ptX + halfLength, ptY + halfLength);
+	pDC->MoveTo(ptX + halfLength, ptY - halfLength);
+	pDC->LineTo(ptX - halfLength, ptY + halfLength);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.4*halfLength + 0.5);
+		int y_offset = int(1.3 * halfLength + 0.5);
+
+		pDC->TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
 void CImageView::DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id, BOOL bShowID, int penStyle, int nWidth, int nRadius)
 {
 	CClientDC dc(this);
@@ -442,6 +507,26 @@ void CImageView::DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bSh
 		int y_offset = int(1 * nRadius + 0.5);
 
 		dc.TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+}
+
+void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID, int nRadius)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	pDC->MoveTo(ptX + nRadius, ptY);
+	pDC->AngleArc(ptX, ptY, nRadius, 0, 360);
+
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*nRadius + 0.5);
+		int y_offset = int(1 * nRadius + 0.5);
+
+		pDC->TextOut(ptX + x_offset, ptY - y_offset, strTmp);
 	}
 }
 
@@ -569,6 +654,97 @@ void CImageView::DrawInfo(CClientDC & dc)
 	rectText.right = scrollPos.x + 300;
 
 	dc.DrawText(strAll, &rectText, DT_LEFT | DT_EXTERNALLEADING | DT_WORDBREAK);
+}
+
+void CImageView::DrawInfo(CDC * pDC, CRect & rect)
+{
+	CString strAll, str;
+
+	if (m_bShowProcessed)
+	{
+		strAll += "[SPACE] Image shown: Processed\n";
+	}
+	else
+	{
+		strAll += "[SPACE] Image shown: Original\n";
+	}
+
+	if (m_bShowAll)
+	{
+		strAll += "[Z] Show all: Yes\n";
+	}
+	else
+	{
+		strAll += "[Z] Show all: No\n";
+	}
+
+	if (m_bShowID)
+	{
+		strAll += "[X] Show ID: Yes\n";
+	}
+	else
+	{
+		strAll += "[X] Show ID: No\n";
+	}
+
+	if (m_bShowSIFT)
+	{
+		strAll += "[C] Show sift: Yes ";
+	}
+	else
+	{
+		strAll += "[C] Show sift: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	if (m_bShowFAST)
+	{
+		strAll += "[V] Show FAST: Yes ";
+	}
+	else
+	{
+		strAll += "[V] Show FAST: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	if (m_bShowManual)
+	{
+		strAll += "[B] Show Manual: Yes ";
+	}
+	else
+	{
+		strAll += "[B] Show Manual: No ";
+	}
+
+	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
+	{
+		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
+	}
+	else
+	{
+		str.Format("(null)\n");
+	}
+	strAll += str;
+
+	pDC->DrawText(strAll, &rect, DT_LEFT | DT_EXTERNALLEADING | DT_WORDBREAK);
 }
 
 BOOL CImageView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
@@ -893,4 +1069,42 @@ BOOL CImageView::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 	}
 
 	return CScrollView::OnSetCursor(pWnd, nHitTest, message);
+}
+
+
+void CImageView::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	if (m_bShowInfo)
+	{
+		CRect rectInfo;
+		rectInfo.top = 0;
+		rectInfo.left = 0;
+		rectInfo.bottom = rectInfo.top + m_nHeightInfoRect;
+		rectInfo.right = rectInfo.left + m_nWidthInfoRect;
+
+		InvalidateRect(&rectInfo, FALSE);
+	}
+
+	CScrollView::OnHScroll(nSBCode, nPos, pScrollBar);
+}
+
+
+void CImageView::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
+{
+	// TODO: Add your message handler code here and/or call default
+
+	if (m_bShowInfo)
+	{
+		CRect rectInfo;
+		rectInfo.top = 0;
+		rectInfo.left = 0;
+		rectInfo.bottom = rectInfo.top + m_nHeightInfoRect;
+		rectInfo.right = rectInfo.left + m_nWidthInfoRect;
+
+		InvalidateRect(&rectInfo, FALSE);
+	}
+
+	CScrollView::OnVScroll(nSBCode, nPos, pScrollBar);
 }

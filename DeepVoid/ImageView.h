@@ -37,6 +37,11 @@ public:
 	int m_penStyle;			// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
 	int m_nBasicHalfLength;	// 1 倍显示倍率下十字丝半长轴的像素跨度
 	int m_nBasicRadius;		// 1 倍显示倍率下圆圈的半径像素跨度
+	int m_nHeightInfoFont;
+	int m_nHeightInfoRect;
+	int m_nWidthInfoRect;
+
+	CRect m_rectInfo;
 
 	cv::Point2d m_ptExtracted;	//存放每次选取的图像点坐标
 
@@ -47,22 +52,26 @@ public:
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 	void DrawCrosshair(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+	void DrawCrosshair(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 
 	void DrawCross(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int halfLength = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 	void DrawCross(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
+	void DrawCross(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int halfLength = 5);
 	
 	void DrawCircle(double x, double y, uchar r, uchar g, uchar b, int id,
 		BOOL bShowID = TRUE, int penStyle = PS_SOLID, int nWidth = 1, int nRadius = 5);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 	void DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
+	void DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
 
 	void DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b,
 		int penStyle = PS_SOLID, int nWidth = 1);
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 	void DrawInfo(CClientDC & dc, const CString & info, double x, double y);
 	void DrawInfo(CClientDC & dc);
+	void DrawInfo(CDC * pDC, CRect & rect);
 
 
 public:
@@ -86,4 +95,6 @@ public:
 	afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 };
