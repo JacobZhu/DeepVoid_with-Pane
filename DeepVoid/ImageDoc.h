@@ -28,9 +28,10 @@ public:
 	bool m_nonmaxSuppressionFast;
 	int m_typeFast;
 
-	void ExtractPointsContinuously();	// continuously extract image points manually until 'ESC' being pressed
+	void ExtractPointsContinuously(BOOL bClear = FALSE);	// continuously extract image points manually until 'ESC' being pressed
 	void ExtractSiftFeatures();			// automatically extract sift features
 	void ExtractFASTFeatures();			// automatically extract sift features
+	void DeleteAllFeatures();			// it does what its name suggests
 
 
 #ifndef _WIN32_WCE

@@ -938,23 +938,38 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		default:
 			break;
 		}
-
-		if (GetKeyState(VK_CONTROL))
+		
+		if (nChar == 'e' || nChar == 'E')
 		{
-			if (nChar == 'e' || nChar == 'E')
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
 			{
-				m_pMVSDoc->ExtractPointsContinuously();
-			}
+				m_pMVSDoc->ExtractPointsContinuously(TRUE);
+			} 
+			else
+			{
+				m_pMVSDoc->ExtractPointsContinuously(FALSE);
+			}			
+		}
 
-			if (nChar == 'q' || nChar == 'Q')
+		if (nChar == 'q' || nChar == 'Q')
+		{
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
 			{
 				m_pMVSDoc->ExtractSiftFeatures();
 			}
+		}
 
-			if (nChar == 't' || nChar == 'T')
+		if (nChar == 't' || nChar == 'T')
+		{
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
 			{
 				m_pMVSDoc->ExtractFASTFeatures();
 			}
+		}
+
+		if (nChar == VK_DELETE)
+		{
+			m_pMVSDoc->DeleteAllFeatures();
 		}
 
 		if (nChar == 'z' || nChar == 'Z') // 切换是否显示各种特征

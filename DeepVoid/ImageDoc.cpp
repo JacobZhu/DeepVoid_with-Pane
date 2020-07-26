@@ -72,8 +72,14 @@ void CImageDoc::Dump(CDumpContext& dc) const
 #ifndef _WIN32_WCE
 // CImageDoc serialization
 
-void CImageDoc::ExtractPointsContinuously()
+void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 {
+	if (bClear)
+	{
+		m_pCam->m_featsManual.clear();
+		m_pImgView->Invalidate(TRUE);
+	} 
+
 	int flag = 0;
 
 	std::vector<cv::KeyPoint> & keypts_all = m_pCam->m_featsManual.key_points;
@@ -149,7 +155,7 @@ void CImageDoc::ExtractSiftFeatures()
 	// 按特征 size 从大到小对 sift 特征点进行排序
 	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
 
-	m_pImgView->Invalidate(FALSE);
+	m_pImgView->Invalidate(TRUE);
 
 	// 生成特征描述向量
 	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
@@ -218,7 +224,7 @@ void CImageDoc::ExtractFASTFeatures()
 	// 按照 response 从大到小对 fast 特征点进行排序
 	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
 
-	m_pImgView->Invalidate(FALSE);
+	m_pImgView->Invalidate(TRUE);
 
 	// 生成特征描述向量
 	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
@@ -246,6 +252,15 @@ void CImageDoc::ExtractFASTFeatures()
 		}
 		feats.rgbs.push_back(rgb);
 	}
+}
+
+void CImageDoc::DeleteAllFeatures()
+{
+	m_pCam->m_featsSIFT.clear();
+	m_pCam->m_featsFAST.clear();
+	m_pCam->m_featsManual.clear();
+
+	m_pImgView->Invalidate(TRUE);
 }
 
 void CImageDoc::Serialize(CArchive& ar)
