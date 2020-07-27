@@ -32,6 +32,9 @@ CImageDoc::CImageDoc()
 	m_thresholdFast = 20; // threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
+
+	m_nSfMFeatures = 8192;
+	m_nPrptFeatures = 150;
 }
 
 BOOL CImageDoc::OnNewDocument()
@@ -261,6 +264,61 @@ void CImageDoc::DeleteAllFeatures()
 	m_pCam->m_featsManual.clear();
 
 	m_pImgView->Invalidate(TRUE);
+}
+
+void CImageDoc::GenSfMFeatures()
+{
+	Features & featsSfM = m_pCam->m_feats;
+	Features & featsSub = m_pCam->m_subFeats;
+	const Features & feats_sift = m_pCam->m_featsSIFT;
+	const Features & feats_fast = m_pCam->m_featsFAST;
+	const Features & feats_manual = m_pCam->m_featsManual;
+
+	int nSift = feats_sift.key_points.size();
+	int nFast = feats_fast.key_points.size();
+	int nManual = feats_manual.key_points.size();
+
+	// 先清空
+	featsSfM.clear();
+	featsSub.clear();
+
+	// 暂时先合成个大的
+	Features featsTmp = feats_sift;
+	featsTmp.push_back(feats_fast);
+
+	// 然后截取为最终的，并录入
+	int nSize = featsTmp.key_points.size();
+	int nSmaller = nSize < m_nSfMFeatures ? nSize : m_nSfMFeatures;
+
+	featsSfM.key_points.insert(featsSfM.key_points.end(), featsTmp.key_points.begin(), featsTmp.key_points.begin() + nSmaller);
+	featsSfM.descriptors = featsTmp.descriptors.rowRange(cv::Range(0, nSmaller));
+	featsSfM.tracks.insert(featsSfM.tracks.end(), featsTmp.tracks.begin(), featsTmp.tracks.begin() + nSmaller);
+	featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), featsTmp.idx_pt.begin(), featsTmp.idx_pt.begin() + nSmaller);
+	featsSfM.rgbs.insert(featsSfM.rgbs.end(), featsTmp.rgbs.begin(), featsTmp.rgbs.begin() + nSmaller);
+
+	// 再把手提点加进来
+	featsSfM.push_back(feats_manual);
+// 	featsSfM.key_points.insert(featsSfM.key_points.end(), feats_manual.key_points.begin(), feats_manual.key_points.end());
+// 	featsSfM.descriptors.push_back(feats_manual.descriptors);
+// 	featsSfM.tracks.insert(featsSfM.tracks.end(), feats_manual.tracks.begin(), feats_manual.tracks.end());
+// 	featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), feats_manual.idx_pt.begin(), feats_manual.idx_pt.end());
+// 	featsSfM.rgbs.insert(featsSfM.rgbs.end(), feats_manual.rgbs.begin(), feats_manual.rgbs.end());
+
+	// 统计各类点入选参与 SfM 特征点的个数
+	m_pImgView->m_nSiftElected = nSift < m_nSfMFeatures ? nSift : m_nSfMFeatures;
+	m_pImgView->m_nFastElected = nSmaller - m_pImgView->m_nSiftElected;
+	m_pImgView->m_nManualElected = nManual; // 即全部手提点都入选
+
+	// 更新参与 SfM 的特征点的统一编号
+	for (int i = m_pImgView->m_nSiftElected; i < nSmaller; ++i)
+	{
+
+	}
+}
+
+void CImageDoc::GenPrptFeatures()
+{
+	
 }
 
 void CImageDoc::Serialize(CArchive& ar)

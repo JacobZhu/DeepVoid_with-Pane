@@ -41,6 +41,10 @@ public:
 	int m_nHeightInfoRect;
 	int m_nWidthInfoRect;
 
+	int m_nSiftElected;		// 被选中参与 SfM 的 sift 特征点个数，sift 特征肯定是已经排过序的
+	int m_nFastElected;		// 被选中参与 SfM 的 fast 特征点个数，fast 特征肯定是已经排过序的
+	int m_nManualElected;	// 被选中参与 SfM 的手提点个数，一般都是全部手提点都参加 SfM
+
 	CRect m_rectInfo;
 	CPoint m_ptPreGrab;
 

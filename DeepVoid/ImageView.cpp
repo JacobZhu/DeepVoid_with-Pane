@@ -37,6 +37,10 @@ CImageView::CImageView()
 	m_nHeightInfoFont = 20;
 	m_nHeightInfoRect = 150; // 字体高度20，该参数120意味着最多显示 6 行字
 	m_nWidthInfoRect = 280;
+
+	m_nSiftElected = 0;
+	m_nFastElected = 0;
+	m_nManualElected = 0;
 }
 
 CImageView::~CImageView()
@@ -964,6 +968,22 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
 			{
 				m_pMVSDoc->ExtractFASTFeatures();
+			}
+		}
+
+		if (nChar == 'a' || nChar == 'A')
+		{
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
+			{
+				m_pMVSDoc->GenSfMFeatures();
+			}
+		}
+
+		if (nChar == 'p' || nChar == 'P')
+		{
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
+			{
+				m_pMVSDoc->GenPrptFeatures();
 			}
 		}
 

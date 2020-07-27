@@ -253,6 +253,15 @@ struct Features
 		idx_pt.clear();
 		rgbs.clear();
 	};
+
+	void push_back(const Features & otherFeat)
+	{
+		key_points.insert(key_points.end(), otherFeat.key_points.begin(), otherFeat.key_points.end());
+		descriptors.push_back(otherFeat.descriptors/*.clone()*/);
+		tracks.insert(tracks.end(), otherFeat.tracks.begin(), otherFeat.tracks.end());
+		idx_pt.insert(idx_pt.end(), otherFeat.idx_pt.begin(), otherFeat.idx_pt.end());
+		rgbs.insert(rgbs.end(), otherFeat.rgbs.begin(), otherFeat.rgbs.end());
+	};
 };
 
 struct CloudPoint_ImgInfo
