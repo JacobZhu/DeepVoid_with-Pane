@@ -26,7 +26,7 @@ public:
 	BOOL m_bStartExtractPt;		//是否开始接收左键选的点坐标
 	int m_flagPointExtracted;	// 仿效小钟的提点函数返回的标志，0 表示未提点并一直等待提点，1 表示已经完成提点，-1 表示取消提点
 
-	BOOL m_bShowAll;
+	int m_flagShow;			// 0: show none; 1: show all; 2: show only selected
 	BOOL m_bShowSIFT;
 	BOOL m_bShowFAST;
 	BOOL m_bShowManual;

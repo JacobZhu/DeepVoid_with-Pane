@@ -321,6 +321,9 @@ void CImageDoc::GenSfMFeatures()
 		featsSub.idx_pt.insert(featsSub.idx_pt.end(), featsSfM.idx_pt.begin(), featsSfM.idx_pt.begin() + m_nPrptFeatures);
 		featsSub.rgbs.insert(featsSub.rgbs.end(), featsSfM.rgbs.begin(), featsSfM.rgbs.begin() + m_nPrptFeatures);
 	}
+
+	m_pImgView->Invalidate(TRUE);
+	m_pImgView->m_flagShow = 2;
 }
 
 void CImageDoc::Serialize(CArchive& ar)

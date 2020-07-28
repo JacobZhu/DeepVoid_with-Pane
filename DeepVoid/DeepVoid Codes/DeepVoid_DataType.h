@@ -257,7 +257,7 @@ struct Features
 	void push_back(const Features & otherFeat)
 	{
 		key_points.insert(key_points.end(), otherFeat.key_points.begin(), otherFeat.key_points.end());
-		descriptors.push_back(otherFeat.descriptors/*.clone()*/);
+		descriptors.push_back(otherFeat.descriptors/*.clone()*/);	// 20200728，测试过了，没必要 .clone()，因为是直接 copy 的值，而非指针，严格测试过了。
 		tracks.insert(tracks.end(), otherFeat.tracks.begin(), otherFeat.tracks.end());
 		idx_pt.insert(idx_pt.end(), otherFeat.idx_pt.begin(), otherFeat.idx_pt.end());
 		rgbs.insert(rgbs.end(), otherFeat.rgbs.begin(), otherFeat.rgbs.end());

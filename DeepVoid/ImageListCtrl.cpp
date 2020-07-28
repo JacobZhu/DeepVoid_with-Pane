@@ -239,7 +239,7 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 
 	// 20200719，把图保留在内存里
 	theApp.m_imgsOriginal.push_back(image);
-	theApp.m_imgsProcessed.push_back(cv::Mat()/*image.clone()*/); // 20200720，如果不是 clone 的话，两张图就共用一个图像数据块
+	theApp.m_imgsProcessed.push_back(cv::Mat()/*image.clone()*/); // 20200728，如果不是 clone 的话，两张图就共用一个图像数据块
 	theApp.m_vPImgCocs.push_back(NULL);
 	
 	return TRUE;

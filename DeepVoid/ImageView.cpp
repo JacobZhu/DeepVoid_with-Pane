@@ -23,7 +23,7 @@ CImageView::CImageView()
 
 	m_bStartExtractPt = FALSE;
 
-	m_bShowAll = TRUE;
+	m_flagShow = 1;
 	m_bShowSIFT = TRUE;
 	m_bShowFAST = TRUE;
 	m_bShowManual = TRUE;
@@ -138,11 +138,16 @@ void CImageView::OnDraw(CDC* pDC)
 	}
 	
 	// 3、再把所有图像几何特征画出来
-	if (m_pImage && !m_pImage->empty() && m_bShowAll)
+	if (m_pImage && !m_pImage->empty() && m_flagShow)
 	{
 		if (m_bShowSIFT) // 显示 sift 特征点
 		{
 			int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
+
+			if (m_flagShow == 2) // 只显示入选参加 SfM 的 sift 特征点
+			{
+				n = m_nSiftElected;
+			}			
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 0));
 			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
@@ -168,6 +173,11 @@ void CImageView::OnDraw(CDC* pDC)
 		{
 			int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
 
+			if (m_flagShow == 2) // 只显示入选参加 SfM 的 FAST 特征点
+			{
+				n = m_nFastElected;
+			}
+
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 255));
 			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
 
@@ -191,6 +201,11 @@ void CImageView::OnDraw(CDC* pDC)
 		if (m_bShowManual) // 显示手提点
 		{
 			int n = m_pMVSDoc->m_pCam->m_featsManual.key_points.size();
+
+			if (m_flagShow == 2) // 只显示入选参加 SfM 的手提点
+			{
+				n = m_nManualElected;
+			}
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(255, 255, 0));
 			CPen * pOldPen = (CPen *)pDC->SelectObject(&newPen);
@@ -675,13 +690,17 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 		strAll += "[SPACE] Image shown: Original\n";
 	}
 
-	if (m_bShowAll)
+	if (m_flagShow == 1)
 	{
-		strAll += "[Z] Show all: Yes\n";
+		strAll += "[Z] Show: ALL\n";
 	}
-	else
+	else if (m_flagShow == 2)
 	{
-		strAll += "[Z] Show all: No\n";
+		strAll += "[Z] Show: Selected\n";
+	}
+	else // m_flagShow == 0
+	{
+		strAll += "[Z] Show: NONE\n";
 	}
 
 	if (m_bShowID)
@@ -704,7 +723,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+		str.Format("(%d/%d)\n", m_nSiftElected, m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
 	}
 	else
 	{
@@ -723,7 +742,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+		str.Format("(%d/%d)\n", m_nFastElected, m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
 	}
 	else
 	{
@@ -742,7 +761,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
+		str.Format("(%d/%d)\n", m_nManualElected, m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
 	}
 	else
 	{
@@ -986,13 +1005,17 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 		if (nChar == 'z' || nChar == 'Z') // 切换是否显示各种特征
 		{
-			if (m_bShowAll)
+			if (m_flagShow == 1)
 			{
-				m_bShowAll = FALSE;
+				m_flagShow = 2;
 			}
-			else
+			else if (m_flagShow == 2)
 			{
-				m_bShowAll = TRUE;
+				m_flagShow = 0;
+			}
+			else // m_flagShow == 0
+			{
+				m_flagShow = 1;
 			}
 			Invalidate(TRUE); // TRUE 才能让原本画出图像边框的 text 重绘
 		}
