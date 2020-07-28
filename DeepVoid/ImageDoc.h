@@ -35,8 +35,7 @@ public:
 	void ExtractSiftFeatures();			// automatically extract sift features
 	void ExtractFASTFeatures();			// automatically extract sift features
 	void DeleteAllFeatures();			// it does what its name suggests
-	void GenSfMFeatures();				// 从 sift, fast, manual points 中遴选用于 SfM 的特征点
-	void GenPrptFeatures();				// 从已有特征点中遴选用于“先发制人”快速预匹配的子特征集
+	void GenSfMFeatures();				// 从 sift, fast, manual points 中遴选用于 SfM 的特征点，以及用于“先发制人”快速预匹配的子特征集
 
 
 #ifndef _WIN32_WCE

@@ -971,19 +971,11 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			}
 		}
 
-		if (nChar == 'a' || nChar == 'A')
+		if (nChar == 'g' || nChar == 'G')
 		{
 			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
 			{
 				m_pMVSDoc->GenSfMFeatures();
-			}
-		}
-
-		if (nChar == 'p' || nChar == 'P')
-		{
-			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
-			{
-				m_pMVSDoc->GenPrptFeatures();
 			}
 		}
 

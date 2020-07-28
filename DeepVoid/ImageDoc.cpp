@@ -33,7 +33,7 @@ CImageDoc::CImageDoc()
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 
-	m_nSfMFeatures = 8192;
+	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;
 }
 
@@ -298,11 +298,8 @@ void CImageDoc::GenSfMFeatures()
 
 	// 再把手提点加进来
 	featsSfM.push_back(feats_manual);
-// 	featsSfM.key_points.insert(featsSfM.key_points.end(), feats_manual.key_points.begin(), feats_manual.key_points.end());
-// 	featsSfM.descriptors.push_back(feats_manual.descriptors);
-// 	featsSfM.tracks.insert(featsSfM.tracks.end(), feats_manual.tracks.begin(), feats_manual.tracks.end());
-// 	featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), feats_manual.idx_pt.begin(), feats_manual.idx_pt.end());
-// 	featsSfM.rgbs.insert(featsSfM.rgbs.end(), feats_manual.rgbs.begin(), feats_manual.rgbs.end());
+
+	int nFinal = featsSfM.key_points.size();
 
 	// 统计各类点入选参与 SfM 特征点的个数
 	m_pImgView->m_nSiftElected = nSift < m_nSfMFeatures ? nSift : m_nSfMFeatures;
@@ -310,15 +307,20 @@ void CImageDoc::GenSfMFeatures()
 	m_pImgView->m_nManualElected = nManual; // 即全部手提点都入选
 
 	// 更新参与 SfM 的特征点的统一编号
-	for (int i = m_pImgView->m_nSiftElected; i < nSmaller; ++i)
+	for (int i = m_pImgView->m_nSiftElected; i < nFinal; ++i)
 	{
-
+		featsSfM.idx_pt[i] = i;
 	}
-}
 
-void CImageDoc::GenPrptFeatures()
-{
-	
+	// 最后生成“先发制人”的特征点集
+	if (m_nPrptFeatures < nFinal)
+	{
+		featsSub.key_points.insert(featsSub.key_points.end(), featsSfM.key_points.begin(), featsSfM.key_points.begin() + m_nPrptFeatures);
+		featsSub.descriptors = featsSfM.descriptors.rowRange(cv::Range(0, m_nPrptFeatures));
+		featsSub.tracks.insert(featsSub.tracks.end(), featsSfM.tracks.begin(), featsSfM.tracks.begin() + m_nPrptFeatures);
+		featsSub.idx_pt.insert(featsSub.idx_pt.end(), featsSfM.idx_pt.begin(), featsSfM.idx_pt.begin() + m_nPrptFeatures);
+		featsSub.rgbs.insert(featsSub.rgbs.end(), featsSfM.rgbs.begin(), featsSfM.rgbs.begin() + m_nPrptFeatures);
+	}
 }
 
 void CImageDoc::Serialize(CArchive& ar)
