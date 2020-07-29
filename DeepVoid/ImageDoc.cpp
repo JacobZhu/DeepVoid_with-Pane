@@ -262,6 +262,12 @@ void CImageDoc::DeleteAllFeatures()
 	m_pCam->m_featsSIFT.clear();
 	m_pCam->m_featsFAST.clear();
 	m_pCam->m_featsManual.clear();
+	m_pCam->m_feats.clear();
+	m_pCam->m_subFeats.clear();
+
+	m_pImgView->m_nSiftElected = 0;
+	m_pImgView->m_nFastElected = 0;
+	m_pImgView->m_nManualElected = 0;
 
 	m_pImgView->Invalidate(TRUE);
 }
