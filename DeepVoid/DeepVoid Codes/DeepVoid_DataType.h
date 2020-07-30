@@ -155,6 +155,93 @@ inline int ceil_fast_noshift(double fp)
 	int i = int(fp);
 	return i < fp ? i + 1 : i;
 }
+
+// 定义一个关于旋转顺序的枚举类型
+enum RotationOrder
+{
+	XYZ,
+	XZY,
+	YXZ,
+	YZX,
+	ZXY,
+	ZYX
+};
+
+// 计算角度的cos值，输入为角度
+double cosd(double angle);
+
+// 计算角度的sin值，输入为角度
+double sind(double angle);
+
+// 计算角度的tan值，输入为角度
+double tand(double angle);
+
+// 计算输入数值的arccosine值，返回值范围为0 - 180°
+double acosd(double x);
+
+// 计算输入数值的arcsine值，返回值范围为-90 - 90°
+double asind(double x);
+
+// 计算输入数值的arctangent值，返回值范围为-90 - 90°
+double atand(double x);
+
+// 计算(y / x)的arctangent值，由于可以综合考虑y和x的符号，因此返回值的范围拓展到四个象限，即-180 - 180°
+double atand(double y, double x);
+
+// 判断输入 x 的符号，为正则返回 1，为负则返回 -1
+double Sign_Johnny(double x);
+
+// Implementation of bilinear interpolation
+double BilinearInterp(double x, double y,	// the coordinates of position to be interpolated
+					  double x1,			// the x coordinate of topleft f1 and bottomleft f3
+					  double x2,			// the x coordinate of topright f2 and bottomright f4
+					  double y1,			// the y coordinate of topleft f1 and topright f2
+					  double y2,			// the y coordinate of bottomleft f3 and bottomright f4
+					  double f1, double f2, double f3, double f4	// the corresponding values of topleft,topright,bottomleft and bottomright points
+					  );
+
+bool BilinearInterp(const Mat & img,		// input:	the image data
+					double x, double y,		// input:	the coordinates of position to be interpolated
+					uchar & r,				// output:	the interpolated R
+					uchar & g,				// output:	the interpolated G
+					uchar & b				// output:	the interpolated B
+					);
+
+bool BilinearInterp(const Mat & img,		// input:	the image data
+					double x, double y,		// input:	the coordinates of position to be interpolated
+					double & r,				// output:	the interpolated R
+					double & g,				// output:	the interpolated G
+					double & b				// output:	the interpolated B
+					);
+
+bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
+					const Matx33d & mR,				// input:	the rotation matrix
+					const Matx31d & mt,				// input:	the translation vector
+					const Mat & img,				// input:	the input image
+					double X, double Y, double Z,	// input:	the coordinates of position to be interpolated
+					uchar & r,						// output:	the interpolated R
+					uchar & g,						// output:	the interpolated G
+					uchar & b						// output:	the interpolated B
+					);
+
+bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
+					const Matx33d & mR,				// input:	the rotation matrix
+					const Matx31d & mt,				// input:	the translation vector
+					const Mat & img,				// input:	the input image
+					double X, double Y, double Z,	// input:	the coordinates of position to be interpolated
+					double & r,						// output:	the interpolated R
+					double & g,						// output:	the interpolated G
+					double & b,						// output:	the interpolated B
+					double * imgpt_x = NULL,
+					double * imgpt_y = NULL
+					);
+
+void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
+	                      int & x_new, int & y_new,	// output:	new center of rect, making sure the new rect with the same size are within border
+						  int wndSizeHalf,
+						  int imgWidth, int imgHeight
+						  );
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -350,15 +437,11 @@ struct cam_data
 
 	double k[5];            // distortion
 
-// 	double * R;
-// 	double * t;
-// 	double * k;
-
 	// 20150214, zhaokunz, 改用Matx结构体
 	Matx33d m_K;
 	Matx33d m_R;
 	Matx31d m_t;
-	Matx<double,5,1> m_dist;
+	Matx<double, 5, 1> m_dist;
 
 	bool m_bCalibed;	// whether interior calibrated or not
 	bool m_bOriented;	// whether exterior oriented or not
@@ -371,6 +454,10 @@ struct cam_data
 	Features m_featsSIFT;	// sift blob features extracted automatically
 	Features m_featsFAST;	// fast corner features extracted automatically
 	Features m_featsManual; // features extracted manually
+
+	int m_nSiftElected;		// 前多少名 sift 特征点入选参加 SfM
+	int m_nFastElected;		// 前多少名 FAST 特征点入选参加 SfM
+	int m_nManualElected;	// 前多少名手提点入选参加 SfM
 
 	cv::Matx33d m_optCtrUncertEllipsoid; // 20200711, uncertainty ellipsoid of the optical center, with each row being one of the three orthogonal semi - axes(1 sigma level)
 
@@ -402,6 +489,10 @@ struct cam_data
 
 		m_bCalibed = false;
 		m_bOriented = false;
+
+		m_nSiftElected = 0;
+		m_nFastElected = 0;
+		m_nManualElected = 0;
 	};
 
 	cam_data & operator = (const cam_data & otherCam)
@@ -431,6 +522,10 @@ struct cam_data
 			m_t = otherCam.m_t;
 			m_bCalibed = otherCam.m_bCalibed;
 			m_bOriented = otherCam.m_bOriented;
+
+			m_nSiftElected = otherCam.m_nSiftElected;
+			m_nFastElected = otherCam.m_nFastElected;
+			m_nManualElected = otherCam.m_nManualElected;
 		}
 
 		return *this;
@@ -440,93 +535,177 @@ struct cam_data
 	{
 		*this = cam;
 	};
+
+	void ExtractSiftFeatures(const cv::Mat & img, int nfeatures = 0, int nOctaveLayers = 3, double contrastThreshold = 0.03, double edgeThreshold = 10, double sigma = 1.6)
+	{
+		m_featsSIFT.clear(); // 先把之前的清掉
+
+		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+
+		// 提取 sift 特征点
+		f2d->detect(img, m_featsSIFT.key_points);
+
+		// 按特征 size 从大到小对 sift 特征点进行排序
+		sort(m_featsSIFT.key_points.begin(), m_featsSIFT.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+
+		// 生成特征描述向量
+		f2d->compute(img, m_featsSIFT.key_points, m_featsSIFT.descriptors);
+
+		m_featsSIFT.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
+
+		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+		int n = m_featsSIFT.key_points.size();
+		KeyPoint kpt_pre;
+		kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
+		kpt_pre.size = -1000;
+		int idx_imgPt;
+		for (int i = 0; i < n; ++i)
+		{
+			m_featsSIFT.tracks.push_back(-1);
+
+			KeyPoint kpt_cur = m_featsSIFT.key_points[i];
+			if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
+				&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
+			{
+				// indicating that current keypoint is identical to the previous keypoint
+				m_featsSIFT.idx_pt.push_back(idx_imgPt);
+			}
+			else
+			{
+				m_featsSIFT.idx_pt.push_back(i);
+				idx_imgPt = i;
+			}
+
+			kpt_pre.pt.x = kpt_cur.pt.x;
+			kpt_pre.pt.y = kpt_cur.pt.y;
+			kpt_pre.size = kpt_cur.size;
+
+			// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+			uchar r, g, b;
+			Vec3b rgb;
+			if (BilinearInterp(img, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
+			{
+				rgb[0] = b;
+				rgb[1] = g;
+				rgb[2] = r;
+			}
+			m_featsSIFT.rgbs.push_back(rgb);
+		}
+	};
+
+	void ExtractFASTFeatures(const cv::Mat & img, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
+		int nfeaturesSift = 0, int nOctaveLayersSift = 3, double contrastThresholdSift = 0.03, double edgeThresholdSift = 10, double sigmaSift = 1.6)
+	{
+		m_featsFAST.clear(); // 先把之前的清掉
+
+		// 提取 fast 角点特征
+		// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
+		if (img.channels() < 3)
+		{
+			cv::FAST(img, m_featsFAST.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
+		}
+		else
+		{
+			cv::Mat im_gray;
+			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+			cv::FAST(im_gray, m_featsFAST.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
+		}
+
+		// 按照 response 从大到小对 fast 特征点进行排序
+		sort(m_featsFAST.key_points.begin(), m_featsFAST.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+
+		// 生成特征描述向量
+		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
+		f2d->compute(img, m_featsFAST.key_points, m_featsFAST.descriptors);
+
+		m_featsFAST.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
+
+										// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+		int n = m_featsFAST.key_points.size();
+		for (int i = 0; i < n; ++i)
+		{
+			const cv::KeyPoint & keypt = m_featsFAST.key_points[i];
+
+			m_featsFAST.tracks.push_back(-1);
+			m_featsFAST.idx_pt.push_back(i);
+
+			// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+			uchar r, g, b;
+			Vec3b rgb;
+			if (BilinearInterp(img, keypt.pt.x, keypt.pt.y, r, g, b))
+			{
+				rgb[0] = b;
+				rgb[1] = g;
+				rgb[2] = r;
+			}
+			m_featsFAST.rgbs.push_back(rgb);
+		}
+	};
+
+	void GenSfMFeatures(int nSfMFeatures = 8192, int nPrptFeatures = 150)
+	{
+		int nSift = m_featsSIFT.key_points.size();
+		int nFast = m_featsFAST.key_points.size();
+		int nManual = m_featsManual.key_points.size();
+
+		// 先清空
+		m_feats.clear();
+		m_subFeats.clear();
+
+		// 暂时先合成个大的
+		Features featsTmp = m_featsSIFT;
+		featsTmp.push_back(m_featsFAST);
+
+		// 然后截取为最终的，并录入
+		int nSize = featsTmp.key_points.size();
+		int nSmaller = nSize < nSfMFeatures ? nSize : nSfMFeatures;
+
+		m_feats.key_points.insert(m_feats.key_points.end(), featsTmp.key_points.begin(), featsTmp.key_points.begin() + nSmaller);
+		m_feats.descriptors = featsTmp.descriptors.rowRange(cv::Range(0, nSmaller));
+		m_feats.tracks.insert(m_feats.tracks.end(), featsTmp.tracks.begin(), featsTmp.tracks.begin() + nSmaller);
+		m_feats.idx_pt.insert(m_feats.idx_pt.end(), featsTmp.idx_pt.begin(), featsTmp.idx_pt.begin() + nSmaller);
+		m_feats.rgbs.insert(m_feats.rgbs.end(), featsTmp.rgbs.begin(), featsTmp.rgbs.begin() + nSmaller);
+
+		// 再把手提点加进来
+		m_feats.push_back(m_featsManual);
+
+		int nFinal = m_feats.key_points.size();
+
+		// 统计各类点入选参与 SfM 特征点的个数
+		m_nSiftElected = nSift < nSfMFeatures ? nSift : nSfMFeatures;
+		m_nFastElected = nSmaller - m_nSiftElected;
+		m_nManualElected = nManual; // 即全部手提点都入选
+
+		// 更新参与 SfM 的特征点的统一编号
+		for (int i = m_nSiftElected; i < nFinal; ++i)
+		{
+			m_feats.idx_pt[i] = i;
+		}
+
+		// 最后生成“先发制人”的特征点集
+		if (nPrptFeatures < nFinal)
+		{
+			m_subFeats.key_points.insert(m_subFeats.key_points.end(), m_feats.key_points.begin(), m_feats.key_points.begin() + nPrptFeatures);
+			m_subFeats.descriptors = m_feats.descriptors.rowRange(cv::Range(0, nPrptFeatures));
+			m_subFeats.tracks.insert(m_subFeats.tracks.end(), m_feats.tracks.begin(), m_feats.tracks.begin() + nPrptFeatures);
+			m_subFeats.idx_pt.insert(m_subFeats.idx_pt.end(), m_feats.idx_pt.begin(), m_feats.idx_pt.begin() + nPrptFeatures);
+			m_subFeats.rgbs.insert(m_subFeats.rgbs.end(), m_feats.rgbs.begin(), m_feats.rgbs.begin() + nPrptFeatures);
+		}
+	};
+
+	void DeleteAllFeatures()
+	{
+		m_featsSIFT.clear();
+		m_featsFAST.clear();
+		m_featsManual.clear();
+		m_feats.clear();
+		m_subFeats.clear();
+
+		m_nSiftElected = 0;
+		m_nFastElected = 0;
+		m_nManualElected = 0;
+	};
 };
-
-// 定义一个关于旋转顺序的枚举类型
-enum RotationOrder
-{
-	XYZ,
-	XZY,
-	YXZ,
-	YZX,
-	ZXY,
-	ZYX
-};
-
-// 计算角度的cos值，输入为角度
-double cosd(double angle);
-
-// 计算角度的sin值，输入为角度
-double sind(double angle);
-
-// 计算角度的tan值，输入为角度
-double tand(double angle);
-
-// 计算输入数值的arccosine值，返回值范围为0 - 180°
-double acosd(double x);
-
-// 计算输入数值的arcsine值，返回值范围为-90 - 90°
-double asind(double x);
-
-// 计算输入数值的arctangent值，返回值范围为-90 - 90°
-double atand(double x);
-
-// 计算(y / x)的arctangent值，由于可以综合考虑y和x的符号，因此返回值的范围拓展到四个象限，即-180 - 180°
-double atand(double y, double x);
-
-// 判断输入 x 的符号，为正则返回 1，为负则返回 -1
-double Sign_Johnny(double x);
-
-// Implementation of bilinear interpolation
-double BilinearInterp(double x, double y,	// the coordinates of position to be interpolated
-					  double x1,			// the x coordinate of topleft f1 and bottomleft f3
-					  double x2,			// the x coordinate of topright f2 and bottomright f4
-					  double y1,			// the y coordinate of topleft f1 and topright f2
-					  double y2,			// the y coordinate of bottomleft f3 and bottomright f4
-					  double f1, double f2, double f3, double f4	// the corresponding values of topleft,topright,bottomleft and bottomright points
-					  );
-
-bool BilinearInterp(const Mat & img,		// input:	the image data
-					double x, double y,		// input:	the coordinates of position to be interpolated
-					uchar & r,				// output:	the interpolated R
-					uchar & g,				// output:	the interpolated G
-					uchar & b				// output:	the interpolated B
-					);
-
-bool BilinearInterp(const Mat & img,		// input:	the image data
-					double x, double y,		// input:	the coordinates of position to be interpolated
-					double & r,				// output:	the interpolated R
-					double & g,				// output:	the interpolated G
-					double & b				// output:	the interpolated B
-					);
-
-bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
-					const Matx33d & mR,				// input:	the rotation matrix
-					const Matx31d & mt,				// input:	the translation vector
-					const Mat & img,				// input:	the input image
-					double X, double Y, double Z,	// input:	the coordinates of position to be interpolated
-					uchar & r,						// output:	the interpolated R
-					uchar & g,						// output:	the interpolated G
-					uchar & b						// output:	the interpolated B
-					);
-
-bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
-					const Matx33d & mR,				// input:	the rotation matrix
-					const Matx31d & mt,				// input:	the translation vector
-					const Mat & img,				// input:	the input image
-					double X, double Y, double Z,	// input:	the coordinates of position to be interpolated
-					double & r,						// output:	the interpolated R
-					double & g,						// output:	the interpolated G
-					double & b,						// output:	the interpolated B
-					double * imgpt_x = NULL,
-					double * imgpt_y = NULL
-					);
-
-void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
-	                      int & x_new, int & y_new,	// output:	new center of rect, making sure the new rect with the same size are within border
-						  int wndSizeHalf,
-						  int imgWidth, int imgHeight
-						  );
 
 // CvMat wrapper here /////////////////////////////////////////////////////////////////////////////////
 
@@ -886,28 +1065,28 @@ void getRGColorforRelativeUncertainty(double uctt,		// input: the given relative
 									  );
 
 // 20200729
-void ExtractSiftFeatures(Features & feats,
-						 const cv::Mat & img,
-						 int nfeatures = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
-						 int nOctaveLayers = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
-						 double contrastThreshold = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
-						 double edgeThreshold = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
-						 double sigma = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
-						 );
-
+// void ExtractSiftFeatures(Features & feats,
+// 						 const cv::Mat & img,
+// 						 int nfeatures = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+// 						 int nOctaveLayers = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+// 						 double contrastThreshold = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+// 						 double edgeThreshold = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+// 						 double sigma = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+// 						 );
+// 
 // 20200729
-void ExtractFASTFeatures(Features & feats,
-						 const cv::Mat & img,
-						 int thresholdFast = 20,				// threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
-						 bool nonmaxSuppressionFast = true,		// if true, non-maximum suppression is applied to detected corners (keypoints).
-						 int typeFast = cv::FastFeatureDetector::TYPE_9_16,	// one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
-						 int nfeaturesSift = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
-						 int nOctaveLayersSift = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
-						 double contrastThresholdSift = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
-						 double edgeThresholdSift = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
-						 double sigmaSift = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
-						 );
-
-void GenSfMFeatures(cam_data & cam, int & nSiftElected, int & nFastElected, int & nManualElected, int nSfMFeatures = 8192, int nPrptFeatures = 150);
+// void ExtractFASTFeatures(Features & feats,
+// 						 const cv::Mat & img,
+// 						 int thresholdFast = 20,				// threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
+// 						 bool nonmaxSuppressionFast = true,		// if true, non-maximum suppression is applied to detected corners (keypoints).
+// 						 int typeFast = cv::FastFeatureDetector::TYPE_9_16,	// one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
+// 						 int nfeaturesSift = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+// 						 int nOctaveLayersSift = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+// 						 double contrastThresholdSift = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+// 						 double edgeThresholdSift = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+// 						 double sigmaSift = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+// 						 );
+// 
+// void GenSfMFeatures(cam_data & cam, int & nSiftElected, int & nFastElected, int & nManualElected, int nSfMFeatures = 8192, int nPrptFeatures = 150);
 
 }
