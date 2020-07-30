@@ -3916,3 +3916,61 @@ void DeepVoid::ExtractFASTFeatures(Features & feats,
 		feats.rgbs.push_back(rgb);
 	}
 }
+
+void DeepVoid::GenSfMFeatures(cam_data & cam, int & nSiftElected, int & nFastElected, int & nManualElected, int nSfMFeatures, int nPrptFeatures)
+{
+
+	Features & featsSfM = cam.m_feats;
+	Features & featsSub = cam.m_subFeats;
+	const Features & feats_sift = cam.m_featsSIFT;
+	const Features & feats_fast = cam.m_featsFAST;
+	const Features & feats_manual = cam.m_featsManual;
+
+	int nSift = feats_sift.key_points.size();
+	int nFast = feats_fast.key_points.size();
+	int nManual = feats_manual.key_points.size();
+
+	// 先清空
+	featsSfM.clear();
+	featsSub.clear();
+
+	// 暂时先合成个大的
+	Features featsTmp = feats_sift;
+	featsTmp.push_back(feats_fast);
+
+	// 然后截取为最终的，并录入
+	int nSize = featsTmp.key_points.size();
+	int nSmaller = nSize < nSfMFeatures ? nSize : nSfMFeatures;
+
+	featsSfM.key_points.insert(featsSfM.key_points.end(), featsTmp.key_points.begin(), featsTmp.key_points.begin() + nSmaller);
+	featsSfM.descriptors = featsTmp.descriptors.rowRange(cv::Range(0, nSmaller));
+	featsSfM.tracks.insert(featsSfM.tracks.end(), featsTmp.tracks.begin(), featsTmp.tracks.begin() + nSmaller);
+	featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), featsTmp.idx_pt.begin(), featsTmp.idx_pt.begin() + nSmaller);
+	featsSfM.rgbs.insert(featsSfM.rgbs.end(), featsTmp.rgbs.begin(), featsTmp.rgbs.begin() + nSmaller);
+
+	// 再把手提点加进来
+	featsSfM.push_back(feats_manual);
+
+	int nFinal = featsSfM.key_points.size();
+
+	// 统计各类点入选参与 SfM 特征点的个数
+	nSiftElected = nSift < nSfMFeatures ? nSift : nSfMFeatures;
+	nFastElected = nSmaller - nSiftElected;
+	nManualElected = nManual; // 即全部手提点都入选
+
+	// 更新参与 SfM 的特征点的统一编号
+	for (int i = nSiftElected; i < nFinal; ++i)
+	{
+		featsSfM.idx_pt[i] = i;
+	}
+
+	// 最后生成“先发制人”的特征点集
+	if (nPrptFeatures < nFinal)
+	{
+		featsSub.key_points.insert(featsSub.key_points.end(), featsSfM.key_points.begin(), featsSfM.key_points.begin() + nPrptFeatures);
+		featsSub.descriptors = featsSfM.descriptors.rowRange(cv::Range(0, nPrptFeatures));
+		featsSub.tracks.insert(featsSub.tracks.end(), featsSfM.tracks.begin(), featsSfM.tracks.begin() + nPrptFeatures);
+		featsSub.idx_pt.insert(featsSub.idx_pt.end(), featsSfM.idx_pt.begin(), featsSfM.idx_pt.begin() + nPrptFeatures);
+		featsSub.rgbs.insert(featsSub.rgbs.end(), featsSfM.rgbs.begin(), featsSfM.rgbs.begin() + nPrptFeatures);
+	}
+}

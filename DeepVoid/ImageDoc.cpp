@@ -283,59 +283,65 @@ void CImageDoc::DeleteAllFeatures()
 
 void CImageDoc::GenSfMFeatures()
 {
-	Features & featsSfM = m_pCam->m_feats;
-	Features & featsSub = m_pCam->m_subFeats;
-	const Features & feats_sift = m_pCam->m_featsSIFT;
-	const Features & feats_fast = m_pCam->m_featsFAST;
-	const Features & feats_manual = m_pCam->m_featsManual;
+	//Features & featsSfM = m_pCam->m_feats;
+	//Features & featsSub = m_pCam->m_subFeats;
+	//const Features & feats_sift = m_pCam->m_featsSIFT;
+	//const Features & feats_fast = m_pCam->m_featsFAST;
+	//const Features & feats_manual = m_pCam->m_featsManual;
 
-	int nSift = feats_sift.key_points.size();
-	int nFast = feats_fast.key_points.size();
-	int nManual = feats_manual.key_points.size();
+	//int nSift = feats_sift.key_points.size();
+	//int nFast = feats_fast.key_points.size();
+	//int nManual = feats_manual.key_points.size();
 
-	// 先清空
-	featsSfM.clear();
-	featsSub.clear();
+	//// 先清空
+	//featsSfM.clear();
+	//featsSub.clear();
 
-	// 暂时先合成个大的
-	Features featsTmp = feats_sift;
-	featsTmp.push_back(feats_fast);
+	//// 暂时先合成个大的
+	//Features featsTmp = feats_sift;
+	//featsTmp.push_back(feats_fast);
 
-	// 然后截取为最终的，并录入
-	int nSize = featsTmp.key_points.size();
-	int nSmaller = nSize < m_nSfMFeatures ? nSize : m_nSfMFeatures;
+	//// 然后截取为最终的，并录入
+	//int nSize = featsTmp.key_points.size();
+	//int nSmaller = nSize < m_nSfMFeatures ? nSize : m_nSfMFeatures;
 
-	featsSfM.key_points.insert(featsSfM.key_points.end(), featsTmp.key_points.begin(), featsTmp.key_points.begin() + nSmaller);
-	featsSfM.descriptors = featsTmp.descriptors.rowRange(cv::Range(0, nSmaller));
-	featsSfM.tracks.insert(featsSfM.tracks.end(), featsTmp.tracks.begin(), featsTmp.tracks.begin() + nSmaller);
-	featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), featsTmp.idx_pt.begin(), featsTmp.idx_pt.begin() + nSmaller);
-	featsSfM.rgbs.insert(featsSfM.rgbs.end(), featsTmp.rgbs.begin(), featsTmp.rgbs.begin() + nSmaller);
+	//featsSfM.key_points.insert(featsSfM.key_points.end(), featsTmp.key_points.begin(), featsTmp.key_points.begin() + nSmaller);
+	//featsSfM.descriptors = featsTmp.descriptors.rowRange(cv::Range(0, nSmaller));
+	//featsSfM.tracks.insert(featsSfM.tracks.end(), featsTmp.tracks.begin(), featsTmp.tracks.begin() + nSmaller);
+	//featsSfM.idx_pt.insert(featsSfM.idx_pt.end(), featsTmp.idx_pt.begin(), featsTmp.idx_pt.begin() + nSmaller);
+	//featsSfM.rgbs.insert(featsSfM.rgbs.end(), featsTmp.rgbs.begin(), featsTmp.rgbs.begin() + nSmaller);
 
-	// 再把手提点加进来
-	featsSfM.push_back(feats_manual);
+	//// 再把手提点加进来
+	//featsSfM.push_back(feats_manual);
 
-	int nFinal = featsSfM.key_points.size();
+	//int nFinal = featsSfM.key_points.size();
 
-	// 统计各类点入选参与 SfM 特征点的个数
-	m_pImgView->m_nSiftElected = nSift < m_nSfMFeatures ? nSift : m_nSfMFeatures;
-	m_pImgView->m_nFastElected = nSmaller - m_pImgView->m_nSiftElected;
-	m_pImgView->m_nManualElected = nManual; // 即全部手提点都入选
+	//// 统计各类点入选参与 SfM 特征点的个数
+	//m_pImgView->m_nSiftElected = nSift < m_nSfMFeatures ? nSift : m_nSfMFeatures;
+	//m_pImgView->m_nFastElected = nSmaller - m_pImgView->m_nSiftElected;
+	//m_pImgView->m_nManualElected = nManual; // 即全部手提点都入选
 
-	// 更新参与 SfM 的特征点的统一编号
-	for (int i = m_pImgView->m_nSiftElected; i < nFinal; ++i)
-	{
-		featsSfM.idx_pt[i] = i;
-	}
+	//// 更新参与 SfM 的特征点的统一编号
+	//for (int i = m_pImgView->m_nSiftElected; i < nFinal; ++i)
+	//{
+	//	featsSfM.idx_pt[i] = i;
+	//}
 
-	// 最后生成“先发制人”的特征点集
-	if (m_nPrptFeatures < nFinal)
-	{
-		featsSub.key_points.insert(featsSub.key_points.end(), featsSfM.key_points.begin(), featsSfM.key_points.begin() + m_nPrptFeatures);
-		featsSub.descriptors = featsSfM.descriptors.rowRange(cv::Range(0, m_nPrptFeatures));
-		featsSub.tracks.insert(featsSub.tracks.end(), featsSfM.tracks.begin(), featsSfM.tracks.begin() + m_nPrptFeatures);
-		featsSub.idx_pt.insert(featsSub.idx_pt.end(), featsSfM.idx_pt.begin(), featsSfM.idx_pt.begin() + m_nPrptFeatures);
-		featsSub.rgbs.insert(featsSub.rgbs.end(), featsSfM.rgbs.begin(), featsSfM.rgbs.begin() + m_nPrptFeatures);
-	}
+	//// 最后生成“先发制人”的特征点集
+	//if (m_nPrptFeatures < nFinal)
+	//{
+	//	featsSub.key_points.insert(featsSub.key_points.end(), featsSfM.key_points.begin(), featsSfM.key_points.begin() + m_nPrptFeatures);
+	//	featsSub.descriptors = featsSfM.descriptors.rowRange(cv::Range(0, m_nPrptFeatures));
+	//	featsSub.tracks.insert(featsSub.tracks.end(), featsSfM.tracks.begin(), featsSfM.tracks.begin() + m_nPrptFeatures);
+	//	featsSub.idx_pt.insert(featsSub.idx_pt.end(), featsSfM.idx_pt.begin(), featsSfM.idx_pt.begin() + m_nPrptFeatures);
+	//	featsSub.rgbs.insert(featsSub.rgbs.end(), featsSfM.rgbs.begin(), featsSfM.rgbs.begin() + m_nPrptFeatures);
+	//}
+
+	//m_pImgView->Invalidate(TRUE);
+	//m_pImgView->m_flagShow = 2;
+
+	DeepVoid::GenSfMFeatures(*m_pCam, m_pImgView->m_nSiftElected, m_pImgView->m_nFastElected, m_pImgView->m_nManualElected,
+		m_nSfMFeatures, m_nPrptFeatures);
 
 	m_pImgView->Invalidate(TRUE);
 	m_pImgView->m_flagShow = 2;

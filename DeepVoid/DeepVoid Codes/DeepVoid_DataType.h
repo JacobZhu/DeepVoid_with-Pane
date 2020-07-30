@@ -908,4 +908,6 @@ void ExtractFASTFeatures(Features & feats,
 						 double sigmaSift = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
 						 );
 
+void GenSfMFeatures(cam_data & cam, int & nSiftElected, int & nFastElected, int & nManualElected, int nSfMFeatures = 8192, int nPrptFeatures = 150);
+
 }
