@@ -147,114 +147,123 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 
 void CImageDoc::ExtractSiftFeatures()
 {
-	Features & feats = m_pCam->m_featsSIFT;
-	feats.clear(); // 先把之前的清掉
+// 	Features & feats = m_pCam->m_featsSIFT;
+// 	feats.clear(); // 先把之前的清掉
+// 
+// 	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+// 
+// 	// 提取 sift 特征点
+// 	f2d->detect(*m_pImgOriginal, feats.key_points);
+// 
+// 	// 按特征 size 从大到小对 sift 特征点进行排序
+// 	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+// 
+// 	m_pImgView->Invalidate(TRUE);
+// 
+// 	// 生成特征描述向量
+// 	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
+// 
+// 	feats.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
+// 
+// 	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+// 	int n = feats.key_points.size();
+// 	KeyPoint kpt_pre;
+// 	kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
+// 	kpt_pre.size = -1000;
+// 	int idx_imgPt;
+// 	for (int i = 0; i < n; ++i)
+// 	{
+// 		feats.tracks.push_back(-1);
+// 
+// 		KeyPoint kpt_cur = feats.key_points[i];
+// 		if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
+// 			&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
+// 		{
+// 			// indicating that current keypoint is identical to the previous keypoint
+// 			feats.idx_pt.push_back(idx_imgPt);
+// 		}
+// 		else
+// 		{
+// 			feats.idx_pt.push_back(i);
+// 			idx_imgPt = i;
+// 		}
+// 
+// 		kpt_pre.pt.x = kpt_cur.pt.x;
+// 		kpt_pre.pt.y = kpt_cur.pt.y;
+// 		kpt_pre.size = kpt_cur.size;
+// 
+// 		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+// 		uchar r, g, b;
+// 		Vec3b rgb;
+// 		if (BilinearInterp(*m_pImgOriginal, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
+// 		{
+// 			rgb[0] = b;
+// 			rgb[1] = g;
+// 			rgb[2] = r;
+// 		}
+// 		feats.rgbs.push_back(rgb);
+// 	}
 
-	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
-
-	// 提取 sift 特征点
-	f2d->detect(*m_pImgOriginal, feats.key_points);
-
-	// 按特征 size 从大到小对 sift 特征点进行排序
-	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+	DeepVoid::ExtractSiftFeatures(m_pCam->m_featsSIFT, *m_pImgOriginal, m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	m_pImgView->Invalidate(TRUE);
-
-	// 生成特征描述向量
-	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
-
-	feats.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
-
-	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
-	int n = feats.key_points.size();
-	KeyPoint kpt_pre;
-	kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
-	kpt_pre.size = -1000;
-	int idx_imgPt;
-	for (int i = 0; i < n; ++i)
-	{
-		feats.tracks.push_back(-1);
-
-		KeyPoint kpt_cur = feats.key_points[i];
-		if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
-			&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
-		{
-			// indicating that current keypoint is identical to the previous keypoint
-			feats.idx_pt.push_back(idx_imgPt);
-		}
-		else
-		{
-			feats.idx_pt.push_back(i);
-			idx_imgPt = i;
-		}
-
-		kpt_pre.pt.x = kpt_cur.pt.x;
-		kpt_pre.pt.y = kpt_cur.pt.y;
-		kpt_pre.size = kpt_cur.size;
-
-		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
-		uchar r, g, b;
-		Vec3b rgb;
-		if (BilinearInterp(*m_pImgOriginal, kpt_cur.pt.x, kpt_cur.pt.y, r, g, b))
-		{
-			rgb[0] = b;
-			rgb[1] = g;
-			rgb[2] = r;
-		}
-		feats.rgbs.push_back(rgb);
-	}
 }
 
 void CImageDoc::ExtractFASTFeatures()
 {
-	Features & feats = m_pCam->m_featsFAST;
-	feats.clear(); // 先把之前的清掉
+// 	Features & feats = m_pCam->m_featsFAST;
+// 	feats.clear(); // 先把之前的清掉
+// 
+// 	// 提取 fast 角点特征
+// 	// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
+// 	cv::Mat im_gray;
+// 	if (m_pImgOriginal->channels() < 3)
+// 	{
+// 		im_gray = m_pImgOriginal->clone();
+// 	}
+// 	else
+// 	{
+// 		cv::cvtColor(*m_pImgOriginal, im_gray, CV_RGB2GRAY);
+// 	}
+// 
+// 	cv::FAST(im_gray, feats.key_points, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast);
+// 
+// 	// 按照 response 从大到小对 fast 特征点进行排序
+// 	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+// 
+// 	m_pImgView->Invalidate(TRUE);
+// 
+// 	// 生成特征描述向量
+// 	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+// 	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
+// 
+// 	feats.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
+// 
+// 	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+// 	int n = feats.key_points.size();
+// 	for (int i = 0; i < n; ++i)
+// 	{
+// 		const cv::KeyPoint & keypt = feats.key_points[i];
+// 
+// 		feats.tracks.push_back(-1);
+// 		feats.idx_pt.push_back(i);
+// 
+// 		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+// 		uchar r, g, b;
+// 		Vec3b rgb;
+// 		if (BilinearInterp(*m_pImgOriginal, keypt.pt.x, keypt.pt.y, r, g, b))
+// 		{
+// 			rgb[0] = b;
+// 			rgb[1] = g;
+// 			rgb[2] = r;
+// 		}
+// 		feats.rgbs.push_back(rgb);
+// 	}
 
-	// 提取 fast 角点特征
-	// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
-	cv::Mat im_gray;
-	if (m_pImgOriginal->channels() < 3)
-	{
-		im_gray = m_pImgOriginal->clone();
-	}
-	else
-	{
-		cv::cvtColor(*m_pImgOriginal, im_gray, CV_RGB2GRAY);
-	}
-
-	cv::FAST(im_gray, feats.key_points, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast);
-
-	// 按照 response 从大到小对 fast 特征点进行排序
-	sort(feats.key_points.begin(), feats.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+	DeepVoid::ExtractFASTFeatures(m_pCam->m_featsFAST, *m_pImgOriginal, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
+		m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	m_pImgView->Invalidate(TRUE);
-
-	// 生成特征描述向量
-	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
-	f2d->compute(*m_pImgOriginal, feats.key_points, feats.descriptors);
-
-	feats.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
-
-	// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
-	int n = feats.key_points.size();
-	for (int i = 0; i < n; ++i)
-	{
-		const cv::KeyPoint & keypt = feats.key_points[i];
-
-		feats.tracks.push_back(-1);
-		feats.idx_pt.push_back(i);
-
-		// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
-		uchar r, g, b;
-		Vec3b rgb;
-		if (BilinearInterp(*m_pImgOriginal, keypt.pt.x, keypt.pt.y, r, g, b))
-		{
-			rgb[0] = b;
-			rgb[1] = g;
-			rgb[2] = r;
-		}
-		feats.rgbs.push_back(rgb);
-	}
 }
 
 void CImageDoc::DeleteAllFeatures()

@@ -128,6 +128,9 @@ public:
 	afx_msg void On3dreconstructionNetworkorientationandsparsereconstruction();
 	afx_msg void On3dreconstructionDensereconstruction();
 	afx_msg void On3dview();
+	afx_msg void OnFeaturesExtractsift();
+	afx_msg void OnFeaturesExtractfast();
+	afx_msg void OnFeaturesSiftfast();
 };
 
 extern CDeepVoidApp theApp;

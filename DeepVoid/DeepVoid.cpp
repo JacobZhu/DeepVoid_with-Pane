@@ -68,6 +68,9 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_3DRECONSTRUCTION_NETWORKORIENTATIONANDSPARSERECONSTRUCTION, &CDeepVoidApp::On3dreconstructionNetworkorientationandsparsereconstruction)
 	ON_COMMAND(ID_3DRECONSTRUCTION_DENSERECONSTRUCTION, &CDeepVoidApp::On3dreconstructionDensereconstruction)
 	ON_COMMAND(ID_3DVIEW, &CDeepVoidApp::On3dview)
+	ON_COMMAND(ID_FEATURES_EXTRACTSIFT, &CDeepVoidApp::OnFeaturesExtractsift)
+	ON_COMMAND(ID_FEATURES_EXTRACTFAST, &CDeepVoidApp::OnFeaturesExtractfast)
+	ON_COMMAND(ID_FEATURES_SIFTFAST, &CDeepVoidApp::OnFeaturesSiftfast)
 END_MESSAGE_MAP()
 
 
@@ -11753,4 +11756,54 @@ void CDeepVoidApp::On3dview()
 	wnd3d.showWidget("image trajectory", viz::WTrajectory(imgTraj, viz::WTrajectory::BOTH, 1.0, color));
 
 	wnd3d.spin();
+}
+
+UINT ExtractSift(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	int nImg = pApp->m_vCams.size();
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cv::Mat & img = pApp->m_imgsOriginal[i];
+		cam_data & cam = pApp->m_vCams[i];
+		Features & featsSift = cam.m_featsSIFT;
+
+		featsSift.clear(); // ÏÈÇå¿Õ
+	}
+
+	return TRUE;
+}
+
+void CDeepVoidApp::OnFeaturesExtractsift()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(ExtractSift, this, THREAD_PRIORITY_NORMAL);
+}
+
+void CDeepVoidApp::OnFeaturesExtractfast()
+{
+	// TODO: Add your command handler code here
+
+}
+
+UINT ExtractSiftandFAST(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	int nImg = pApp->m_vCams.size();
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cv::Mat & img = pApp->m_imgsOriginal[i];
+	}
+
+	return TRUE;
+}
+
+void CDeepVoidApp::OnFeaturesSiftfast()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(ExtractSiftandFAST, this, THREAD_PRIORITY_NORMAL);
 }

@@ -885,4 +885,27 @@ void getRGColorforRelativeUncertainty(double uctt,		// input: the given relative
 									  int & b			// output: the computed B
 									  );
 
+// 20200729
+void ExtractSiftFeatures(Features & feats,
+						 const cv::Mat & img,
+						 int nfeatures = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+						 int nOctaveLayers = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+						 double contrastThreshold = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+						 double edgeThreshold = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+						 double sigma = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+						 );
+
+// 20200729
+void ExtractFASTFeatures(Features & feats,
+						 const cv::Mat & img,
+						 int thresholdFast = 20,				// threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
+						 bool nonmaxSuppressionFast = true,		// if true, non-maximum suppression is applied to detected corners (keypoints).
+						 int typeFast = cv::FastFeatureDetector::TYPE_9_16,	// one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
+						 int nfeaturesSift = 0,					// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+						 int nOctaveLayersSift = 3,				// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+						 double contrastThresholdSift = 0.03,	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+						 double edgeThresholdSift = 10,			// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+						 double sigmaSift = 1.6					// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+						 );
+
 }
