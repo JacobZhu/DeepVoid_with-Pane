@@ -12300,7 +12300,7 @@ double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// inp
 									      std::map<int,int> & hist		// output:	the histogram
 									      )
 {
-	for (auto iter=map_tracks.begin(); iter!=map_tracks.end(); ++iter)
+	for (auto iter = map_tracks.begin(); iter != map_tracks.end(); ++iter)
 	{
 		int length = iter->second.size();
 
@@ -12309,7 +12309,7 @@ double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// inp
 		if (iter_find == hist.end())
 		{
 			// does not exist
-			hist.insert(make_pair(length,1));
+			hist.insert(make_pair(length, 1));
 		}
 		else
 		{
@@ -12321,13 +12321,13 @@ double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracks & map_tracks,	// inp
 	int n_total = 0;
 	int sum_length = 0;
 
-	for (auto iter=hist.begin(); iter!=hist.end(); ++iter)
+	for (auto iter = hist.begin(); iter != hist.end(); ++iter)
 	{
-		n_total+=iter->second;
-		sum_length+=iter->first*iter->second;
+		n_total += iter->second;
+		sum_length += iter->first*iter->second;
 	}
 
-	return sum_length/(double)n_total;
+	return sum_length / (double)n_total;
 }
 
 // 20151128，采用老的结构

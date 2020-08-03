@@ -164,10 +164,6 @@ void CImageDoc::DeleteAllFeatures()
 {
 	m_pCam->DeleteAllFeatures();
 
-	m_pImgView->m_nSiftElected = 0;
-	m_pImgView->m_nFastElected = 0;
-	m_pImgView->m_nManualElected = 0;
-
 	m_pImgView->Invalidate(TRUE);
 }
 
@@ -175,12 +171,8 @@ void CImageDoc::GenSfMFeatures()
 {
 	m_pCam->GenSfMFeatures(m_nSfMFeatures, m_nPrptFeatures);
 
-	m_pImgView->m_nSiftElected = m_pCam->m_nSiftElected;
-	m_pImgView->m_nFastElected = m_pCam->m_nFastElected;
-	m_pImgView->m_nManualElected = m_pCam->m_nManualElected;
-
-	m_pImgView->Invalidate(TRUE);
 	m_pImgView->m_flagShow = 2;
+	m_pImgView->Invalidate(TRUE);
 }
 
 void CImageDoc::Serialize(CArchive& ar)

@@ -62,7 +62,7 @@ public:
 	double m_imgUncertainty_Zhu;
 
 	viz::Viz3d m_wnd3d; // 20160403, 3D visualizer window
-	viz::WCloud m_ptcloud = viz::WCloud(Mat(1,1,CV_64FC3));
+	viz::WCloud m_ptcloud = viz::WCloud(Mat(1, 1, CV_64FC3));
 
 	// 20200630
 	SfM_ZZK::PointCloud m_map_pointcloud;
@@ -78,6 +78,35 @@ public:
 	vector<CString> m_vImgPaths;
 	vector<vector<int>> m_vIdxSupports;
 	vector<CloudPoint> m_cloud_old;
+
+	// parameters for sift feature extraction
+	int m_nfeaturesSift;
+	int m_nOctaveLayersSift;
+	double m_contrastThresholdSift;
+	double m_edgeThresholdSift;
+	double m_sigmaSift;
+
+	// parameters for FAST feature extraction
+	int m_thresholdFast;
+	bool m_nonmaxSuppressionFast;
+	int m_typeFast;
+
+	int m_nSfMFeatures;
+	int m_nPrptFeatures;
+
+	SfM_ZZK::PairWise_F_matches_pWrdPts m_mapPairwiseFMatchesWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
+	SfM_ZZK::MultiTracks m_mapTracks;
+
+	// 两视图特征匹配需要的参数设置
+	bool m_fmbOptim;					// input:	whether optimize F using Golden Standard algorithm or not
+	double m_fmThreshRatioTest;			// input:	the ratio threshold for ratio test
+	double m_fmThreshMinInlierRatio;	// input:	the allowed minimum ratio of inliers
+	double m_fmThreshP2L;				// input:	the distance threshold between point and epiline, used in RANSAC stage
+	double m_fmThreshConf;				// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+	int m_fmMaxIter;					// input:	the maximum number of iterations
+	double m_fmxEps;					// input:	threshold
+	double m_fmfEps;					// input:	threshold
+	int m_prptTh;
 
 // operations
 public:
@@ -131,6 +160,11 @@ public:
 	afx_msg void OnFeaturesExtractsift();
 	afx_msg void OnFeaturesExtractfast();
 	afx_msg void OnFeaturesSiftfast();
+	afx_msg void OnFeaturesDeleteall();
+	afx_msg void On0settingsFeatures();
+	afx_msg void On0settings2featurematching();
+	afx_msg void On2featurematching();
+	afx_msg void On1featuresGenfeaturesforsfm();
 };
 
 extern CDeepVoidApp theApp;

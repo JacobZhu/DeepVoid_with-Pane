@@ -71,6 +71,11 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_FEATURES_EXTRACTSIFT, &CDeepVoidApp::OnFeaturesExtractsift)
 	ON_COMMAND(ID_FEATURES_EXTRACTFAST, &CDeepVoidApp::OnFeaturesExtractfast)
 	ON_COMMAND(ID_FEATURES_SIFTFAST, &CDeepVoidApp::OnFeaturesSiftfast)
+	ON_COMMAND(ID_FEATURES_DELETEALL, &CDeepVoidApp::OnFeaturesDeleteall)
+	ON_COMMAND(ID_0SETTINGS_FEATURES, &CDeepVoidApp::On0settingsFeatures)
+	ON_COMMAND(ID_0SETTINGS_2FEATUREMATCHING, &CDeepVoidApp::On0settings2featurematching)
+	ON_COMMAND(ID_2FEATUREMATCHING, &CDeepVoidApp::On2featurematching)
+	ON_COMMAND(ID_1FEATURES_GENFEATURESFORSFM, &CDeepVoidApp::On1featuresGenfeaturesforsfm)
 END_MESSAGE_MAP()
 
 
@@ -136,6 +141,32 @@ CDeepVoidApp::CDeepVoidApp()
 	m_pathImageCalibration = "";
 
 	m_strOut = "";
+
+	// parameters for sift feature extraction
+	m_nfeaturesSift = 0;	// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+	m_nOctaveLayersSift = 3;	// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+	m_contrastThresholdSift = 0.03/*0.01*//*0.04*/;	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+	m_edgeThresholdSift = 10;	// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+	m_sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+
+	// parameters for FAST feature extraction
+	m_thresholdFast = 20; // threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
+	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
+	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
+
+	m_nSfMFeatures = /*2048*/8192;
+	m_nPrptFeatures = 150;
+
+	// 两视图特征匹配需要的参数设置
+	m_fmbOptim = true;						// input:	whether optimize F using Golden Standard algorithm or not
+	m_fmThreshRatioTest = 0.65/*0.3*/;		// input:	the ratio threshold for ratio test
+	m_fmThreshMinInlierRatio = 0.5;			// input:	the allowed minimum ratio of inliers
+	m_fmThreshP2L = 3.;						// input:	the distance threshold between point and epiline, used in RANSAC stage
+	m_fmThreshConf = 0.99;					// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+	m_fmMaxIter = 64/*10*/;					// input:	the maximum number of iterations
+	m_fmxEps = 1.0E-8;						// input:	threshold
+	m_fmfEps = 1.0E-6;						// input:	threshold
+	m_prptTh = 1;
 }
 
 // The one and only CDeepVoidApp object
@@ -11762,15 +11793,32 @@ UINT ExtractSift(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
 
+	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
+
 	int nImg = pApp->m_vCams.size();
+	CString strInfo;
 
 	for (int i = 0; i < nImg; ++i)
 	{
-		cv::Mat & img = pApp->m_imgsOriginal[i];
+		const cv::Mat & img = pApp->m_imgsOriginal[i];
 		cam_data & cam = pApp->m_vCams[i];
-		Features & featsSift = cam.m_featsSIFT;
+		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
-		featsSift.clear(); // 先清空
+		cam.m_featsFAST.clear();
+
+		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
+
+		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		listCtrl.AddOneInfo(strInfo);
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
 	return TRUE;
@@ -11782,21 +11830,78 @@ void CDeepVoidApp::OnFeaturesExtractsift()
 	AfxBeginThread(ExtractSift, this, THREAD_PRIORITY_NORMAL);
 }
 
+UINT ExtractFAST(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
+
+	int nImg = pApp->m_vCams.size();
+	CString strInfo;
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		const cv::Mat & img = pApp->m_imgsOriginal[i];
+		cam_data & cam = pApp->m_vCams[i];
+		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
+
+		cam.m_featsSIFT.clear();
+
+		cam.ExtractFASTFeatures(img, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
+
+		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		listCtrl.AddOneInfo(strInfo);
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->Invalidate(TRUE);
+	}
+
+	return TRUE;
+}
+
 void CDeepVoidApp::OnFeaturesExtractfast()
 {
 	// TODO: Add your command handler code here
-
+	AfxBeginThread(ExtractFAST, this, THREAD_PRIORITY_NORMAL);
 }
 
 UINT ExtractSiftandFAST(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
 
+	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
+
 	int nImg = pApp->m_vCams.size();
+	CString strInfo;
 
 	for (int i = 0; i < nImg; ++i)
 	{
-		cv::Mat & img = pApp->m_imgsOriginal[i];
+		const cv::Mat & img = pApp->m_imgsOriginal[i];
+		cam_data & cam = pApp->m_vCams[i];
+		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
+
+		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		cam.ExtractFASTFeatures(img, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
+
+		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		listCtrl.AddOneInfo(strInfo);
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
 	return TRUE;
@@ -11807,3 +11912,198 @@ void CDeepVoidApp::OnFeaturesSiftfast()
 	// TODO: Add your command handler code here
 	AfxBeginThread(ExtractSiftandFAST, this, THREAD_PRIORITY_NORMAL);
 }
+
+UINT GenSfMFeatures(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
+
+	int nImg = pApp->m_vCams.size();
+	CString strInfo;
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cam_data & cam = pApp->m_vCams[i];
+		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
+
+		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
+
+		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		listCtrl.AddOneInfo(strInfo);
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->Invalidate(TRUE);
+	}
+
+	return TRUE;
+}
+
+void CDeepVoidApp::On1featuresGenfeaturesforsfm()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(GenSfMFeatures, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnFeaturesDeleteall()
+{
+	// TODO: Add your command handler code here
+	int nImg = m_vCams.size();
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cam_data & cam = m_vCams[i];
+		CImageDoc * pDoc = m_vPImgCocs[i];
+
+		cam.DeleteAllFeatures();
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->Invalidate(TRUE);
+	}
+}
+
+
+void CDeepVoidApp::On0settingsFeatures()
+{
+	// TODO: Add your command handler code here
+}
+
+
+void CDeepVoidApp::On0settings2featurematching()
+{
+	// TODO: Add your command handler code here
+}
+
+
+UINT TwoViewFeatureMatching(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
+
+	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清楚掉所有匹配映射
+
+	int nImg = pApp->m_vCams.size();
+	CString strInfo;
+
+	// 20151217，为了并行，先把所有可能的图像对列出来，后续直接通过循环而非嵌套循环的方式并行
+	vector<std::pair<int, int>> vec_pairs;
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		for (int j = i + 1; j < nImg; ++j)
+		{
+			vec_pairs.push_back(make_pair(i, j));
+		}
+	}
+
+	int nPair = vec_pairs.size();
+
+	// 1. Two-View Feature Matching.
+	for (int k = 0; k < nPair; ++k)
+	{
+		const std::pair<int, int> & ij = vec_pairs[k];
+		int i = ij.first;
+		int j = ij.second;
+
+		const cam_data & cam_i = pApp->m_vCams[i];
+		const cam_data & cam_j = pApp->m_vCams[j];
+
+		vector<DMatch> matches;
+
+		// 20150113, zhaokunz, new matching function
+		Matx33d mF;
+		vector<Point3d> wrdPts;
+
+		bool bSuc = false;
+
+		// 20200629, “先发制人”特征匹配
+		if (pApp->m_nPrptFeatures < cam_i.m_feats.key_points.size())
+		{
+			if (PreemptiveFeatureMatching(cam_i.m_subFeats, cam_j.m_subFeats, pApp->m_fmThreshRatioTest/*0.65*/, pApp->m_prptTh/*1*/))
+			{
+				// 20200621, 同步输出射影重建物点坐标
+				bSuc = Get_F_Matches_pWrdPts_knn(cam_i.m_feats, cam_j.m_feats, mF, matches, wrdPts,
+					pApp->m_fmbOptim, pApp->m_fmThreshRatioTest/*0.65*/, pApp->m_fmThreshMinInlierRatio/*0.5*/,
+					pApp->m_fmThreshP2L, pApp->m_fmThreshConf, pApp->m_fmMaxIter/*64*/, pApp->m_fmxEps, pApp->m_fmfEps);
+			}
+		}
+		else
+		{
+			bSuc = Get_F_Matches_pWrdPts_knn(cam_i.m_feats, cam_j.m_feats, mF, matches, wrdPts,
+				pApp->m_fmbOptim, pApp->m_fmThreshRatioTest/*0.65*/, pApp->m_fmThreshMinInlierRatio/*0.5*/,
+				pApp->m_fmThreshP2L, pApp->m_fmThreshConf, pApp->m_fmMaxIter/*64*/, pApp->m_fmxEps, pApp->m_fmfEps);
+		}
+
+		if (bSuc)
+		{
+			strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, matches.size());
+			listCtrl.AddOneInfo(strInfo);
+
+			pApp->m_mapPairwiseFMatchesWrdPts.insert(make_pair(make_pair(i, j), make_pair(make_pair(mF, matches), wrdPts)));
+		}
+	}
+
+	
+	// 2. Feature Tracking.
+	SfM_ZZK::MultiTracks map_tracks_init;
+	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init); // 20200622
+
+	// 确保特征轨迹从0开始依次计数
+	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
+	pApp->m_mapTracks.clear(); // 先清空
+
+	int idx_count = 0;
+	for (auto iter_track = map_tracks_init.begin(); iter_track != map_tracks_init.end(); ++iter_track)
+	{
+		pApp->m_mapTracks.insert(make_pair(idx_count, iter_track->second));
+
+		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
+		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
+		{
+			const int & I = iter_Ii->first; // image I
+			const int & i = iter_Ii->second.first; // feature i
+			pApp->m_vCams[I].m_feats.tracks[i] = idx_count;
+		}
+
+		++idx_count;
+	}
+
+	// 统计特征轨迹直方图
+	std::map<int, int> hist_track;
+	SfM_ZZK::BuildTrackLengthHistogram(pApp->m_mapTracks, hist_track);
+	int n_tracklength_more_than_1 = 0;
+	for (auto iter_n = hist_track.begin(); iter_n != hist_track.end(); ++iter_n)
+	{
+		if (iter_n->first < 2)
+		{
+			continue;
+		}
+		n_tracklength_more_than_1 += iter_n->second;
+	}
+
+	strInfo.Format("number of good tracks: %07d", n_tracklength_more_than_1);
+	listCtrl.AddOneInfo(strInfo);
+
+	return TRUE;
+}
+
+
+void CDeepVoidApp::On2featurematching()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(TwoViewFeatureMatching, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+

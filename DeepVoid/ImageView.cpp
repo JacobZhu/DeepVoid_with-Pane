@@ -38,9 +38,9 @@ CImageView::CImageView()
 	m_nHeightInfoRect = 150; // 字体高度20，该参数120意味着最多显示 6 行字
 	m_nWidthInfoRect = 280;
 
-	m_nSiftElected = 0;
-	m_nFastElected = 0;
-	m_nManualElected = 0;
+// 	m_nSiftElected = 0;
+// 	m_nFastElected = 0;
+// 	m_nManualElected = 0;
 }
 
 CImageView::~CImageView()
@@ -146,7 +146,7 @@ void CImageView::OnDraw(CDC* pDC)
 
 			if (m_flagShow == 2) // 只显示入选参加 SfM 的 sift 特征点
 			{
-				n = m_nSiftElected;
+				n = m_pMVSDoc->m_pCam->m_nSiftElected;
 			}			
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 0));
@@ -175,7 +175,7 @@ void CImageView::OnDraw(CDC* pDC)
 
 			if (m_flagShow == 2) // 只显示入选参加 SfM 的 FAST 特征点
 			{
-				n = m_nFastElected;
+				n = m_pMVSDoc->m_pCam->m_nFastElected;
 			}
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(0, 255, 255));
@@ -204,7 +204,7 @@ void CImageView::OnDraw(CDC* pDC)
 
 			if (m_flagShow == 2) // 只显示入选参加 SfM 的手提点
 			{
-				n = m_nManualElected;
+				n = m_pMVSDoc->m_pCam->m_nManualElected;
 			}
 
 			CPen newPen(m_penStyle, m_nPenWidth, RGB(255, 255, 0));
@@ -723,7 +723,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d/%d)\n", m_nSiftElected, m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nSiftElected, m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
 	}
 	else
 	{
@@ -742,7 +742,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d/%d)\n", m_nFastElected, m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nFastElected, m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
 	}
 	else
 	{
@@ -761,7 +761,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d/%d)\n", m_nManualElected, m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
+		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nManualElected, m_pMVSDoc->m_pCam->m_featsManual.key_points.size());
 	}
 	else
 	{
