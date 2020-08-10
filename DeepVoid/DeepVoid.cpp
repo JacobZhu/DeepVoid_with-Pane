@@ -12125,10 +12125,42 @@ UINT TwoViewFeatureMatching(LPVOID param)
 		{
 			const int & I = iter_Ii->first; // image I
 			const int & i = iter_Ii->second.first; // feature i
-			pApp->m_vCams[I].m_feats.tracks[i] = idx_count;
+
+			cam_data & cam = pApp->m_vCams[I];
+
+			cam.m_feats.tracks[i] = idx_count;
+
+			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
+			if (i < cam.m_nSiftElected)
+			{
+				cam.m_featsSIFT.tracks[i] = idx_count;
+			}
+			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
+			{
+				cam.m_featsFAST.tracks[i - cam.m_nSiftElected] = idx_count;
+			}
+			else
+			{
+				cam.m_featsManual.tracks[i - cam.m_nSiftElected - cam.m_nFastElected] = idx_count;
+			}
 		}
 
 		++idx_count;
+	}
+
+	// 刷新并显示每个特征/手提点的全局 trackID 号
+	for (int i = 0; i < nImg; ++i)
+	{
+		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->m_pImgView->m_bShowID = TRUE;
+		pDoc->m_pImgView->m_bShowTrackID = TRUE;
+		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
 	// 统计特征轨迹直方图

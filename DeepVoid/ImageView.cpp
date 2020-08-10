@@ -159,19 +159,24 @@ void CImageView::OnDraw(CDC* pDC)
 			{
 				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
 
-				int trackID = m_pMVSDoc->m_pCam->m_featsSIFT.tracks[i];
-
 				double x = keypt.pt.x*scale;
-				double y = keypt.pt.y*scale;
-
-				int showID = i;
+				double y = keypt.pt.y*scale;		
 
 				if (m_bShowTrackID)
 				{
-					showID = trackID;
-				}
+					int trackID = m_pMVSDoc->m_pCam->m_featsSIFT.tracks[i];
 
-				DrawCircle(pDC, x, y, showID, m_bShowID, m_nBasicRadius*scale);
+					if (trackID < 0)
+					{
+						continue;
+					}
+
+					DrawCircle(pDC, x, y, trackID, m_bShowID, m_nBasicRadius*scale);
+				}
+				else
+				{
+					DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
+				}				
 			}
 
 			pDC->SelectObject(pOldPen);
@@ -200,7 +205,21 @@ void CImageView::OnDraw(CDC* pDC)
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+				if (m_bShowTrackID)
+				{
+					int trackID = m_pMVSDoc->m_pCam->m_featsFAST.tracks[i];
+
+					if (trackID < 0)
+					{
+						continue;
+					}
+
+					DrawCross(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+				}
+				else
+				{
+					DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+				}				
 			}
 
 			pDC->SelectObject(pOldPen);
@@ -229,7 +248,21 @@ void CImageView::OnDraw(CDC* pDC)
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+				if (m_bShowTrackID)
+				{
+					int trackID = m_pMVSDoc->m_pCam->m_featsManual.tracks[i];
+
+					if (trackID < 0)
+					{
+						continue;
+					}
+
+					DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
+				}
+				else
+				{
+					DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+				}				
 			}
 
 			pDC->SelectObject(pOldPen);
@@ -715,13 +748,20 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_bShowID)
 	{
-		strAll += "[X] Show ID: Yes\n";
+		if (m_bShowTrackID)
+		{
+			strAll += "[X] Show ID: Track ID\n";
+		}
+		else
+		{
+			strAll += "[X] Show ID: Image ID\n";
+		}		
 	}
 	else
 	{
 		strAll += "[X] Show ID: No\n";
 	}
-
+	
 	if (m_bShowSIFT)
 	{
 		strAll += "[C] Show sift: Yes ";
@@ -1032,13 +1072,18 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 		if (nChar == 'x' || nChar == 'X') // 切换是否显示特征编号
 		{
-			if (m_bShowID)
-			{
-				m_bShowID = FALSE;
-			}
-			else
+			if (!m_bShowID && !m_bShowTrackID) // 什么 ID 号都不显示
 			{
 				m_bShowID = TRUE;
+			}
+			else if (m_bShowID && !m_bShowTrackID) // 显示图像局部 ID 号
+			{
+				m_bShowTrackID = TRUE;
+			}
+			else // 显示每个点的全局 Track ID 号
+			{
+				m_bShowID = FALSE;
+				m_bShowTrackID = FALSE;
 			}
 			Invalidate(TRUE);
 		}
