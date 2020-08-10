@@ -79,6 +79,9 @@ public:
 	vector<vector<int>> m_vIdxSupports;
 	vector<CloudPoint> m_cloud_old;
 
+	BOOL m_bNoneImages;
+	BOOL m_bSfMFeatsReady;
+
 	// parameters for sift feature extraction
 	int m_nfeaturesSift;
 	int m_nOctaveLayersSift;
@@ -165,6 +168,12 @@ public:
 	afx_msg void On0settings2featurematching();
 	afx_msg void On2featurematching();
 	afx_msg void On1featuresGenfeaturesforsfm();
+	afx_msg void OnUpdateFeaturesExtractsift(CCmdUI *pCmdUI);
+	afx_msg void OnUpdateFeaturesExtractfast(CCmdUI *pCmdUI);
+	afx_msg void OnUpdateFeaturesSiftfast(CCmdUI *pCmdUI);
+	afx_msg void OnUpdate1featuresGenfeaturesforsfm(CCmdUI *pCmdUI);
+	afx_msg void OnUpdateFeaturesDeleteall(CCmdUI *pCmdUI);
+	afx_msg void OnUpdate2featurematching(CCmdUI *pCmdUI);
 };
 
 extern CDeepVoidApp theApp;

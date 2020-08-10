@@ -29,6 +29,7 @@ CImageView::CImageView()
 	m_bShowManual = TRUE;
 	m_bShowID = FALSE;
 	m_bShowInfo = TRUE;
+	m_bShowTrackID = FALSE;
 
 	m_nPenWidth = 1;		// CDC pen width
 	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
@@ -158,10 +159,19 @@ void CImageView::OnDraw(CDC* pDC)
 			{
 				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
 
+				int trackID = m_pMVSDoc->m_pCam->m_featsSIFT.tracks[i];
+
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
 
-				DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
+				int showID = i;
+
+				if (m_bShowTrackID)
+				{
+					showID = trackID;
+				}
+
+				DrawCircle(pDC, x, y, showID, m_bShowID, m_nBasicRadius*scale);
 			}
 
 			pDC->SelectObject(pOldPen);

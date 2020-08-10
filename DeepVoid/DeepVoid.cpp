@@ -76,6 +76,12 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_0SETTINGS_2FEATUREMATCHING, &CDeepVoidApp::On0settings2featurematching)
 	ON_COMMAND(ID_2FEATUREMATCHING, &CDeepVoidApp::On2featurematching)
 	ON_COMMAND(ID_1FEATURES_GENFEATURESFORSFM, &CDeepVoidApp::On1featuresGenfeaturesforsfm)
+	ON_UPDATE_COMMAND_UI(ID_FEATURES_EXTRACTSIFT, &CDeepVoidApp::OnUpdateFeaturesExtractsift)
+	ON_UPDATE_COMMAND_UI(ID_FEATURES_EXTRACTFAST, &CDeepVoidApp::OnUpdateFeaturesExtractfast)
+	ON_UPDATE_COMMAND_UI(ID_FEATURES_SIFTFAST, &CDeepVoidApp::OnUpdateFeaturesSiftfast)
+	ON_UPDATE_COMMAND_UI(ID_1FEATURES_GENFEATURESFORSFM, &CDeepVoidApp::OnUpdate1featuresGenfeaturesforsfm)
+	ON_UPDATE_COMMAND_UI(ID_FEATURES_DELETEALL, &CDeepVoidApp::OnUpdateFeaturesDeleteall)
+	ON_UPDATE_COMMAND_UI(ID_2FEATUREMATCHING, &CDeepVoidApp::OnUpdate2featurematching)
 END_MESSAGE_MAP()
 
 
@@ -132,6 +138,9 @@ CDeepVoidApp::CDeepVoidApp()
 	m_deFactor_Zhu = 0.25;
 	m_nRandSamp_Zhu = 5;
 	m_imgUncertainty_Zhu = 0.5;
+
+	m_bNoneImages = TRUE;
+	m_bSfMFeatsReady = FALSE;
 
 //	m_wnd3d = viz::Viz3d("3D Window"); // give the 3D visualizer window a name
 
@@ -405,7 +414,9 @@ void CDeepVoidApp::OnFileOpenimages()
 			strFilePath = dlgFile.GetNextPathName(pos);
 			((CMainFrame *)m_pMainWnd)->m_wndImgThumbnailPane.m_wndImgListCtrl.AddOneImage(strFilePath);
 		}
-	}
+
+		m_bNoneImages = FALSE; // 通知有图了，更新按键状态。
+	}	
 
 	delete [] pBuffer;
 }
@@ -438,7 +449,9 @@ void CDeepVoidApp::OnFileAddimages()
 			strFilePath = dlgFile.GetNextPathName(pos);
 			((CMainFrame *)m_pMainWnd)->m_wndImgThumbnailPane.m_wndImgListCtrl.AddOneImage(strFilePath);
 		}
-	}
+
+		m_bNoneImages = FALSE; // 通知有图了，更新按键状态。
+	}	
 
 	delete [] pBuffer;
 }
@@ -11821,12 +11834,20 @@ UINT ExtractSift(LPVOID param)
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
+	pApp->m_bSfMFeatsReady = TRUE;
+
 	return TRUE;
 }
 
 void CDeepVoidApp::OnFeaturesExtractsift()
 {
 	// TODO: Add your command handler code here
+
+	if (m_vCams.size() < 1) // 没有图像就直接退出
+	{
+		return;
+	}
+
 	AfxBeginThread(ExtractSift, this, THREAD_PRIORITY_NORMAL);
 }
 
@@ -11863,12 +11884,20 @@ UINT ExtractFAST(LPVOID param)
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
+	pApp->m_bSfMFeatsReady = TRUE;
+
 	return TRUE;
 }
 
 void CDeepVoidApp::OnFeaturesExtractfast()
 {
 	// TODO: Add your command handler code here
+
+	if (m_vCams.size() < 1) // 没有图像就直接退出
+	{
+		return;
+	}
+
 	AfxBeginThread(ExtractFAST, this, THREAD_PRIORITY_NORMAL);
 }
 
@@ -11904,12 +11933,20 @@ UINT ExtractSiftandFAST(LPVOID param)
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
+	pApp->m_bSfMFeatsReady = TRUE;
+
 	return TRUE;
 }
 
 void CDeepVoidApp::OnFeaturesSiftfast()
 {
 	// TODO: Add your command handler code here
+
+	if (m_vCams.size() < 1) // 没有图像就直接退出
+	{
+		return;
+	}
+
 	AfxBeginThread(ExtractSiftandFAST, this, THREAD_PRIORITY_NORMAL);
 }
 
@@ -11941,12 +11978,20 @@ UINT GenSfMFeatures(LPVOID param)
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
+	pApp->m_bSfMFeatsReady = TRUE;
+
 	return TRUE;
 }
 
 void CDeepVoidApp::On1featuresGenfeaturesforsfm()
 {
 	// TODO: Add your command handler code here
+
+	if (m_vCams.size() < 1) // 没有图像就直接退出
+	{
+		return;
+	}
+
 	AfxBeginThread(GenSfMFeatures, this, THREAD_PRIORITY_NORMAL);
 }
 
@@ -11955,6 +12000,11 @@ void CDeepVoidApp::OnFeaturesDeleteall()
 {
 	// TODO: Add your command handler code here
 	int nImg = m_vCams.size();
+
+	if (nImg < 1) // 没有图像就直接退出
+	{
+		return;
+	}
 
 	for (int i = 0; i < nImg; ++i)
 	{
@@ -11970,6 +12020,8 @@ void CDeepVoidApp::OnFeaturesDeleteall()
 
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
+
+	m_bSfMFeatsReady = FALSE;
 }
 
 
@@ -12102,8 +12154,56 @@ UINT TwoViewFeatureMatching(LPVOID param)
 void CDeepVoidApp::On2featurematching()
 {
 	// TODO: Add your command handler code here
+
+	if (m_vCams.size() < 2) // 至少得有 2 幅图像才能进行两视图特征匹配
+	{
+		return;
+	}
+
 	AfxBeginThread(TwoViewFeatureMatching, this, THREAD_PRIORITY_NORMAL);
 }
 
 
 
+
+
+void CDeepVoidApp::OnUpdateFeaturesExtractsift(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnUpdateFeaturesExtractfast(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnUpdateFeaturesSiftfast(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnUpdate1featuresGenfeaturesforsfm(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnUpdateFeaturesDeleteall(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnUpdate2featurematching(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_bSfMFeatsReady);
+}
