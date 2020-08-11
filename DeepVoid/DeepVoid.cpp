@@ -82,6 +82,8 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_UPDATE_COMMAND_UI(ID_1FEATURES_GENFEATURESFORSFM, &CDeepVoidApp::OnUpdate1featuresGenfeaturesforsfm)
 	ON_UPDATE_COMMAND_UI(ID_FEATURES_DELETEALL, &CDeepVoidApp::OnUpdateFeaturesDeleteall)
 	ON_UPDATE_COMMAND_UI(ID_2FEATUREMATCHING, &CDeepVoidApp::OnUpdate2featurematching)
+	ON_COMMAND(ID_1FEATURES_MANUAL, &CDeepVoidApp::On1featuresManual)
+	ON_UPDATE_COMMAND_UI(ID_1FEATURES_MANUAL, &CDeepVoidApp::OnUpdate1featuresManual)
 END_MESSAGE_MAP()
 
 
@@ -11830,7 +11832,11 @@ UINT ExtractSift(LPVOID param)
 			continue;
 		}
 
-		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
+		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
+//		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
+		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
@@ -11880,7 +11886,11 @@ UINT ExtractFAST(LPVOID param)
 			continue;
 		}
 
-		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
+		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
+//		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
+		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
@@ -11929,7 +11939,12 @@ UINT ExtractSiftandFAST(LPVOID param)
 			continue;
 		}
 
-		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
+		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
+//		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
+		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
@@ -11974,7 +11989,12 @@ UINT GenSfMFeatures(LPVOID param)
 			continue;
 		}
 
-		pDoc->m_pImgView->m_flagShow = 2;
+		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
+		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
+//		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
+		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
 		pDoc->m_pImgView->Invalidate(TRUE);
 	}
 
@@ -12196,7 +12216,39 @@ void CDeepVoidApp::On2featurematching()
 }
 
 
+// UINT ExtractManual(LPVOID param)
+// {
+// 	CImageDoc * pDoc = (CImageDoc *)param;
+// 
+// 	pDoc->ExtractPointsContinuously(FALSE);
+// 
+// 	return TRUE;
+// }
 
+
+void CDeepVoidApp::On1featuresManual()
+{
+	// TODO: Add your command handler code here
+	int nImg = m_vCams.size();
+
+	if (nImg < 1) // 没有图像就直接退出
+	{
+		return;
+	}
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		CImageDoc * pDoc = m_vPImgCocs[i];
+
+		if (!pDoc || !pDoc->m_pImgView)
+		{
+			continue;
+		}
+
+		pDoc->ExtractPointsContinuously(FALSE);
+//		AfxBeginThread(ExtractManual, pDoc, THREAD_PRIORITY_NORMAL);
+	}
+}
 
 
 void CDeepVoidApp::OnUpdateFeaturesExtractsift(CCmdUI *pCmdUI)
@@ -12238,4 +12290,11 @@ void CDeepVoidApp::OnUpdate2featurematching(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
 	pCmdUI->Enable(m_bSfMFeatsReady);
+}
+
+
+void CDeepVoidApp::OnUpdate1featuresManual(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
 }

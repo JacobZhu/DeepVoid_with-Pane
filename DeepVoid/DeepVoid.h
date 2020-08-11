@@ -174,6 +174,8 @@ public:
 	afx_msg void OnUpdate1featuresGenfeaturesforsfm(CCmdUI *pCmdUI);
 	afx_msg void OnUpdateFeaturesDeleteall(CCmdUI *pCmdUI);
 	afx_msg void OnUpdate2featurematching(CCmdUI *pCmdUI);
+	afx_msg void On1featuresManual();
+	afx_msg void OnUpdate1featuresManual(CCmdUI *pCmdUI);
 };
 
 extern CDeepVoidApp theApp;
