@@ -2054,7 +2054,7 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
 	//////////////////////////////////////////////////////////////////////////
 
-	if (matches_passSymTest.size()<8)
+	if (matches_passSymTest.size() < 8)
 	{
 		return false;
 	}
@@ -2064,7 +2064,7 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 	vector<Point2f> points1(matches_passSymTest.size());
 
 	// initialize the points here ... */
-	for(i=0;i<matches_passSymTest.size();i++)
+	for (i = 0; i < matches_passSymTest.size(); i++)
 	{
 		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
 		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
@@ -2078,7 +2078,7 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 	vector<DMatch> matches_RANSAC;
 	vector<Point2d> vImgPts0, vImgPts1;
 
-	for (i=0;i<matches_passSymTest.size();i++)
+	for (i = 0; i < matches_passSymTest.size(); i++)
 	{
 		if (status[i])
 		{
@@ -2094,7 +2094,7 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 
 	double ratioInliers = (double)matches_RANSAC.size()/matches_passSymTest.size();
 
-	if (matches_RANSAC.size()<8 || ratioInliers<thresh_minInlierRatio)
+	if (matches_RANSAC.size() < 8 || ratioInliers < thresh_minInlierRatio)
 	{
 		// number of inliers must be bigger than 8
 		// and the ratio of inliers should be more than certain threshold
@@ -2402,6 +2402,343 @@ bool DeepVoid::PreemptiveFeatureMatching(const Features & feats0,				// input:	n
 	{
 		return true;
 	}	
+}
+
+// 20200812，专门针对手动提取像点的匹配算法
+bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & feats1, Matx33d & mF, vector<DMatch>& matches, vector<Point3d>& pWrdPts)
+{
+	matches.clear();
+
+	int K = 2; // the number of nearest neighbors
+
+	int nFeat0 = feats0.key_points.size();
+	int nFeat1 = feats1.key_points.size();
+
+	//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+																				//////////////////////////////////////////////////////////////////////////
+
+																				// 2. using the unique image point index, useful for SIFT, since for one image point
+																				// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
+	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+	{
+		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
+		{
+			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+
+	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+	{
+		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
+		{
+			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
+			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
+
+			iter_k->queryIdx = queryIdx_uni;
+			iter_k->trainIdx = trainIdx_uni;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 3. reorganize all matches, again only neccesary for SIFT
+	// (0,25) (0,16)
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
+	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
+
+	auto iter01_begin = matches01_knn.begin();
+	auto iter10_begin = matches10_knn.begin();
+
+	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+	{
+		i = iter - iter01_begin;
+
+		if (status01[i])
+		{
+			continue;
+		}
+
+		matches01_knn_idximgpt.push_back(*iter);
+
+		status01[i] = 1;
+
+		auto iter_end = matches01_knn_idximgpt.end() - 1;
+
+		for (auto iter_k = iter + 1; iter_k != matches01_knn.end(); ++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
+			{
+				continue;
+			}
+
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status01[iter_k - iter01_begin] = 1;
+		}
+	}
+
+	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+	{
+		i = iter - iter10_begin;
+
+		if (status10[i])
+		{
+			continue;
+		}
+
+		matches10_knn_idximgpt.push_back(*iter);
+
+		status10[i] = 1;
+
+		auto iter_end = matches10_knn_idximgpt.end() - 1;
+
+		for (auto iter_k = iter + 1; iter_k != matches10_knn.end(); ++iter_k)
+		{
+			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
+			{
+				continue;
+			}
+
+			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+
+			status10[iter_k - iter10_begin] = 1;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 4. select best 2 different matches for each image point
+	// (0,25) (0,16) (0,25) (0,19)
+	// (1,10) (1,11)
+	//      to
+	// (0,25) (0,19)
+	// (1,10) (1,11)
+	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
+	// after this step, they will be like (2,14) only, since they are all basically the same matches
+	for (auto iter = matches01_knn_idximgpt.begin(); iter != matches01_knn_idximgpt.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin() + 2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin() + 1, iter_find);
+			iter->erase(iter->begin() + 2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin() + 1, iter->end());
+		}
+	}
+
+	for (auto iter = matches10_knn_idximgpt.begin(); iter != matches10_knn_idximgpt.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+
+		int idxBest = (*iter)[0].trainIdx;
+
+		if (idxBest != (*iter)[1].trainIdx)
+		{
+			iter->erase(iter->begin() + 2, iter->end());
+			continue;
+		}
+
+		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
+
+		if (iter_find != iter->end())
+		{
+			iter_swap(iter->begin() + 1, iter_find);
+			iter->erase(iter->begin() + 2, iter->end());
+		}
+		else // all matches are the same
+		{
+			iter->erase(iter->begin() + 1, iter->end());
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn_idximgpt, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn_idximgpt, matches10_passRatioTest, thresh_ratioTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	vector<DMatch> matches_passSymTest;
+	// 6. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size() < 8)
+	{
+		return false;
+	}
+
+	// 7. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for (i = 0; i < matches_passSymTest.size(); i++)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	//	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+
+	vector<DMatch> matches_RANSAC;
+	vector<Point2d> vImgPts0, vImgPts1;
+
+	for (i = 0; i < matches_passSymTest.size(); i++)
+	{
+		if (status[i])
+		{
+			matches_RANSAC.push_back(matches_passSymTest[i]);
+
+			Point2d pt0, pt1;
+			pt0.x = points0[i].x; pt0.y = points0[i].y;
+			pt1.x = points1[i].x; pt1.y = points1[i].y;
+			vImgPts0.push_back(pt0);
+			vImgPts1.push_back(pt1);
+		}
+	}
+
+	double ratioInliers = (double)matches_RANSAC.size() / matches_passSymTest.size();
+
+	if (matches_RANSAC.size() < 8 || ratioInliers < thresh_minInlierRatio)
+	{
+		// number of inliers must be bigger than 8
+		// and the ratio of inliers should be more than certain threshold
+		return false;
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
+	// because of the usage of normalization, this DLT algorithm is quite robust
+	//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT starts");
+
+	mF = findFundamentalMat(vImgPts0, vImgPts1, FM_8POINT);
+
+	//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("FM_8POINT ends");
+	//////////////////////////////////////////////////////////////////////////
+
+	// 9. optimize the fundamental matrix using only the inliers, optional step
+	vector<Point3d> pWrdPts_inlier_init, pWrdPts_inlier_optim;
+
+	if (bOptim)
+	{
+		Matx33d mF_optim = mF;
+
+		// 		if (vImgPts0.size()>=12 && optim_gn_F(vImgPts0,vImgPts1,/*fundamental_matrix*/mF,mF_optim,maxIter,xEps,fEps))
+		// 		{
+		// 			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+		// 			// accept the optimized F only if the optimization succeeds
+		// 			mF = mF_optim;
+		// 		}
+
+		if (vImgPts0.size() >= 12)
+		{
+			// to ensure robustness, the minimum number of matches required should be at least 12, 4n>=3n+12 => n>=12
+			// accept the optimized F only if the optimization succeeds
+			//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim starts");
+
+			//			optim_lm_F(vImgPts0, vImgPts1,/*fundamental_matrix*/mF, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-10);
+
+			// 20170821，稀疏LM方法优化基础矩阵
+			//			optim_slm_F(vImgPts0, vImgPts1, mF_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+			// 20200622，同步输出射影重建物点坐标
+			optim_slm_F(vImgPts0, vImgPts1, mF_optim, pWrdPts_inlier_init, pWrdPts_inlier_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+
+			//			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("F optim ends");
+
+			mF = mF_optim;
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 10. augment matching set by checking which match satisfys the determined epipolar geometry, pls refer to Christos's 2014 paper for more details
+	// first delete all inliers from the candidate set to avoid replicates
+	for (auto iter = matches_RANSAC.begin(); iter != matches_RANSAC.end(); ++iter)
+	{
+		auto iter01_found = find_if(matches01_knn_idximgpt.begin(), matches01_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a) {return (a[0].queryIdx == iter->queryIdx&&a[0].trainIdx == iter->trainIdx); });
+
+		auto iter10_found = find_if(matches10_knn_idximgpt.begin(), matches10_knn_idximgpt.end(),
+			[iter](const vector<DMatch> & a) {return (a[0].queryIdx == iter->trainIdx&&a[0].trainIdx == iter->queryIdx); });
+
+		// delete
+		matches01_knn_idximgpt.erase(iter01_found);
+		matches10_knn_idximgpt.erase(iter10_found);
+	}
+
+	vector<DMatch> matches01_aug, matches10_aug;
+	GetInliers_knn(feats0.key_points, feats1.key_points, mF, matches01_knn_idximgpt, matches01_aug, thresh_p2l);
+	GetInliers_knn(feats1.key_points, feats0.key_points, mF.t(), matches10_knn_idximgpt, matches10_aug, thresh_p2l);
+
+	// do symmetry test one more time
+	vector<DMatch> matches_aug_passSymTest;
+	symmetryTest(matches01_aug, matches10_aug, matches_aug_passSymTest);
+
+	matches = matches_RANSAC;
+	matches.insert(matches.end(), matches_aug_passSymTest.begin(), matches_aug_passSymTest.end());
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 11. 20200621, 利用 Optimal Triangulation Method in Multiple View Geometry 交会出射影重建意义上的三维物点坐标
+	// 即先将最终的特征匹配进行对极几何矫正，然后利用严格符合 mF 对极几何约束的像点通过 opencv 的 triangulatePoints 函数交会出射影物点坐标
+	vImgPts0.clear();
+	vImgPts1.clear();
+
+	for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+	{
+		Point2f imgpt0f = feats0.key_points[iter->queryIdx].pt;
+		Point2f imgpt1f = feats1.key_points[iter->trainIdx].pt;
+
+		Point2d imgpt0, imgpt1;
+		imgpt0.x = imgpt0f.x;
+		imgpt0.y = imgpt0f.y;
+		imgpt1.x = imgpt1f.x;
+		imgpt1.y = imgpt1f.y;
+
+		vImgPts0.push_back(imgpt0);
+		vImgPts1.push_back(imgpt1);
+	}
+
+	vector<Point3d> pWrdPts_aug_optim;
+
+	Matx33d mF_tmp = mF;
+
+	optim_slm_F(vImgPts0, vImgPts1, mF_tmp, pWrdPts, pWrdPts_aug_optim, 1.0E-6, maxIter, 1.0E-8, 1.0E-12);
+
+	return true;
+
 }
 
 // 20151016, zhaokunz

@@ -259,6 +259,14 @@ bool PreemptiveFeatureMatching(const Features & feats0,				// input:	n1 features
 							   int th = 4							
 							   );
 
+// 20200812，专门针对手动提取像点的匹配算法
+bool ManualFeatureMatching(const Features & feats0,				// input:	n1 features extracted manually from the 1st image
+						   const Features & feats1,				// input:	n2 features extracted manually from the 2nd image
+						   Matx33d & mF,						// output:	the estimated fundamental matrix
+						   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
+						   vector<Point3d> & pWrdPts			// output:	the projective reconstructed world coordinates of all the inliers based on the final F
+						   );
+
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
 			   vector<DMatch> & matches,						// output:	matches that have past the ratio test
