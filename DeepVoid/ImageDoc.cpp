@@ -113,22 +113,37 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	int nNew = keypts.size(); // 新增点数
 
 	// 生成特征描述向量
-	cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
-	
+	/*cv::Ptr<Feature2D>*/ auto f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+
+	Mat imgTmp = m_pImgOriginal->clone();
+
 	cv::Mat descrps;
-	f2d->compute(*m_pImgOriginal, keypts, descrps);
+//	f2d->compute(/**m_pImgOriginal*/imgTmp, keypts, descrps);
+
+	try
+	{
+		f2d->compute(/**m_pImgOriginal*/imgTmp, keypts, descrps);
+// 		cv::xfeatures2d::SiftDescriptorExtractor::create()
+// 		cv::xfeatures2d::SiftDescriptorExtractor::compute(imgTmp, keypts, descrps);
+	}
+	catch (cv::Exception & e)
+	{
+		CString str;
+		str = e.msg.c_str();
+		AfxMessageBox(str);
+	}
 
 	///////////////////////////////////////////////////////////////////
-// 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp.txt", "a");
-// 	for (int i = 0; i < descrps.rows; ++i)
-// 	{
-// 		for (int j = 0; j < descrps.cols; ++j)
-// 		{
-// 			fprintf(file, "%lf	", descrps.at<float>(i, j));
-// 		}
-// 		fprintf(file, "\n");
-// 	}
-// 	fclose(file);
+	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_manual.txt", "w");
+	for (int i = 0; i < descrps.rows; ++i)
+	{
+		for (int j = 0; j < descrps.cols; ++j)
+		{
+			fprintf(file, "%lf	", descrps.at<float>(i, j));
+		}
+		fprintf(file, "\n");
+	}
+	fclose(file);
 	//////////////////////////////////////////////////////////////////
 
 	m_pCam->m_featsManual.type = Feature_MANUAL_SIFT; // manual keypoints + sift descriptors

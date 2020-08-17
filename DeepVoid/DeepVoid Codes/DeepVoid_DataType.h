@@ -551,6 +551,19 @@ struct cam_data
 		// 生成特征描述向量
 		f2d->compute(img, m_featsSIFT.key_points, m_featsSIFT.descriptors);
 
+		///////////////////////////////////////////////////////////////////
+// 		FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_sift.txt", "w");
+// 		for (int i = 0; i < m_featsSIFT.descriptors.rows; ++i)
+// 		{
+// 			for (int j = 0; j < m_featsSIFT.descriptors.cols; ++j)
+// 			{
+// 				fprintf(file, "%lf	", m_featsSIFT.descriptors.at<float>(i, j));
+// 			}
+// 			fprintf(file, "\n");
+// 		}
+// 		fclose(file);
+		//////////////////////////////////////////////////////////////////
+
 		m_featsSIFT.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
 
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
@@ -617,6 +630,19 @@ struct cam_data
 		// 生成特征描述向量
 		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
 		f2d->compute(img, m_featsFAST.key_points, m_featsFAST.descriptors);
+
+		///////////////////////////////////////////////////////////////////
+// 		FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_fast.txt", "w");
+// 		for (int i = 0; i < m_featsFAST.descriptors.rows; ++i)
+// 		{
+// 			for (int j = 0; j < m_featsFAST.descriptors.cols; ++j)
+// 			{
+// 				fprintf(file, "%lf	", m_featsFAST.descriptors.at<float>(i, j));
+// 			}
+// 			fprintf(file, "\n");
+// 		}
+// 		fclose(file);
+		//////////////////////////////////////////////////////////////////
 
 		m_featsFAST.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
 
