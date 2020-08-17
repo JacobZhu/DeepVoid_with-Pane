@@ -12099,6 +12099,17 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 		bool bSuc = false;
 
+		// 20200816 ////////////////////////////////////////////////////////////////////////////////////////
+		vector<DMatch> matchesTmp;
+		Matx33d mFtmp;
+		vector<Point3d> wrdPtstmp;
+
+		if (cam_i.m_featsManual.key_points.size() > 0 && cam_j.m_featsManual.key_points.size() > 0)
+		{
+			ManualFeatureMatching(cam_i.m_featsManual, cam_j.m_featsManual, mFtmp, matchesTmp, wrdPtstmp, 2);
+		}
+		////////////////////////////////////////////////////////////////////////////////////////////////////
+
 		// 20200629, “先发制人”特征匹配
 		if (pApp->m_nPrptFeatures < cam_i.m_feats.key_points.size())
 		{

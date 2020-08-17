@@ -264,7 +264,8 @@ bool ManualFeatureMatching(const Features & feats0,				// input:	n1 features ext
 						   const Features & feats1,				// input:	n2 features extracted manually from the 2nd image
 						   Matx33d & mF,						// output:	the estimated fundamental matrix
 						   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
-						   vector<Point3d> & pWrdPts			// output:	the projective reconstructed world coordinates of all the inliers based on the final F
+						   vector<Point3d> & pWrdPts,			// output:	the projective reconstructed world coordinates of all the inliers based on the final F
+						   int K = 2
 						   );
 
 // 20150128, zhaokunz, output those matches that pass the ratio test

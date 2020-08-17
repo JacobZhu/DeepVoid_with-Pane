@@ -118,6 +118,19 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	cv::Mat descrps;
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
+	///////////////////////////////////////////////////////////////////
+// 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp.txt", "a");
+// 	for (int i = 0; i < descrps.rows; ++i)
+// 	{
+// 		for (int j = 0; j < descrps.cols; ++j)
+// 		{
+// 			fprintf(file, "%lf	", descrps.at<float>(i, j));
+// 		}
+// 		fprintf(file, "\n");
+// 	}
+// 	fclose(file);
+	//////////////////////////////////////////////////////////////////
+
 	m_pCam->m_featsManual.type = Feature_MANUAL_SIFT; // manual keypoints + sift descriptors
 
 	// 合入已有的手提特征点向量	

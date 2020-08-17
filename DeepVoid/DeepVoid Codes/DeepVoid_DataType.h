@@ -620,7 +620,7 @@ struct cam_data
 
 		m_featsFAST.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
 
-										// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 		int n = m_featsFAST.key_points.size();
 		for (int i = 0; i < n; ++i)
 		{
