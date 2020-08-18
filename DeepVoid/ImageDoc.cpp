@@ -33,6 +33,9 @@ CImageDoc::CImageDoc()
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 
+	// 手提点的特征描述子计算范围
+	m_sizeManual = 7.0;
+
 	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;
 }
@@ -104,6 +107,9 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		keypt.pt.x = pt.x;
 		keypt.pt.y = pt.y;
 
+		// 20200818，赋上特征尺寸值，以限定范围计算特征描述
+		keypt.size = m_sizeManual;
+
 		keypts.push_back(keypt);
 		keypts_all.push_back(keypt);
 
@@ -113,37 +119,22 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	int nNew = keypts.size(); // 新增点数
 
 	// 生成特征描述向量
-	/*cv::Ptr<Feature2D>*/ auto f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
-
-	Mat imgTmp = m_pImgOriginal->clone();
+	auto f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	cv::Mat descrps;
-//	f2d->compute(/**m_pImgOriginal*/imgTmp, keypts, descrps);
-
-	try
-	{
-		f2d->compute(/**m_pImgOriginal*/imgTmp, keypts, descrps);
-// 		cv::xfeatures2d::SiftDescriptorExtractor::create()
-// 		cv::xfeatures2d::SiftDescriptorExtractor::compute(imgTmp, keypts, descrps);
-	}
-	catch (cv::Exception & e)
-	{
-		CString str;
-		str = e.msg.c_str();
-		AfxMessageBox(str);
-	}
+	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
 	///////////////////////////////////////////////////////////////////
-	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_manual.txt", "w");
-	for (int i = 0; i < descrps.rows; ++i)
-	{
-		for (int j = 0; j < descrps.cols; ++j)
-		{
-			fprintf(file, "%lf	", descrps.at<float>(i, j));
-		}
-		fprintf(file, "\n");
-	}
-	fclose(file);
+// 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_manual.txt", "w");
+// 	for (int i = 0; i < descrps.rows; ++i)
+// 	{
+// 		for (int j = 0; j < descrps.cols; ++j)
+// 		{
+// 			fprintf(file, "%lf	", descrps.at<float>(i, j));
+// 		}
+// 		fprintf(file, "\n");
+// 	}
+// 	fclose(file);
 	//////////////////////////////////////////////////////////////////
 
 	m_pCam->m_featsManual.type = Feature_MANUAL_SIFT; // manual keypoints + sift descriptors

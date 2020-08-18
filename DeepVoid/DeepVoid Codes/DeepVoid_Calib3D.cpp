@@ -2405,12 +2405,9 @@ bool DeepVoid::PreemptiveFeatureMatching(const Features & feats0,				// input:	n
 }
 
 // 20200812，专门针对手动提取像点的匹配算法
-bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & feats1, Matx33d & mF, vector<DMatch>& matches, vector<Point3d>& pWrdPts, int K /*= 2*/)
+bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & feats1, Matx33d & mF, vector<DMatch>& matches, vector<Point3d>& pWrdPts, int K /*= 2*/, double thresh_p2l /*= 3.*/, double thresh_conf /*= 0.99*/, double thresh_minInlierRatio /*= 0.5*/)
 {
 	matches.clear();
-
-//	int nFeat0 = feats0.key_points.size();
-//	int nFeat1 = feats1.key_points.size();
 
 	//	FlannBasedMatcher matcher; // do flann matching
 	BFMatcher matcher(NORM_L2, false); // do brute force matching
@@ -2419,30 +2416,6 @@ bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & f
 	// 1. extract k nearest neigbors for each feature in the each image
 	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
 	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
-
-// 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp0.txt", "w");
-// 	for (int i = 0; i < feats0.descriptors.rows; ++i)
-// 	{
-// 		for (int j = 0; j < feats0.descriptors.cols; ++j)
-// 		{
-// 			fprintf(file, "%lf	", feats0.descriptors.at<float>(i, j));
-// 		}
-// 		fprintf(file, "\n");
-// 	}
-// 	fclose(file);
-// 
-// 
-// 	file = fopen("C:\\Users\\DeepV\\Desktop\\desp1.txt", "w");
-// 	for (int i = 0; i < feats1.descriptors.rows; ++i)
-// 	{
-// 		for (int j = 0; j < feats1.descriptors.cols; ++j)
-// 		{
-// 			fprintf(file, "%lf	", feats1.descriptors.at<float>(i, j));
-// 		}
-// 		fprintf(file, "\n");
-// 	}
-// 	fclose(file);
-	//////////////////////////////////////////////////////////////////////////
 
 	// 还是对潜在匹配先排个序，方便后续操作
 	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
@@ -2454,227 +2427,68 @@ bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & f
 	{
 		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
 	}
-
-
-	// 2. using the unique image point index, useful for SIFT, since for one image point
-	// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
-// 	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
-// 	{
-// 		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
-// 		{
-// 			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
-// 			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
-// 
-// 			iter_k->queryIdx = queryIdx_uni;
-// 			iter_k->trainIdx = trainIdx_uni;
-// 		}
-// 	}
-// 
-// 	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
-// 	{
-// 		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
-// 		{
-// 			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
-// 			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
-// 
-// 			iter_k->queryIdx = queryIdx_uni;
-// 			iter_k->trainIdx = trainIdx_uni;
-// 		}
-// 	}
-	//////////////////////////////////////////////////////////////////////////
-
-
-	// 3. reorganize all matches, again only neccesary for SIFT
-	// (0,25) (0,16)
-	// (0,25) (0,19)
-	// (1,10) (1,11)
-	//      to
-	// (0,25) (0,16) (0,25) (0,19)
-	// (1,10) (1,11)
-// 	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
-// 	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
-// 
-// 	auto iter01_begin = matches01_knn.begin();
-// 	auto iter10_begin = matches10_knn.begin();
-// 
-// 	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
-// 	{
-// 		i = iter - iter01_begin;
-// 
-// 		if (status01[i])
-// 		{
-// 			continue;
-// 		}
-// 
-// 		matches01_knn_idximgpt.push_back(*iter);
-// 
-// 		status01[i] = 1;
-// 
-// 		auto iter_end = matches01_knn_idximgpt.end() - 1;
-// 
-// 		for (auto iter_k = iter + 1; iter_k != matches01_knn.end(); ++iter_k)
-// 		{
-// 			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
-// 			{
-// 				continue;
-// 			}
-// 
-// 			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
-// 
-// 			status01[iter_k - iter01_begin] = 1;
-// 		}
-// 	}
-// 
-// 	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
-// 	{
-// 		i = iter - iter10_begin;
-// 
-// 		if (status10[i])
-// 		{
-// 			continue;
-// 		}
-// 
-// 		matches10_knn_idximgpt.push_back(*iter);
-// 
-// 		status10[i] = 1;
-// 
-// 		auto iter_end = matches10_knn_idximgpt.end() - 1;
-// 
-// 		for (auto iter_k = iter + 1; iter_k != matches10_knn.end(); ++iter_k)
-// 		{
-// 			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
-// 			{
-// 				continue;
-// 			}
-// 
-// 			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
-// 
-// 			status10[iter_k - iter10_begin] = 1;
-// 		}
-// 	}
-	//////////////////////////////////////////////////////////////////////////
-
-
-	// 4. select best 2 different matches for each image point
-	// (0,25) (0,16) (0,25) (0,19)
-	// (1,10) (1,11)
-	//      to
-	// (0,25) (0,19)
-	// (1,10) (1,11)
-	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
-	// after this step, they will be like (2,14) only, since they are all basically the same matches
-// 	for (auto iter = matches01_knn_idximgpt.begin(); iter != matches01_knn_idximgpt.end(); ++iter)
-// 	{
-// 		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
-// 
-// 		int idxBest = (*iter)[0].trainIdx;
-// 
-// 		if (idxBest != (*iter)[1].trainIdx)
-// 		{
-// 			iter->erase(iter->begin() + 2, iter->end());
-// 			continue;
-// 		}
-// 
-// 		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
-// 
-// 		if (iter_find != iter->end())
-// 		{
-// 			iter_swap(iter->begin() + 1, iter_find);
-// 			iter->erase(iter->begin() + 2, iter->end());
-// 		}
-// 		else // all matches are the same
-// 		{
-// 			iter->erase(iter->begin() + 1, iter->end());
-// 		}
-// 	}
-// 
-// 	for (auto iter = matches10_knn_idximgpt.begin(); iter != matches10_knn_idximgpt.end(); ++iter)
-// 	{
-// 		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
-// 
-// 		int idxBest = (*iter)[0].trainIdx;
-// 
-// 		if (idxBest != (*iter)[1].trainIdx)
-// 		{
-// 			iter->erase(iter->begin() + 2, iter->end());
-// 			continue;
-// 		}
-// 
-// 		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
-// 
-// 		if (iter_find != iter->end())
-// 		{
-// 			iter_swap(iter->begin() + 1, iter_find);
-// 			iter->erase(iter->begin() + 2, iter->end());
-// 		}
-// 		else // all matches are the same
-// 		{
-// 			iter->erase(iter->begin() + 1, iter->end());
-// 		}
-// 	}
-	//////////////////////////////////////////////////////////////////////////
 	
 	
 	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
-	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	// 2. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
 	ratioTest(matches01_knn, matches01_passRatioTest, 1.0);
 	ratioTest(matches10_knn, matches10_passRatioTest, 1.0);
 	//////////////////////////////////////////////////////////////////////////
 
 
 	vector<DMatch> matches_passSymTest;
-	// 6. symmetry test, only those symmetric matches are kept
+	// 3. symmetry test, only those symmetric matches are kept
 	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
 	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
 	//////////////////////////////////////////////////////////////////////////
 
-// 	if (matches_passSymTest.size() < 8)
-// 	{
-// 		return false;
-// 	}
-// 
-// 	// 7. RANSAC, further filter those matches that do not satisfy epipolar geometry
-// 	vector<Point2f> points0(matches_passSymTest.size());
-// 	vector<Point2f> points1(matches_passSymTest.size());
-// 
-// 	// initialize the points here ... */
-// 	for (int i = 0; i < matches_passSymTest.size(); ++i)
-// 	{
-// 		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
-// 		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
-// 	}
-// 
-// 	vector<uchar> status;
-// 
-// 	//	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
-// 	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
-// 
-// 	vector<DMatch> matches_RANSAC;
-// 	vector<Point2d> vImgPts0, vImgPts1;
-// 
-// 	for (int i = 0; i < matches_passSymTest.size(); ++i)
-// 	{
-// 		if (status[i])
-// 		{
-// 			matches_RANSAC.push_back(matches_passSymTest[i]);
-// 
-// 			Point2d pt0, pt1;
-// 			pt0.x = points0[i].x; pt0.y = points0[i].y;
-// 			pt1.x = points1[i].x; pt1.y = points1[i].y;
-// 			vImgPts0.push_back(pt0);
-// 			vImgPts1.push_back(pt1);
-// 		}
-// 	}
-// 
-// 	double ratioInliers = (double)matches_RANSAC.size() / matches_passSymTest.size();
-// 
-// 	if (matches_RANSAC.size() < 8 || ratioInliers < thresh_minInlierRatio)
-// 	{
-// 		// number of inliers must be bigger than 8
-// 		// and the ratio of inliers should be more than certain threshold
-// 		return false;
-// 	}
-// 	//////////////////////////////////////////////////////////////////////////
+	if (matches_passSymTest.size() < 8)
+	{
+		return false;
+	}
+
+	// 4. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	//	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
+
+	vector<DMatch> matches_RANSAC;
+	vector<Point2d> vImgPts0, vImgPts1;
+
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		if (status[i])
+		{
+			matches_RANSAC.push_back(matches_passSymTest[i]);
+
+			Point2d pt0, pt1;
+			pt0.x = points0[i].x; pt0.y = points0[i].y;
+			pt1.x = points1[i].x; pt1.y = points1[i].y;
+			vImgPts0.push_back(pt0);
+			vImgPts1.push_back(pt1);
+		}
+	}
+
+	double ratioInliers = (double)matches_RANSAC.size() / matches_passSymTest.size();
+
+	if (matches_RANSAC.size() < 8 || ratioInliers < thresh_minInlierRatio)
+	{
+		// number of inliers must be bigger than 8
+		// and the ratio of inliers should be more than certain threshold
+		return false;
+	}
+	//////////////////////////////////////////////////////////////////////////
 // 
 // 	// 8. using all the inliers to calculate a better initial F for optimization based on the Normalized 8-points algorithm
 // 	// because of the usage of normalization, this DLT algorithm is quite robust

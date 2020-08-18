@@ -265,7 +265,10 @@ bool ManualFeatureMatching(const Features & feats0,				// input:	n1 features ext
 						   Matx33d & mF,						// output:	the estimated fundamental matrix
 						   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
 						   vector<Point3d> & pWrdPts,			// output:	the projective reconstructed world coordinates of all the inliers based on the final F
-						   int K = 2
+						   int K = 2,
+						   double thresh_p2l = 3.,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+						   double thresh_conf = 0.99,			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+						   double thresh_minInlierRatio = 0.5	// input:	the allowed minimum ratio of inliers
 						   );
 
 // 20150128, zhaokunz, output those matches that pass the ratio test

@@ -28,6 +28,9 @@ public:
 	bool m_nonmaxSuppressionFast;
 	int m_typeFast;
 
+	// 手提点的特征描述子计算范围
+	double m_sizeManual;
+
 	int m_nSfMFeatures;
 	int m_nPrptFeatures;
 

@@ -540,7 +540,7 @@ struct cam_data
 	{
 		m_featsSIFT.clear(); // 先把之前的清掉
 
-		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+		auto f2d = cv::xfeatures2d::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
 
 		// 提取 sift 特征点
 		f2d->detect(img, m_featsSIFT.key_points);
@@ -628,7 +628,7 @@ struct cam_data
 		sort(m_featsFAST.key_points.begin(), m_featsFAST.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
 
 		// 生成特征描述向量
-		cv::Ptr<Feature2D> f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
+		auto f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
 		f2d->compute(img, m_featsFAST.key_points, m_featsFAST.descriptors);
 
 		///////////////////////////////////////////////////////////////////
