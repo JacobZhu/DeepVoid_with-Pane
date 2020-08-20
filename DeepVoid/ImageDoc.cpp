@@ -124,6 +124,9 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	cv::Mat descrps;
 	f2d->compute(*m_pImgOriginal, keypts, descrps);
 
+// 	VlSiftFilt;
+// 	vl_sift_detect();
+
 	///////////////////////////////////////////////////////////////////
 // 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_manual.txt", "w");
 // 	for (int i = 0; i < descrps.rows; ++i)

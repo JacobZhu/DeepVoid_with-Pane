@@ -40,3 +40,8 @@
 
 // 20170430
 #include "DeepVoid Codes/DeepVoid_CUDA.h"
+
+// 20200820 add vlfeat
+extern "C" {
+#include "sift.h"
+}

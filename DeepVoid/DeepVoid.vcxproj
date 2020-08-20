@@ -123,14 +123,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(CUDA_PATH)\include;$(OPENCV_DIR)\include;c:\ProgramData\NVIDIA Corporation\CUDA Samples\v8.0\common\inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\vl;$(CUDA_PATH)\include;$(OPENCV_DIR)\include;c:\ProgramData\NVIDIA Corporation\CUDA Samples\v8.0\common\inc</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(CudaToolkitLibDir);$(OPENCV_DIR)\x64\vc14\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>cublas.lib;cublas_device.lib;cudadevrt.lib;cudart_static.lib;opencv_core320d.lib;opencv_calib3d320d.lib;opencv_highgui320d.lib;opencv_imgproc320d.lib;opencv_imgcodecs320d.lib;opencv_features2d320d.lib;opencv_xfeatures2d320d.lib;opencv_flann320d.lib;opencv_viz320d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\bin\win64;$(CudaToolkitLibDir);$(OPENCV_DIR)\x64\vc14\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vl.lib;cublas.lib;cublas_device.lib;cudadevrt.lib;cudart_static.lib;opencv_core320d.lib;opencv_calib3d320d.lib;opencv_highgui320d.lib;opencv_imgproc320d.lib;opencv_imgcodecs320d.lib;opencv_features2d320d.lib;opencv_xfeatures2d320d.lib;opencv_flann320d.lib;opencv_viz320d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -148,6 +148,9 @@
       <MaxRegCount>32</MaxRegCount>
       <TargetMachinePlatform>64</TargetMachinePlatform>
     </CudaCompile>
+    <PostBuildEvent>
+      <Command>copy C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\bin\win64\vl.dll</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -190,7 +193,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(CUDA_PATH)\include;$(OPENCV_DIR)\include;c:\ProgramData\NVIDIA Corporation\CUDA Samples\v8.0\common\inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\vl;$(CUDA_PATH)\include;$(OPENCV_DIR)\include;c:\ProgramData\NVIDIA Corporation\CUDA Samples\v8.0\common\inc</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
@@ -198,8 +201,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(CudaToolkitLibDir);$(OPENCV_DIR)\x64\vc14\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>cudart.lib;opencv_core320.lib;opencv_calib3d320.lib;opencv_highgui320.lib;opencv_imgproc320.lib;opencv_imgcodecs320.lib;opencv_features2d320.lib;opencv_xfeatures2d320.lib;opencv_flann320.lib;opencv_viz320.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\bin\win64;$(CudaToolkitLibDir);$(OPENCV_DIR)\x64\vc14\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vl.lib;cudart.lib;opencv_core320.lib;opencv_calib3d320.lib;opencv_highgui320.lib;opencv_imgproc320.lib;opencv_imgcodecs320.lib;opencv_features2d320.lib;opencv_xfeatures2d320.lib;opencv_flann320.lib;opencv_viz320.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -215,6 +218,9 @@
       <PtxAsOptionV>true</PtxAsOptionV>
       <MaxRegCount>32</MaxRegCount>
     </CudaCompile>
+    <PostBuildEvent>
+      <Command>copy C:\Users\DeepV\OneDrive\codes\vlfeat-0.9.21\bin\win64\vl.dll</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
