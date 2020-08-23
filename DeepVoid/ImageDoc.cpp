@@ -92,6 +92,13 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	
 	int nOld = keypts_all.size(); // 之前已有多少点
 
+	// 20200823，转一份灰度图备用
+	cv::Mat im_gray = m_pImgOriginal->clone();
+	if ((*m_pImgOriginal).channels() != 1)
+	{
+		cv::cvtColor(*m_pImgOriginal, im_gray, CV_RGB2GRAY);
+	}
+
 	std::vector<cv::KeyPoint> keypts;
 
 	do
@@ -110,6 +117,12 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		// 20200818，赋上特征尺寸值，以限定范围计算特征描述
 		keypt.size = m_sizeManual;
 
+		//////////////////////////////////////////////////////////////////////////
+		double xIC, yIC;
+		int r = 7;
+		IntensityCentroid_CircularRegion(im_gray, pt.x, pt.y, r, xIC, yIC);
+		//////////////////////////////////////////////////////////////////////////
+
 		keypts.push_back(keypt);
 		keypts_all.push_back(keypt);
 
@@ -117,6 +130,11 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	} while (flag != -1);
 		
 	int nNew = keypts.size(); // 新增点数
+
+	if (nNew < 1) // 如果没有新增点就直接退出
+	{
+		return;
+	}
 
 	// 生成特征描述向量
 	auto f2d = cv::xfeatures2d::SIFT::create(m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);

@@ -411,6 +411,70 @@ void DeepVoid::MakeSureNotOutBorder(int x, int y,				// input:	original center o
 	}
 }
 
+bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img, /* input: the input gray scale image */ double x, double y, /* input: the center of the region */ int r, /* input: the radius of the circular region */ double & xIC, double & yIC /* output:the location of the calculated intensity centroid */)
+{
+	int w = img.cols;
+	int h = img.rows;
+
+	// 确定当前像点所在的具体像素坐标
+	int ix = (int)x;
+	int iy = (int)y;
+
+	int m00 = 0;
+	int m10 = 0;
+	int m01 = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			int I = img.at<uchar>(i, j);
+
+			m00 += I;	// m00 = sum(I)
+			m10 += /*j*/dj*I; // m10 = sum(xI)
+			m01 += /*i*/di*I; // m01 = sum(yI)
+		}
+	}
+
+	// 区域内的图像灰度全黑，即全为 0，则有可能出现 m00 仍为 0 的情况
+	if (m00 == 0)
+	{
+		return false;
+	}
+
+	double m00_1 = 1.0 / m00;
+
+	xIC = m00_1*m10;
+	yIC = m00_1*m01;
+
+	return true;
+}
+
 // CvMat wrapper here : Implementation of class CMatrix ////////////////////////////////////////////////////////
 DeepVoid::CMatrix::CMatrix()
 {

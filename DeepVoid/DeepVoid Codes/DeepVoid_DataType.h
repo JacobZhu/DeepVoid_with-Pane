@@ -242,6 +242,13 @@ void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
 						  int imgWidth, int imgHeight
 						  );
 
+// 20200823，计算一圆形支持区域内的图像灰度质心
+bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
+									  double x, double y,			// input: the center of the region
+									  int r,						// input: the radius of the circular region
+									  double & xIC, double & yIC	// output:the location of the calculated intensity centroid
+									  );
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
