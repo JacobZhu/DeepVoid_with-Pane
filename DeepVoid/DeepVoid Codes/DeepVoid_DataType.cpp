@@ -475,6 +475,71 @@ bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img, /* input: t
 	return true;
 }
 
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
+											    int ix, int iy,					// input: the center of the region
+											    int r,							// input: the radius of the circular region
+											    double & dxIC, double & dyIC	// output:the location of the calculated intensity centroid (in terms of offsets)
+											    )
+{
+	int w = img.cols;
+	int h = img.rows;
+
+	int m00 = 0;
+	int m10 = 0;
+	int m01 = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			int I = img.at<uchar>(i, j);
+
+			m00 += I;		// m00 = sum(I)
+			m10 += dj*I;	// m10 = sum(xI)
+			m01 += di*I;	// m01 = sum(yI)
+		}
+	}
+
+	// 区域内的图像灰度全黑，即全为 0，则有可能出现 m00 仍为 0 的情况
+	if (m00 == 0)
+	{
+		return false;
+	}
+
+	double m00_1 = 1.0 / m00;
+
+	dxIC = m00_1*m10;
+	dyIC = m00_1*m01;
+
+	return true;
+}
+
 // CvMat wrapper here : Implementation of class CMatrix ////////////////////////////////////////////////////////
 DeepVoid::CMatrix::CMatrix()
 {

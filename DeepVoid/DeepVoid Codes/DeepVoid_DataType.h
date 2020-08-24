@@ -249,6 +249,13 @@ bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input
 									  double & xIC, double & yIC	// output:the location of the calculated intensity centroid
 									  );
 
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
+									  int ix, int iy,				// input: the center of the region
+									  int r,						// input: the radius of the circular region
+									  double & dxIC, double & dyIC	// output:the location of the calculated intensity centroid (in terms of offsets)
+									  );
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 

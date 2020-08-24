@@ -92,12 +92,20 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	
 	int nOld = keypts_all.size(); // 之前已有多少点
 
-	// 20200823，转一份灰度图备用
-	cv::Mat im_gray = m_pImgOriginal->clone();
-	if ((*m_pImgOriginal).channels() != 1)
+	// 20200824，转一份灰度图备用 /////////////////////////////////////////////
+	cv::Mat im_gray;
+
+	int nChannel = m_pImgOriginal->channels();
+
+	if (nChannel == 1) // 本身就是灰度图
+	{
+		im_gray = (*m_pImgOriginal);
+	} 
+	else // 彩图
 	{
 		cv::cvtColor(*m_pImgOriginal, im_gray, CV_RGB2GRAY);
 	}
+	//////////////////////////////////////////////////////////////////////////
 
 	std::vector<cv::KeyPoint> keypts;
 
