@@ -540,6 +540,47 @@ bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input:
 	return true;
 }
 
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+bool DeepVoid::CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
+							  int ix, int iy,		// input: the center of the region
+							  int r,				// input: the radius of the circular region
+							  double & angle		// output:the location of the calculated intensity centroid (in terms of offsets)
+							  )
+{
+	double dx, dy;
+
+	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy)) // 说明图像区域内灰度值全为 0，即全黑
+	{
+		return false;
+	}
+
+	double radian = std::atan2(dy, dx); // [-π; +π]
+
+	// 以下情况基本不会出现
+// 	if (isnan(radian) || isinf(radian))
+// 	{
+// 		return false;
+// 	}
+	
+	angle = radian*R2D;
+
+	return true;
+}
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+bool DeepVoid::CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
+							  double x, double y,	// input: the center of the region
+							  int r,				// input: the radius of the circular region
+							  double & angle		// output:the location of the calculated intensity centroid (in terms of offsets)
+							  )
+{
+	// 确定当前像点所在的具体像素坐标
+	int ix = (int)x;
+	int iy = (int)y;
+
+	return CornerAngle_IC(img, ix, iy, r, angle);
+}
+
 // CvMat wrapper here : Implementation of class CMatrix ////////////////////////////////////////////////////////
 DeepVoid::CMatrix::CMatrix()
 {

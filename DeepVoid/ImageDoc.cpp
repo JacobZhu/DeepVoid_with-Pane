@@ -129,6 +129,8 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		double xIC, yIC;
 		int r = 7;
 		IntensityCentroid_CircularRegion(im_gray, pt.x, pt.y, r, xIC, yIC);
+		double angle;
+		CornerAngle_IC(im_gray, pt.x, pt.y, r, angle);
 		//////////////////////////////////////////////////////////////////////////
 
 		keypts.push_back(keypt);

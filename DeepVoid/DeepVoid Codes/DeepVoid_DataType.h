@@ -256,6 +256,20 @@ bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input
 									  double & dxIC, double & dyIC	// output:the location of the calculated intensity centroid (in terms of offsets)
 									  );
 
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
+					int ix, int iy,			// input: the center of the region
+					int r,					// input: the radius of the circular region
+					double & angle			// output:the location of the calculated intensity centroid (in terms of offsets)
+					);
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
+					double x, double y,		// input: the center of the region
+					int r,					// input: the radius of the circular region
+					double & angle			// output:the location of the calculated intensity centroid (in terms of offsets)
+					);
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
