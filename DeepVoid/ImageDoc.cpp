@@ -107,7 +107,9 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	std::vector<cv::KeyPoint> keypts;
+	int r = (m_sizeManual - 1)*0.5; // keypoint.size is the diameter not the radius
+
+	std::vector<cv::KeyPoint> keypts;	
 
 	do
 	{
@@ -125,12 +127,17 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		// 20200818，赋上特征尺寸值，以限定范围计算特征描述
 		keypt.size = m_sizeManual;
 
-		//////////////////////////////////////////////////////////////////////////
-		double xIC, yIC;
-		int r = 7;
-		IntensityCentroid_CircularRegion(im_gray, pt.x, pt.y, r, xIC, yIC);
+		// 20200826 //////////////////////////////////////////////////////////////
 		double angle;
-		CornerAngle_IC(im_gray, pt.x, pt.y, r, angle);
+		if (CornerAngle_IC(im_gray, pt.x, pt.y, r, angle))
+		{
+			if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+			{
+				angle += 360;
+			}
+
+			keypt.angle = angle;
+		}
 		//////////////////////////////////////////////////////////////////////////
 
 		keypts.push_back(keypt);

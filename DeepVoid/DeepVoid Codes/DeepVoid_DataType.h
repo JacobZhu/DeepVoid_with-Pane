@@ -652,6 +652,42 @@ struct cam_data
 			cv::FAST(im_gray, m_featsFAST.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
 		}
 
+		//////////////////////////////////////////////////////////////////////////
+		cv::Mat im_gray;
+		cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+
+		vector<KeyPoint> keyptsORB;
+		auto orb = cv::ORB::create();
+		orb->detect(im_gray, keyptsORB);
+
+		vector<double> devs;
+
+		double sum = 0;
+		for (int i = 0; i < keyptsORB.size(); ++i)
+		{
+			const KeyPoint & kypt = keyptsORB[i];
+
+			int r = (kypt.size - 1)*0.5;
+
+			double angle;
+			if (CornerAngle_IC(im_gray, kypt.pt.x, kypt.pt.y, r, angle))
+			{
+				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+				{
+					angle += 360;
+				}
+			}
+
+			double ddd = std::abs(kypt.angle - angle);
+
+			devs.push_back(ddd);
+
+			sum += ddd;
+		}
+
+		double tmp = sum / keyptsORB.size();
+		//////////////////////////////////////////////////////////////////////////
+
 		// 按照 response 从大到小对 fast 特征点进行排序
 		sort(m_featsFAST.key_points.begin(), m_featsFAST.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
 
