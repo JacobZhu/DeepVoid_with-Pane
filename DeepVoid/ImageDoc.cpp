@@ -33,8 +33,18 @@ CImageDoc::CImageDoc()
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 
+	m_nfeaturesORB = 1500;
+	m_scaleFactorORB = 1.2f;
+	m_nlevelsORB = 8;
+	m_edgeThresholdORB = 31;
+	m_firstLevelORB = 0;
+	m_WTAK_ORB = 2;
+	m_scoreTypeORB = cv::ORB::HARRIS_SCORE;
+	m_patchSizeORB = 31;
+	m_fastThresholdORB = 20;
+
 	// 手提点的特征描述子计算范围
-	m_sizeManual = 7.0;
+	m_sizeManual = 15.0;
 
 	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;
@@ -212,6 +222,15 @@ void CImageDoc::ExtractSiftFeatures()
 void CImageDoc::ExtractFASTFeatures()
 {
 	m_pCam->ExtractFASTFeatures(*m_pImgOriginal, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
+		m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
+
+	m_pImgView->Invalidate(TRUE);
+}
+
+void CImageDoc::ExtractORBFeatures()
+{
+	m_pCam->ExtractORBFeatures(*m_pImgOriginal, m_nfeaturesORB, m_scaleFactorORB, m_nlevelsORB, m_edgeThresholdORB,
+		m_firstLevelORB, m_WTAK_ORB, m_scoreTypeORB, m_patchSizeORB, m_fastThresholdORB,
 		m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	m_pImgView->Invalidate(TRUE);

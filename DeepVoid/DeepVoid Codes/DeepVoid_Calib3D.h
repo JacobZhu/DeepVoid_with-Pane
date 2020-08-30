@@ -40,6 +40,11 @@ CMatrix GenRZ_Radian(double radian);
 // 20150114
 Matx33d GenRZ_Radian_CV(double radian);
 
+// 20200830，给定旋转弧度，合成 2 维旋转矩阵
+Matx22d GenR2D_Radian(double radian);
+// 20200830，给定旋转角度，合成 2 维旋转矩阵
+Matx22d GenR2D_Angle(double angle);
+
 // 根据提供的世界坐标系原点在像机坐标系中坐标t生成4×4的平移矩阵T
 CMatrix GenT(double X, double Y, double Z);
 

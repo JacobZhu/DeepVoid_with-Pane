@@ -28,6 +28,17 @@ public:
 	bool m_nonmaxSuppressionFast;
 	int m_typeFast;
 
+	// parameters for ORB feature extraction
+	int m_nfeaturesORB;
+	float m_scaleFactorORB;
+	int m_nlevelsORB;
+	int m_edgeThresholdORB;
+	int m_firstLevelORB;
+	int m_WTAK_ORB;
+	int m_scoreTypeORB;
+	int m_patchSizeORB;
+	int m_fastThresholdORB;
+
 	// 手提点的特征描述子计算范围
 	double m_sizeManual;
 
@@ -36,7 +47,8 @@ public:
 
 	void ExtractPointsContinuously(BOOL bClear = FALSE);	// continuously extract image points manually until 'ESC' being pressed
 	void ExtractSiftFeatures();			// automatically extract sift features
-	void ExtractFASTFeatures();			// automatically extract sift features
+	void ExtractFASTFeatures();			// automatically extract FAST features
+	void ExtractORBFeatures();			// automatically extract ORB features
 	void DeleteAllFeatures();			// it does what its name suggests
 	void GenSfMFeatures();				// 从 sift, fast, manual points 中遴选用于 SfM 的特征点，以及用于“先发制人”快速预匹配的子特征集
 

@@ -170,6 +170,30 @@ Matx33d DeepVoid::GenRZ_Radian_CV(double radian)
 	return R;
 }
 
+// 20200830，给定旋转弧度，合成 2 维旋转矩阵
+Matx22d DeepVoid::GenR2D_Radian(double radian)
+{
+	Matx22d R;
+
+	double sa = std::sin(radian);
+	double ca = std::cos(radian);
+
+	R(0, 0) = ca;
+	R(0, 1) = -sa;
+	R(1, 0) = sa;
+	R(1, 1) = ca;
+
+	return R;
+}
+
+// 20200830，给定旋转角度，合成 2 维旋转矩阵
+Matx22d DeepVoid::GenR2D_Angle(double angle)
+{
+	double radian = angle*D2R;
+
+	return GenR2D_Radian(radian);
+}
+
 // 根据提供的世界坐标系原点在像机坐标系中坐标t生成4×4的平移矩阵T
 CMatrix DeepVoid::GenT(double X, double Y, double Z)
 {

@@ -305,6 +305,7 @@ enum FeatureType
 	Feature_FAST_SIFT	   = 2,
 	Feature_MANUAL_SIFT	   = 3,
 	Feature_SIFTFAST_SIFT  = 4,
+	Feature_ORB_SIFT       = 5,
 };
 
 struct Features
@@ -479,8 +480,8 @@ struct cam_data
 
 	Features m_feats;		// image features
 	Features m_subFeats;	// image sub feature set
-	Features m_featsSIFT;	// sift blob features extracted automatically
-	Features m_featsFAST;	// fast corner features extracted automatically
+	Features m_featsBlob;	// blob features extracted automatically
+	Features m_featsCorner;	// corner features extracted automatically
 	Features m_featsManual; // features extracted manually
 
 	int m_nSiftElected;		// 前多少名 sift 特征点入选参加 SfM
@@ -539,8 +540,8 @@ struct cam_data
 
 			m_feats = otherCam.m_feats;
 			m_subFeats = otherCam.m_subFeats;
-			m_featsSIFT = otherCam.m_featsSIFT;
-			m_featsFAST = otherCam.m_featsFAST;
+			m_featsBlob = otherCam.m_featsBlob;
+			m_featsCorner = otherCam.m_featsCorner;
 			m_featsManual = otherCam.m_featsManual;
 
 			m_optCtrUncertEllipsoid = otherCam.m_optCtrUncertEllipsoid;
@@ -566,54 +567,54 @@ struct cam_data
 
 	void ExtractSiftFeatures(const cv::Mat & img, int nfeatures = 0, int nOctaveLayers = 3, double contrastThreshold = 0.03, double edgeThreshold = 10, double sigma = 1.6)
 	{
-		m_featsSIFT.clear(); // 先把之前的清掉
+		m_featsBlob.clear(); // 先把之前的清掉
 
 		auto f2d = cv::xfeatures2d::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
 
 		// 提取 sift 特征点
-		f2d->detect(img, m_featsSIFT.key_points);
+		f2d->detect(img, m_featsBlob.key_points);
 
 		// 按特征 size 从大到小对 sift 特征点进行排序
-		sort(m_featsSIFT.key_points.begin(), m_featsSIFT.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
+		sort(m_featsBlob.key_points.begin(), m_featsBlob.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.size > b.size; });
 
 		// 生成特征描述向量
-		f2d->compute(img, m_featsSIFT.key_points, m_featsSIFT.descriptors);
+		f2d->compute(img, m_featsBlob.key_points, m_featsBlob.descriptors);
 
 		///////////////////////////////////////////////////////////////////
 // 		FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_sift.txt", "w");
-// 		for (int i = 0; i < m_featsSIFT.descriptors.rows; ++i)
+// 		for (int i = 0; i < m_featsBlob.descriptors.rows; ++i)
 // 		{
-// 			for (int j = 0; j < m_featsSIFT.descriptors.cols; ++j)
+// 			for (int j = 0; j < m_featsBlob.descriptors.cols; ++j)
 // 			{
-// 				fprintf(file, "%lf	", m_featsSIFT.descriptors.at<float>(i, j));
+// 				fprintf(file, "%lf	", m_featsBlob.descriptors.at<float>(i, j));
 // 			}
 // 			fprintf(file, "\n");
 // 		}
 // 		fclose(file);
 		//////////////////////////////////////////////////////////////////
 
-		m_featsSIFT.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
+		m_featsBlob.type = Feature_SIFT_SIFT; // sift keypoints + sift descriptors
 
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
-		int n = m_featsSIFT.key_points.size();
+		int n = m_featsBlob.key_points.size();
 		KeyPoint kpt_pre;
 		kpt_pre.pt.x = -1000;	kpt_pre.pt.y = -1000;
 		kpt_pre.size = -1000;
 		int idx_imgPt;
 		for (int i = 0; i < n; ++i)
 		{
-			m_featsSIFT.tracks.push_back(-1);
+			m_featsBlob.tracks.push_back(-1);
 
-			KeyPoint kpt_cur = m_featsSIFT.key_points[i];
+			KeyPoint kpt_cur = m_featsBlob.key_points[i];
 			if (fabs(kpt_cur.pt.x - kpt_pre.pt.x) < 1.0E-12 && fabs(kpt_cur.pt.y - kpt_pre.pt.y) < 1.0E-12
 				&& fabs(kpt_cur.size - kpt_pre.size) < 1.0E-12)
 			{
 				// indicating that current keypoint is identical to the previous keypoint
-				m_featsSIFT.idx_pt.push_back(idx_imgPt);
+				m_featsBlob.idx_pt.push_back(idx_imgPt);
 			}
 			else
 			{
-				m_featsSIFT.idx_pt.push_back(i);
+				m_featsBlob.idx_pt.push_back(i);
 				idx_imgPt = i;
 			}
 
@@ -630,94 +631,84 @@ struct cam_data
 				rgb[1] = g;
 				rgb[2] = r;
 			}
-			m_featsSIFT.rgbs.push_back(rgb);
+			m_featsBlob.rgbs.push_back(rgb);
 		}
 	};
 
 	void ExtractFASTFeatures(const cv::Mat & img, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
 		int nfeaturesSift = 0, int nOctaveLayersSift = 3, double contrastThresholdSift = 0.03, double edgeThresholdSift = 10, double sigmaSift = 1.6)
 	{
-		m_featsFAST.clear(); // 先把之前的清掉
+		m_featsCorner.clear(); // 先把之前的清掉
 
-		// 提取 fast 角点特征
+		// 提取 fast 角点特征 //////////////////////////////////////////////////////
 		// 20200706，先把图像转换成灰度图再提取FAST特征，因为opencv fast算子只能适用于灰度图（sift是彩色和灰度皆可），而lightroom处理完的图片导出时会被自动转为3通道图，难怪fast提取的特征总有偏移
-		if (img.channels() < 3)
-		{
-			cv::FAST(img, m_featsFAST.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
-		}
-		else
-		{
-			cv::Mat im_gray;
-			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
-			cv::FAST(im_gray, m_featsFAST.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
-		}
-
-		//////////////////////////////////////////////////////////////////////////
 		cv::Mat im_gray;
-		cv::cvtColor(img, im_gray, CV_RGB2GRAY);
 
-		vector<KeyPoint> keyptsORB;
-		auto orb = cv::ORB::create();
-		orb->detect(im_gray, keyptsORB);
+		int nChannel = img.channels();
 
-		vector<double> devs;
-
-		double sum = 0;
-		for (int i = 0; i < keyptsORB.size(); ++i)
+		if (nChannel == 1) // 本身就是灰度图
 		{
-			const KeyPoint & kypt = keyptsORB[i];
+			im_gray = img;
+		}
+		else // 彩图
+		{
+			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+		}
+		
+		cv::FAST(im_gray, m_featsCorner.key_points, thresholdFast, nonmaxSuppressionFast, typeFast);
+		//////////////////////////////////////////////////////////////////////////
 
-			int r = (kypt.size - 1)*0.5;
+		// 按照 response 从大到小对 fast 特征点进行排序
+		sort(m_featsCorner.key_points.begin(), m_featsCorner.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+
+		int n = m_featsCorner.key_points.size();
+
+		// 20200830，为每个 FAST 特征点计算一个特征方向 ////////////////////////////
+		for (int i = 0; i < n; ++i)
+		{
+			cv::KeyPoint & keypt = m_featsCorner.key_points[i];
+
+			int r = keypt.size*0.5;
 
 			double angle;
-			if (CornerAngle_IC(im_gray, kypt.pt.x, kypt.pt.y, r, angle))
+			if (CornerAngle_IC(im_gray, keypt.pt.x, keypt.pt.y, r, angle))
 			{
 				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
 				{
 					angle += 360;
 				}
+
+				keypt.angle = angle;
 			}
-
-			double ddd = std::abs(kypt.angle - angle);
-
-			devs.push_back(ddd);
-
-			sum += ddd;
 		}
-
-		double tmp = sum / keyptsORB.size();
 		//////////////////////////////////////////////////////////////////////////
-
-		// 按照 response 从大到小对 fast 特征点进行排序
-		sort(m_featsFAST.key_points.begin(), m_featsFAST.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
 
 		// 生成特征描述向量
 		auto f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
-		f2d->compute(img, m_featsFAST.key_points, m_featsFAST.descriptors);
+		f2d->compute(img, m_featsCorner.key_points, m_featsCorner.descriptors);
 
 		///////////////////////////////////////////////////////////////////
 // 		FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_fast.txt", "w");
-// 		for (int i = 0; i < m_featsFAST.descriptors.rows; ++i)
+// 		for (int i = 0; i < m_featsCorner.descriptors.rows; ++i)
 // 		{
-// 			for (int j = 0; j < m_featsFAST.descriptors.cols; ++j)
+// 			for (int j = 0; j < m_featsCorner.descriptors.cols; ++j)
 // 			{
-// 				fprintf(file, "%lf	", m_featsFAST.descriptors.at<float>(i, j));
+// 				fprintf(file, "%lf	", m_featsCorner.descriptors.at<float>(i, j));
 // 			}
 // 			fprintf(file, "\n");
 // 		}
 // 		fclose(file);
 		//////////////////////////////////////////////////////////////////
 
-		m_featsFAST.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
+		m_featsCorner.type = Feature_FAST_SIFT; // fast keypoints + sift descriptors
 
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
-		int n = m_featsFAST.key_points.size();
 		for (int i = 0; i < n; ++i)
 		{
-			const cv::KeyPoint & keypt = m_featsFAST.key_points[i];
+			const cv::KeyPoint & keypt = m_featsCorner.key_points[i];
 
-			m_featsFAST.tracks.push_back(-1);
-			m_featsFAST.idx_pt.push_back(i);
+			m_featsCorner.tracks.push_back(-1);
+			m_featsCorner.idx_pt.push_back(i);
 
 			// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
 			uchar r, g, b;
@@ -728,14 +719,84 @@ struct cam_data
 				rgb[1] = g;
 				rgb[2] = r;
 			}
-			m_featsFAST.rgbs.push_back(rgb);
+			m_featsCorner.rgbs.push_back(rgb);
+		}
+	};
+
+	void ExtractORBFeatures(const cv::Mat & img, int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
+		int firstLevel = 0, int WTA_K = 2, int scoreType = cv::ORB::HARRIS_SCORE, int patchSize = 31, int fastThreshold = 20,
+		int nfeaturesSift = 0, int nOctaveLayersSift = 3, double contrastThresholdSift = 0.03, double edgeThresholdSift = 10, double sigmaSift = 1.6)
+	{
+		m_featsCorner.clear(); // 先把之前的清掉
+
+		//////////////////////////////////////////////////////////////////////////
+
+		auto orb = cv::ORB::create(nfeatures, scaleFactor, nlevels, edgeThreshold, firstLevel, WTA_K, scoreType, patchSize, fastThreshold);
+		orb->detect(img, m_featsCorner.key_points);
+
+// 		vector<double> devs;
+// 
+// 		double sum = 0;
+// 		for (int i = 0; i < keyptsORB.size(); ++i)
+// 		{
+// 			const KeyPoint & kypt = keyptsORB[i];
+// 
+// 			int r = (kypt.size - 1)*0.5;
+// 
+// 			double angle;
+// 			if (CornerAngle_IC(im_gray, kypt.pt.x, kypt.pt.y, r, angle))
+// 			{
+// 				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+// 				{
+// 					angle += 360;
+// 				}
+// 			}
+// 
+// 			double ddd = std::abs(kypt.angle - angle);
+// 
+// 			devs.push_back(ddd);
+// 
+// 			sum += ddd;
+// 		}
+// 
+// 		double tmp = sum / keyptsORB.size();
+		//////////////////////////////////////////////////////////////////////////
+
+		// 按照 response 从大到小对 fast 特征点进行排序
+		sort(m_featsCorner.key_points.begin(), m_featsCorner.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
+
+		// 生成特征描述向量
+		auto f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
+		f2d->compute(img, m_featsCorner.key_points, m_featsCorner.descriptors);
+
+		m_featsCorner.type = Feature_ORB_SIFT; // ORB keypoints + sift descriptors
+
+		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
+		int n = m_featsCorner.key_points.size();
+		for (int i = 0; i < n; ++i)
+		{
+			const cv::KeyPoint & keypt = m_featsCorner.key_points[i];
+
+			m_featsCorner.tracks.push_back(-1);
+			m_featsCorner.idx_pt.push_back(i);
+
+			// 20150215, zhaokunz, 把该特征点的颜色信息插值出来
+			uchar r, g, b;
+			Vec3b rgb;
+			if (BilinearInterp(img, keypt.pt.x, keypt.pt.y, r, g, b))
+			{
+				rgb[0] = b;
+				rgb[1] = g;
+				rgb[2] = r;
+			}
+			m_featsCorner.rgbs.push_back(rgb);
 		}
 	};
 
 	void GenSfMFeatures(int nSfMFeatures = 8192, int nPrptFeatures = 150)
 	{
-		int nSift = m_featsSIFT.key_points.size();
-		int nFast = m_featsFAST.key_points.size();
+		int nSift = m_featsBlob.key_points.size();
+		int nFast = m_featsCorner.key_points.size();
 		int nManual = m_featsManual.key_points.size();
 
 		// 先清空
@@ -743,8 +804,8 @@ struct cam_data
 		m_subFeats.clear();
 
 		// 暂时先合成个大的
-		Features featsTmp = m_featsSIFT;
-		featsTmp.push_back(m_featsFAST);
+		Features featsTmp = m_featsBlob;
+		featsTmp.push_back(m_featsCorner);
 
 		// 然后截取为最终的，并录入
 		int nSize = featsTmp.key_points.size();
@@ -785,8 +846,8 @@ struct cam_data
 
 	void DeleteAllFeatures()
 	{
-		m_featsSIFT.clear();
-		m_featsFAST.clear();
+		m_featsBlob.clear();
+		m_featsCorner.clear();
 		m_featsManual.clear();
 		m_feats.clear();
 		m_subFeats.clear();

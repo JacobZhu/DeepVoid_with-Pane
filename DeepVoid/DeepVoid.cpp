@@ -11819,7 +11819,7 @@ UINT ExtractSift(LPVOID param)
 		cam_data & cam = pApp->m_vCams[i];
 		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
-		cam.m_featsFAST.clear();
+		cam.m_featsCorner.clear();
 
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
@@ -11833,7 +11833,7 @@ UINT ExtractSift(LPVOID param)
 		}
 
 		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
-		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowBlob = TRUE; // 显示 sift 特征点
 		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
 //		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
 		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
@@ -11872,7 +11872,7 @@ UINT ExtractFAST(LPVOID param)
 		cam_data & cam = pApp->m_vCams[i];
 		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
-		cam.m_featsSIFT.clear();
+		cam.m_featsBlob.clear();
 
 		cam.ExtractFASTFeatures(img, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
@@ -11887,7 +11887,7 @@ UINT ExtractFAST(LPVOID param)
 		}
 
 		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
-		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowCorner = TRUE; // 显示 FAST 特征点
 		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
 //		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
 		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
@@ -11940,8 +11940,8 @@ UINT ExtractSiftandFAST(LPVOID param)
 		}
 
 		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
-		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
-		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowBlob = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowCorner = TRUE; // 显示 FAST 特征点
 		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
 //		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
 		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
@@ -11990,8 +11990,8 @@ UINT GenSfMFeatures(LPVOID param)
 		}
 
 		pDoc->m_pImgView->m_flagShow = 2; // 仅显示入选参加 SfM 的特征点
-		pDoc->m_pImgView->m_bShowSIFT = TRUE; // 显示 sift 特征点
-		pDoc->m_pImgView->m_bShowFAST = TRUE; // 显示 FAST 特征点
+		pDoc->m_pImgView->m_bShowBlob = TRUE; // 显示 sift 特征点
+		pDoc->m_pImgView->m_bShowCorner = TRUE; // 显示 FAST 特征点
 		pDoc->m_pImgView->m_bShowManual = TRUE; // 显示手提点
 //		pDoc->m_pImgView->m_bShowID = FALSE; // 不显示 ID 号
 		pDoc->m_pImgView->m_bShowTrackID = FALSE; // 更不显示 track ID 号，因为重新提取了特征点要重新进行特征跟踪
@@ -12164,11 +12164,11 @@ UINT TwoViewFeatureMatching(LPVOID param)
 			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
 			if (i < cam.m_nSiftElected)
 			{
-				cam.m_featsSIFT.tracks[i] = idx_count;
+				cam.m_featsBlob.tracks[i] = idx_count;
 			}
 			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
 			{
-				cam.m_featsFAST.tracks[i - cam.m_nSiftElected] = idx_count;
+				cam.m_featsCorner.tracks[i - cam.m_nSiftElected] = idx_count;
 			}
 			else
 			{

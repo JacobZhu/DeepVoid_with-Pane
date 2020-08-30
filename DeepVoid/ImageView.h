@@ -27,8 +27,8 @@ public:
 	int m_flagPointExtracted;	// 仿效小钟的提点函数返回的标志，0 表示未提点并一直等待提点，1 表示已经完成提点，-1 表示取消提点
 
 	int m_flagShow;			// 0: show none; 1: show all; 2: show only selected
-	BOOL m_bShowSIFT;
-	BOOL m_bShowFAST;
+	BOOL m_bShowBlob;
+	BOOL m_bShowCorner;
 	BOOL m_bShowManual;
 	BOOL m_bShowID;
 	BOOL m_bShowInfo;
@@ -71,6 +71,8 @@ public:
 	// 利用已有的 dc、CPen 以及 Textcolor 和 BkMode 设置
 //	void DrawCircle(CClientDC & dc, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
 	void DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID = TRUE, int nRadius = 5);
+
+	void DrawFeature(CDC * pDC, double x, double y, double radius, double angle, int id, BOOL bShowID = TRUE);
 
 //	void DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b,
 //		int penStyle = PS_SOLID, int nWidth = 1);

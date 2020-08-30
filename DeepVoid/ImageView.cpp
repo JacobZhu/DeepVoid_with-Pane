@@ -24,8 +24,8 @@ CImageView::CImageView()
 	m_bStartExtractPt = FALSE;
 
 	m_flagShow = 1;
-	m_bShowSIFT = TRUE;
-	m_bShowFAST = TRUE;
+	m_bShowBlob = TRUE;
+	m_bShowCorner = TRUE;
 	m_bShowManual = TRUE;
 	m_bShowID = FALSE;
 	m_bShowInfo = TRUE;
@@ -141,9 +141,9 @@ void CImageView::OnDraw(CDC* pDC)
 	// 3、再把所有图像几何特征画出来
 	if (m_pImage && !m_pImage->empty() && m_flagShow)
 	{
-		if (m_bShowSIFT) // 显示 sift 特征点
+		if (m_bShowBlob) // 显示光团特征点
 		{
-			int n = m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size();
+			int n = m_pMVSDoc->m_pCam->m_featsBlob.key_points.size();
 
 			if (m_flagShow == 2) // 只显示入选参加 SfM 的 sift 特征点
 			{
@@ -157,25 +157,44 @@ void CImageView::OnDraw(CDC* pDC)
 
 			for (int i = 0; i < n; ++i)
 			{
-				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsSIFT.key_points[i];
+				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsBlob.key_points[i];
 
 				double x = keypt.pt.x*scale;
-				double y = keypt.pt.y*scale;		
+				double y = keypt.pt.y*scale;
+				// size 是特征的直径（diameter），原本觉得应该减 1 再除以 2 比较合适，但是发现 sift 特征中不少size是1.*的，且很多也不是偶数，所以还是直接除以 2 更好点。
+//				double radius = (keypt.size - 1)*0.5*scale;
+				double radius = keypt.size*0.5*scale;
 
 				if (m_bShowTrackID)
 				{
-					int trackID = m_pMVSDoc->m_pCam->m_featsSIFT.tracks[i];
+					int trackID = m_pMVSDoc->m_pCam->m_featsBlob.tracks[i];
 
 					if (trackID < 0)
 					{
 						continue;
 					}
 
-					DrawCircle(pDC, x, y, trackID, m_bShowID, m_nBasicRadius*scale);
+					//DrawCircle(pDC, x, y, trackID, m_bShowID, m_nBasicRadius*scale);
+					if (radius < 0) // 如果特征没有尺度信息那就只画个十字丝
+					{
+						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, trackID, m_bShowID);
+					}					
 				}
 				else
 				{
-					DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
+					//DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
+					if (radius < 0)
+					{
+						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, i, m_bShowID);
+					}					
 				}				
 			}
 
@@ -184,9 +203,9 @@ void CImageView::OnDraw(CDC* pDC)
 			newPen.DeleteObject();
 		}
 
-		if (m_bShowFAST) // 显示 fast 角点特征
+		if (m_bShowCorner) // 显示角点特征
 		{
-			int n = m_pMVSDoc->m_pCam->m_featsFAST.key_points.size();
+			int n = m_pMVSDoc->m_pCam->m_featsCorner.key_points.size();
 
 			if (m_flagShow == 2) // 只显示入选参加 SfM 的 FAST 特征点
 			{
@@ -200,25 +219,42 @@ void CImageView::OnDraw(CDC* pDC)
 
 			for (int i = 0; i < n; ++i)
 			{
-				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsFAST.key_points[i];
+				const cv::KeyPoint & keypt = m_pMVSDoc->m_pCam->m_featsCorner.key_points[i];
 
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
+				double radius = keypt.size*0.5*scale;
 
 				if (m_bShowTrackID)
 				{
-					int trackID = m_pMVSDoc->m_pCam->m_featsFAST.tracks[i];
+					int trackID = m_pMVSDoc->m_pCam->m_featsCorner.tracks[i];
 
 					if (trackID < 0)
 					{
 						continue;
 					}
 
-					DrawCross(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+					//DrawCross(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+					if (radius < 0)
+					{
+						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, trackID, m_bShowID);
+					}					
 				}
 				else
 				{
-					DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+					//DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
+					if (radius < 0)
+					{
+						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, i, m_bShowID);
+					}					
 				}				
 			}
 
@@ -247,6 +283,7 @@ void CImageView::OnDraw(CDC* pDC)
 
 				double x = keypt.pt.x*scale;
 				double y = keypt.pt.y*scale;
+				double radius = keypt.size*0.5*scale;
 
 				if (m_bShowTrackID)
 				{
@@ -257,11 +294,25 @@ void CImageView::OnDraw(CDC* pDC)
 						continue;
 					}
 
-					DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
+					if (radius < 0)
+					{
+						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, trackID, m_bShowID);
+					}					
 				}
 				else
 				{
-					DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+					if (radius < 0)
+					{
+						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
+					} 
+					else
+					{
+						DrawFeature(pDC, x, y, radius, keypt.angle, i, m_bShowID);
+					}					
 				}				
 			}
 
@@ -594,6 +645,46 @@ void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID,
 	}
 }
 
+void CImageView::DrawFeature(CDC * pDC, double x, double y, double radius, double angle, int id, BOOL bShowID /*= TRUE*/)
+{
+	int ptX = int(x + 0.5);
+	int ptY = int(y + 0.5);
+
+	int nr = int(radius + 0.5);
+
+	// 1. 先画圆 //////////////////////////////////////////////////////////////
+	pDC->MoveTo(ptX + nr, ptY);
+	pDC->AngleArc(ptX, ptY, nr, 0, 360);
+	//////////////////////////////////////////////////////////////////////////
+
+	// 2. 再画特征方向 ////////////////////////////////////////////////////////
+	// 先根据特征方向角度生成二维旋转矩阵
+	if (angle >= 0 && angle <= 360) // 角度范围合理时才画
+	{
+		cv::Matx22d R = DeepVoid::GenR2D_Angle(angle);
+		cv::Matx21d X;
+		X(0) = nr;
+		cv::Matx21d X0 = R*X;
+
+		pDC->MoveTo(ptX, ptY);
+		pDC->LineTo(int(ptX + X0(0) + 0.5), int(ptY + X0(1) + 0.5));
+	}	
+	//////////////////////////////////////////////////////////////////////////
+
+	// 3. 最后显示序号 ////////////////////////////////////////////////////////
+	if (bShowID)
+	{
+		CString strTmp;
+		strTmp.Format("%d", id);
+
+		int x_offset = int(0.6*nr + 0.5);
+		int y_offset = int(1 * nr + 0.5);
+
+		pDC->TextOut(ptX + x_offset, ptY - y_offset, strTmp);
+	}
+	//////////////////////////////////////////////////////////////////////////
+}
+
 //void CImageView::DrawInfo(const CString & info, double x, double y, uchar r, uchar g, uchar b, int penStyle, int nWidth)
 //{
 //	CClientDC dc(this);
@@ -652,7 +743,7 @@ void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID,
 //		strAll += "【X】Show ID: No\n";
 //	}
 //
-//	if (m_bShowSIFT)
+//	if (m_bShowBlob)
 //	{
 //		strAll += "【C】Show sift: Yes ";
 //	}
@@ -663,7 +754,7 @@ void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID,
 //
 //	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 //	{
-//		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+//		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsBlob.key_points.size());
 //	}
 //	else
 //	{
@@ -671,7 +762,7 @@ void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID,
 //	}
 //	strAll += str;
 //
-//	if (m_bShowFAST)
+//	if (m_bShowCorner)
 //	{
 //		strAll += "【V】Show FAST: Yes ";
 //	}
@@ -682,7 +773,7 @@ void CImageView::DrawCircle(CDC * pDC, double x, double y, int id, BOOL bShowID,
 //
 //	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 //	{
-//		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+//		str.Format("(%d)\n", m_pMVSDoc->m_pCam->m_featsCorner.key_points.size());
 //	}
 //	else
 //	{
@@ -762,7 +853,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 		strAll += "[X] Show ID: No\n";
 	}
 	
-	if (m_bShowSIFT)
+	if (m_bShowBlob)
 	{
 		strAll += "[C] Show sift: Yes ";
 	}
@@ -773,7 +864,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nSiftElected, m_pMVSDoc->m_pCam->m_featsSIFT.key_points.size());
+		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nSiftElected, m_pMVSDoc->m_pCam->m_featsBlob.key_points.size());
 	}
 	else
 	{
@@ -781,7 +872,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 	}
 	strAll += str;
 
-	if (m_bShowFAST)
+	if (m_bShowCorner)
 	{
 		strAll += "[V] Show FAST: Yes ";
 	}
@@ -792,7 +883,7 @@ void CImageView::DrawInfo(CDC * pDC, CRect & rect)
 
 	if (m_pMVSDoc && m_pMVSDoc->m_pCam)
 	{
-		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nFastElected, m_pMVSDoc->m_pCam->m_featsFAST.key_points.size());
+		str.Format("(%d/%d)\n", m_pMVSDoc->m_pCam->m_nFastElected, m_pMVSDoc->m_pCam->m_featsCorner.key_points.size());
 	}
 	else
 	{
@@ -1040,6 +1131,14 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			}
 		}
 
+		if (nChar == 'r' || nChar == 'R')
+		{
+			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
+			{
+				m_pMVSDoc->ExtractORBFeatures();
+			}
+		}
+
 		if (nChar == 'g' || nChar == 'G')
 		{
 			if (GetKeyState(VK_CONTROL) < 0) // Ctrl is pressed at the same time
@@ -1090,26 +1189,26 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 		if (nChar == 'c' || nChar == 'C') // 切换是否显示 sift 特征
 		{
-			if (m_bShowSIFT)
+			if (m_bShowBlob)
 			{
-				m_bShowSIFT = FALSE;
+				m_bShowBlob = FALSE;
 			}
 			else
 			{
-				m_bShowSIFT = TRUE;
+				m_bShowBlob = TRUE;
 			}
 			Invalidate(TRUE);
 		}
 
 		if (nChar == 'v' || nChar == 'V') // 切换是否显示 fast 特征
 		{
-			if (m_bShowFAST)
+			if (m_bShowCorner)
 			{
-				m_bShowFAST = FALSE;
+				m_bShowCorner = FALSE;
 			}
 			else
 			{
-				m_bShowFAST = TRUE;
+				m_bShowCorner = TRUE;
 			}
 			Invalidate(TRUE);
 		}
