@@ -29,6 +29,7 @@ CImageDoc::CImageDoc()
 	m_sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
 
 	// parameters for FAST feature extraction
+	m_sizeFast = 15.0;
 	m_thresholdFast = 20; // threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
@@ -221,7 +222,7 @@ void CImageDoc::ExtractSiftFeatures()
 
 void CImageDoc::ExtractFASTFeatures()
 {
-	m_pCam->ExtractFASTFeatures(*m_pImgOriginal, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
+	m_pCam->ExtractFASTFeatures(*m_pImgOriginal, m_sizeFast, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
 		m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	m_pImgView->Invalidate(TRUE);

@@ -90,6 +90,7 @@ public:
 	double m_sigmaSift;
 
 	// parameters for FAST feature extraction
+	double m_sizeFast;
 	int m_thresholdFast;
 	bool m_nonmaxSuppressionFast;
 	int m_typeFast;

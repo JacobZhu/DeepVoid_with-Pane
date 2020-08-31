@@ -161,6 +161,7 @@ CDeepVoidApp::CDeepVoidApp()
 	m_sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
 
 	// parameters for FAST feature extraction
+	m_sizeFast = 15.0;
 	m_thresholdFast = 20; // threshold on difference between intensity of the central pixel and pixels of a circle around this pixel.
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
@@ -11874,7 +11875,7 @@ UINT ExtractFAST(LPVOID param)
 
 		cam.m_featsBlob.clear();
 
-		cam.ExtractFASTFeatures(img, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+		cam.ExtractFASTFeatures(img, pApp->m_sizeFast, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
@@ -11927,7 +11928,7 @@ UINT ExtractSiftandFAST(LPVOID param)
 		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
-		cam.ExtractFASTFeatures(img, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+		cam.ExtractFASTFeatures(img, pApp->m_sizeFast, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 

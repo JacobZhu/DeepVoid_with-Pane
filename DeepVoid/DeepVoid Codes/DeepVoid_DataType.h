@@ -635,7 +635,7 @@ struct cam_data
 		}
 	};
 
-	void ExtractFASTFeatures(const cv::Mat & img, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
+	void ExtractFASTFeatures(const cv::Mat & img, double size = 15.0, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
 		int nfeaturesSift = 0, int nOctaveLayersSift = 3, double contrastThresholdSift = 0.03, double edgeThresholdSift = 10, double sigmaSift = 1.6)
 	{
 		m_featsCorner.clear(); // 先把之前的清掉
@@ -668,7 +668,9 @@ struct cam_data
 		{
 			cv::KeyPoint & keypt = m_featsCorner.key_points[i];
 
-			int r = keypt.size*0.5;
+			keypt.size = size;
+
+			int r = (size - 1)*0.5;
 
 			double angle;
 			if (CornerAngle_IC(im_gray, keypt.pt.x, keypt.pt.y, r, angle))
