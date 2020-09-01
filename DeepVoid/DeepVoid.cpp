@@ -168,7 +168,7 @@ CDeepVoidApp::CDeepVoidApp()
 
 	// 计算特征尺度和方向所需的参数
 	m_thresholdOffset = 1.0;
-	m_rMax = 100;
+	m_rMax = /*3*/100;
 
 	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;

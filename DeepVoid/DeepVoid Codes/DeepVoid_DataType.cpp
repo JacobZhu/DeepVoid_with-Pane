@@ -613,6 +613,7 @@ bool DeepVoid::FeatureRadiusAngle(const cv::Mat & img,			// input: the input gra
 		if (r > r_max)
 		{
 			return false;
+			/*break;*/
 		}
 
 		IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy);

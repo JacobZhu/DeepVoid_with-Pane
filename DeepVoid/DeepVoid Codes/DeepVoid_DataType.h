@@ -705,7 +705,7 @@ struct cam_data
 			// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
 			if (FeatureRadiusAngle(im_gray, keypt.pt.x, keypt.pt.y, r, angle, thresholdOffset, r_max))
 			{
-				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
+//				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 				keypt.angle = angle;
 			}
 			//////////////////////////////////////////////////////////////////////////
