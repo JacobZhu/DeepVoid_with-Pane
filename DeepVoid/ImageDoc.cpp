@@ -47,6 +47,10 @@ CImageDoc::CImageDoc()
 	// 手提点的特征描述子计算范围
 	m_sizeManual = 15.0;
 
+	// 计算特征尺度和方向所需的参数
+	m_thresholdOffset = 1.0;
+	m_rMax = 100;
+
 	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;
 }
@@ -118,7 +122,8 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	int r = (m_sizeManual - 1)*0.5; // keypoint.size is the diameter not the radius
+	int r/* = (m_sizeManual - 1)*0.5*/; // keypoint.size is the diameter not the radius
+	double angle;
 
 	std::vector<cv::KeyPoint> keypts;	
 
@@ -136,17 +141,25 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		keypt.pt.y = pt.y;
 
 		// 20200818，赋上特征尺寸值，以限定范围计算特征描述
-		keypt.size = m_sizeManual;
+//		keypt.size = m_sizeManual;
 
 		// 20200826 //////////////////////////////////////////////////////////////
-		double angle;
-		if (CornerAngle_IC(im_gray, pt.x, pt.y, r, angle))
-		{
-			if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
-			{
-				angle += 360;
-			}
+// 		double angle;
+// 		if (CornerAngle_IC(im_gray, pt.x, pt.y, r, angle))
+// 		{
+// 			if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+// 			{
+// 				angle += 360;
+// 			}
+// 
+// 			keypt.angle = angle;
+// 		}
+		//////////////////////////////////////////////////////////////////////////
 
+		// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
+		if (FeatureRadiusAngle(im_gray, pt.x, pt.y, r, angle, m_thresholdOffset, m_rMax))
+		{
+			keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 			keypt.angle = angle;
 		}
 		//////////////////////////////////////////////////////////////////////////
@@ -222,7 +235,7 @@ void CImageDoc::ExtractSiftFeatures()
 
 void CImageDoc::ExtractFASTFeatures()
 {
-	m_pCam->ExtractFASTFeatures(*m_pImgOriginal, m_sizeFast, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
+	m_pCam->ExtractFASTFeatures(*m_pImgOriginal, m_thresholdOffset, m_rMax, m_thresholdFast, m_nonmaxSuppressionFast, m_typeFast,
 		m_nfeaturesSift, m_nOctaveLayersSift, m_contrastThresholdSift, m_edgeThresholdSift, m_sigmaSift);
 
 	m_pImgView->Invalidate(TRUE);

@@ -166,6 +166,10 @@ CDeepVoidApp::CDeepVoidApp()
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 
+	// 计算特征尺度和方向所需的参数
+	m_thresholdOffset = 1.0;
+	m_rMax = 100;
+
 	m_nSfMFeatures = /*2048*/8192;
 	m_nPrptFeatures = 150;
 
@@ -11875,7 +11879,7 @@ UINT ExtractFAST(LPVOID param)
 
 		cam.m_featsBlob.clear();
 
-		cam.ExtractFASTFeatures(img, pApp->m_sizeFast, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+		cam.ExtractFASTFeatures(img, pApp->m_thresholdOffset, pApp->m_rMax, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
@@ -11928,7 +11932,7 @@ UINT ExtractSiftandFAST(LPVOID param)
 		CImageDoc * pDoc = pApp->m_vPImgCocs[i];
 
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
-		cam.ExtractFASTFeatures(img, pApp->m_sizeFast, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
+		cam.ExtractFASTFeatures(img, pApp->m_thresholdOffset, pApp->m_rMax, pApp->m_thresholdFast, pApp->m_nonmaxSuppressionFast, pApp->m_typeFast,
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 

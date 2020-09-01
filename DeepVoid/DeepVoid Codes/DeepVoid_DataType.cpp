@@ -581,6 +581,72 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,	// input: the input gray scal
 	return CornerAngle_IC(img, ix, iy, r, angle);
 }
 
+// 20200901，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 特征的区域半径由可以可靠确定特征方向角度时的区域大小来确定
+// 角度范围为[0,360)
+bool DeepVoid::FeatureRadiusAngle(const cv::Mat & img,			// input: the input gray scale image
+								  int ix, int iy,				// input: the center of the region
+								  int & r,						// output:the estimated radius of the circular region
+								  double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+								  double threshOffset /*= 1.0*/,// input: 当灰度质心偏移量能超过该阈值像素数时才认为可靠确定特征方向，由此定下特征尺度大小
+								  int r_max /*= 100*/			// input: 允许的最大邻域半径值
+								  )
+{
+	double thd2 = threshOffset*threshOffset;
+
+	r = 2; // 定一个起始的邻域半径
+
+	double dx, dy;
+
+	// 直接先算一次，看下质心偏移量，另外看看区域内是否为全黑，如果全黑也没必要进行后续的计算了
+	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy)) // 说明图像区域内灰度值全为 0，即全黑
+	{
+		return false;
+	}
+
+	double d2 = dx*dx + dy*dy;
+
+	while (d2 < thd2)
+	{
+		++r;
+
+		if (r > r_max)
+		{
+			return false;
+		}
+
+		IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy);
+
+		d2 = dx*dx + dy*dy;
+	}
+
+	double radian = std::atan2(dy, dx); // [-π; +π]
+
+	angle = radian*R2D;
+
+	if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+	{
+		angle += 360;
+	}
+
+	return true;
+}
+
+bool DeepVoid::FeatureRadiusAngle(const cv::Mat & img,			// input: the input gray scale image
+								  double x, double y,			// input: the center of the region
+								  int & r,						// output:the estimated radius of the circular region
+								  double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+								  double threshOffset /*= 1.0*/,// input: 当灰度质心偏移量能超过该阈值像素数时才认为可靠确定特征方向，由此定下特征尺度大小
+								  int r_max /*= 100*/			// input: 允许的最大邻域半径值
+								  )
+{
+	// 确定当前像点所在的具体像素坐标
+	int ix = (int)x;
+	int iy = (int)y;
+
+	return FeatureRadiusAngle(img, ix, iy, r, angle, threshOffset, r_max);
+}
+
 // CvMat wrapper here : Implementation of class CMatrix ////////////////////////////////////////////////////////
 DeepVoid::CMatrix::CMatrix()
 {

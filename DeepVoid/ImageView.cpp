@@ -30,6 +30,7 @@ CImageView::CImageView()
 	m_bShowID = FALSE;
 	m_bShowInfo = TRUE;
 	m_bShowTrackID = FALSE;
+	m_bShowRadiusAngle = FALSE;
 
 	m_nPenWidth = 1;		// CDC pen width
 	m_penStyle = PS_SOLID;	// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)
@@ -175,7 +176,7 @@ void CImageView::OnDraw(CDC* pDC)
 					}
 
 					//DrawCircle(pDC, x, y, trackID, m_bShowID, m_nBasicRadius*scale);
-					if (radius < 0) // 如果特征没有尺度信息那就只画个十字丝
+					if (!m_bShowRadiusAngle || radius <= 0) // 如果特征没有尺度信息那就只画个十字丝
 					{
 						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -187,7 +188,7 @@ void CImageView::OnDraw(CDC* pDC)
 				else
 				{
 					//DrawCircle(pDC, x, y, i, m_bShowID, m_nBasicRadius*scale);
-					if (radius < 0)
+					if (!m_bShowRadiusAngle || radius <= 0)
 					{
 						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -235,7 +236,7 @@ void CImageView::OnDraw(CDC* pDC)
 					}
 
 					//DrawCross(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
-					if (radius < 0)
+					if (!m_bShowRadiusAngle || radius <= 0)
 					{
 						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -247,7 +248,7 @@ void CImageView::OnDraw(CDC* pDC)
 				else
 				{
 					//DrawCross(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*sqrt2inv*scale);
-					if (radius < 0)
+					if (!m_bShowRadiusAngle || radius <= 0)
 					{
 						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -287,6 +288,13 @@ void CImageView::OnDraw(CDC* pDC)
 
 				if (m_bShowTrackID)
 				{
+					// 20200901，添加这句是因为key_points向量组在刷新之前就成型了，但是tracks向量组却可能还是空的呢
+					// 当然了，这个问题只在手提点时才有可能出现，因为自动提光团点或者角点时，是完成所有任务后才刷新的
+					if (i >= m_pMVSDoc->m_pCam->m_featsManual.tracks.size())
+					{
+						break;
+					}
+
 					int trackID = m_pMVSDoc->m_pCam->m_featsManual.tracks[i];
 
 					if (trackID < 0)
@@ -294,7 +302,7 @@ void CImageView::OnDraw(CDC* pDC)
 						continue;
 					}
 
-					if (radius < 0)
+					if (!m_bShowRadiusAngle || radius <= 0)
 					{
 						DrawCrosshair(pDC, x, y, trackID, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -305,7 +313,7 @@ void CImageView::OnDraw(CDC* pDC)
 				}
 				else
 				{
-					if (radius < 0)
+					if (!m_bShowRadiusAngle || radius <= 0)
 					{
 						DrawCrosshair(pDC, x, y, i, m_bShowID, m_nBasicHalfLength*scale);
 					} 
@@ -1222,6 +1230,19 @@ void CImageView::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 			else
 			{
 				m_bShowManual = TRUE;
+			}
+			Invalidate(TRUE);
+		}
+
+		if (nChar == 'n' || nChar == 'N') // 切换是否显示特征尺度和方向
+		{
+			if (m_bShowRadiusAngle)
+			{
+				m_bShowRadiusAngle = FALSE;
+			}
+			else
+			{
+				m_bShowRadiusAngle = TRUE;
 			}
 			Invalidate(TRUE);
 		}

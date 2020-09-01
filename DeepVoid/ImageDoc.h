@@ -43,6 +43,10 @@ public:
 	// 手提点的特征描述子计算范围
 	double m_sizeManual;
 
+	// 计算特征尺度和方向所需的参数
+	double m_thresholdOffset;
+	int m_rMax;
+
 	int m_nSfMFeatures;
 	int m_nPrptFeatures;
 

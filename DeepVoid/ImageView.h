@@ -33,6 +33,7 @@ public:
 	BOOL m_bShowID;
 	BOOL m_bShowInfo;
 	BOOL m_bShowTrackID;	// 显示的是图像中的局部 ID 号，还是全局的 feature track ID 号
+	BOOL m_bShowRadiusAngle;// 是否显示特征尺度和方向
 
 	int m_nPenWidth;		// CDC pen width
 	int m_penStyle;			// PS_SOLID(0); PS_DASH(1); PS_DOT(2); PS_DASHDOT(3); PS_DASHDOTDOT(4)

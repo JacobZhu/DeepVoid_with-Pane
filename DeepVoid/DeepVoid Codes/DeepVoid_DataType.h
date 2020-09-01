@@ -270,6 +270,25 @@ bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
 					double & angle			// output:the location of the calculated intensity centroid (in terms of offsets)
 					);
 
+// 20200901，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 特征的区域半径由可以可靠确定特征方向角度时的区域大小来确定
+// 角度范围为[0,360)
+bool FeatureRadiusAngle(const cv::Mat & img,		// input: the input gray scale image
+						int ix, int iy,				// input: the center of the region
+						int & r,					// output:the estimated radius of the circular region
+						double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+						double threshOffset = 1.0,	// input: 当灰度质心偏移量能超过该阈值像素数时才认为可靠确定特征方向，由此定下特征尺度大小
+						int r_max = 100				// input: 允许的最大邻域半径值
+						);
+
+bool FeatureRadiusAngle(const cv::Mat & img,		// input: the input gray scale image
+						double x, double y,			// input: the center of the region
+						int & r,					// output:the estimated radius of the circular region
+						double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+						double threshOffset = 1.0,	// input: 当灰度质心偏移量能超过该阈值像素数时才认为可靠确定特征方向，由此定下特征尺度大小
+						int r_max = 100				// input: 允许的最大邻域半径值
+						);
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -635,7 +654,7 @@ struct cam_data
 		}
 	};
 
-	void ExtractFASTFeatures(const cv::Mat & img, double size = 15.0, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
+	void ExtractFASTFeatures(const cv::Mat & img, double thresholdOffset = 1.0, int r_max = 100, int thresholdFast = 20, bool nonmaxSuppressionFast = true, int typeFast = cv::FastFeatureDetector::TYPE_9_16,
 		int nfeaturesSift = 0, int nOctaveLayersSift = 3, double contrastThresholdSift = 0.03, double edgeThresholdSift = 10, double sigmaSift = 1.6)
 	{
 		m_featsCorner.clear(); // 先把之前的清掉
@@ -668,20 +687,28 @@ struct cam_data
 		{
 			cv::KeyPoint & keypt = m_featsCorner.key_points[i];
 
-			keypt.size = size;
+//			keypt.size = size;
 
-			int r = (size - 1)*0.5;
-
+			int r/* = (size - 1)*0.5*/;
 			double angle;
-			if (CornerAngle_IC(im_gray, keypt.pt.x, keypt.pt.y, r, angle))
-			{
-				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
-				{
-					angle += 360;
-				}
 
+// 			if (CornerAngle_IC(im_gray, keypt.pt.x, keypt.pt.y, r, angle))
+// 			{
+// 				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+// 				{
+// 					angle += 360;
+// 				}
+// 
+// 				keypt.angle = angle;
+// 			}
+
+			// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
+			if (FeatureRadiusAngle(im_gray, keypt.pt.x, keypt.pt.y, r, angle, thresholdOffset, r_max))
+			{
+				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 				keypt.angle = angle;
 			}
+			//////////////////////////////////////////////////////////////////////////
 		}
 		//////////////////////////////////////////////////////////////////////////
 

@@ -95,6 +95,10 @@ public:
 	bool m_nonmaxSuppressionFast;
 	int m_typeFast;
 
+	// 计算特征尺度和方向所需的参数
+	double m_thresholdOffset;
+	int m_rMax;
+
 	int m_nSfMFeatures;
 	int m_nPrptFeatures;
 
