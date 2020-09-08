@@ -648,6 +648,71 @@ bool DeepVoid::FeatureRadiusAngle(const cv::Mat & img,			// input: the input gra
 	return FeatureRadiusAngle(img, ix, iy, r, angle, threshOffset, r_max);
 }
 
+// 20200901，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 特征的区域半径由可以可靠确定特征方向角度时的区域大小来确定
+// 角度范围为[0,360)
+bool DeepVoid::FeatureRadiusAngle_dAng(const cv::Mat & img,			// input: the input gray scale image
+									   int ix, int iy,				// input: the center of the region
+									   int & r,						// output:the estimated radius of the circular region
+									   double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+									   double thresh_dAng /*= 5.0*/,// input: 当当前特征方向相对于上一次迭代的改变量小于该阈值时才认为可靠确定特征方向，由此定下特征尺度大小
+									   int r_max /*= 100*/			// input: 允许的最大邻域半径值
+									   )
+{
+	r = 2;
+
+	double preAng;
+	double dAng = 10000000;
+
+	if (!CornerAngle_IC(img, ix, iy, r, preAng))
+	{
+		return false;
+	}
+
+	while (dAng >= thresh_dAng)
+	{
+		++r;
+
+		if (r > r_max)
+		{
+			return false;
+		}
+
+		CornerAngle_IC(img, ix, iy, r, angle); // [-360; +360]
+
+		dAng = std::abs(angle - preAng);
+
+		if (dAng > 180)
+		{
+			dAng = 360 - dAng;
+		}
+
+		preAng = angle;
+	}
+
+	if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
+	{
+		angle += 360;
+	}
+
+	return true;
+}
+
+bool DeepVoid::FeatureRadiusAngle_dAng(const cv::Mat & img,			// input: the input gray scale image
+									   double x, double y,			// input: the center of the region
+									   int & r,						// output:the estimated radius of the circular region
+									   double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+									   double thresh_dAng /*= 5.0*/,// input: 当当前特征方向相对于上一次迭代的改变量小于该阈值时才认为可靠确定特征方向，由此定下特征尺度大小
+									   int r_max /*= 100*/			// input: 允许的最大邻域半径值
+									   )
+{
+	// 确定当前像点所在的具体像素坐标
+	int ix = (int)x;
+	int iy = (int)y;
+
+	return FeatureRadiusAngle_dAng(img, ix, iy, r, angle, thresh_dAng, r_max);
+}
+
 // CvMat wrapper here : Implementation of class CMatrix ////////////////////////////////////////////////////////
 DeepVoid::CMatrix::CMatrix()
 {

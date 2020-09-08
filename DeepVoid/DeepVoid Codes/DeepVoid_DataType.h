@@ -289,6 +289,25 @@ bool FeatureRadiusAngle(const cv::Mat & img,		// input: the input gray scale ima
 						int r_max = 100				// input: 允许的最大邻域半径值
 						);
 
+// 20200901，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 特征的区域半径由可以可靠确定特征方向角度时的区域大小来确定
+// 角度范围为[0,360)
+bool FeatureRadiusAngle_dAng(const cv::Mat & img,		// input: the input gray scale image
+							 int ix, int iy,			// input: the center of the region
+							 int & r,					// output:the estimated radius of the circular region
+							 double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+							 double thresh_dAng = 5.0,	// input: 当当前特征方向相对于上一次迭代的改变量小于该阈值时才认为可靠确定特征方向，由此定下特征尺度大小
+							 int r_max = 100			// input: 允许的最大邻域半径值
+							 );
+
+bool FeatureRadiusAngle_dAng(const cv::Mat & img,		// input: the input gray scale image
+							 double x, double y,		// input: the center of the region
+							 int & r,					// output:the estimated radius of the circular region
+							 double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+							 double thresh_dAng = 5.0,	// input: 当当前特征方向相对于上一次迭代的改变量小于该阈值时才认为可靠确定特征方向，由此定下特征尺度大小
+							 int r_max = 100			// input: 允许的最大邻域半径值
+							 );
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -703,9 +722,15 @@ struct cam_data
 // 			}
 
 			// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
-			if (FeatureRadiusAngle(im_gray, keypt.pt.x, keypt.pt.y, r, angle, thresholdOffset, r_max))
+// 			if (FeatureRadiusAngle(im_gray, keypt.pt.x, keypt.pt.y, r, angle, thresholdOffset, r_max))
+// 			{
+// 				keypt.size = (2 * r + 1)*0.33333333333; // keypoint::size 表征特征的直径 diameter
+// 				keypt.angle = angle;
+// 			}
+
+			if (FeatureRadiusAngle_dAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 3.0))
 			{
-//				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
+				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 				keypt.angle = angle;
 			}
 			//////////////////////////////////////////////////////////////////////////

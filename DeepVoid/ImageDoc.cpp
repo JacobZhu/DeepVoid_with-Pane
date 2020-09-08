@@ -157,7 +157,13 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 		//////////////////////////////////////////////////////////////////////////
 
 		// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
-		if (FeatureRadiusAngle(im_gray, pt.x, pt.y, r, angle, m_thresholdOffset, m_rMax))
+// 		if (FeatureRadiusAngle(im_gray, pt.x, pt.y, r, angle, m_thresholdOffset, m_rMax))
+// 		{
+// 			keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
+// 			keypt.angle = angle;
+// 		}
+
+		if (FeatureRadiusAngle_dAng(im_gray, pt.x, pt.y, r, angle, 1.0))
 		{
 			keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 			keypt.angle = angle;
