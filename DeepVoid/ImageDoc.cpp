@@ -34,14 +34,14 @@ CImageDoc::CImageDoc()
 	m_nonmaxSuppressionFast = true; // if true, non-maximum suppression is applied to detected corners (keypoints).
 	m_typeFast = cv::FastFeatureDetector::TYPE_9_16; // one of the three neighborhoods as defined in the paper: FastFeatureDetector::TYPE_9_16, FastFeatureDetector::TYPE_7_12, FastFeatureDetector::TYPE_5_8
 
-	m_nfeaturesORB = 1500;
+	m_nfeaturesORB = 3000;
 	m_scaleFactorORB = 1.2f;
 	m_nlevelsORB = 8;
-	m_edgeThresholdORB = 31;
+	m_edgeThresholdORB = 31/*11*/;
 	m_firstLevelORB = 0;
 	m_WTAK_ORB = 2;
-	m_scoreTypeORB = cv::ORB::HARRIS_SCORE;
-	m_patchSizeORB = 31;
+	m_scoreTypeORB = cv::ORB::HARRIS_SCORE/*cv::ORB::FAST_SCORE*/;
+	m_patchSizeORB = 31/*11*/;
 	m_fastThresholdORB = 20;
 
 	// 手提点的特征描述子计算范围
