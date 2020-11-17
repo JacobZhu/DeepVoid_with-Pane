@@ -618,6 +618,15 @@ struct cam_data
 		// 生成特征描述向量
 		f2d->compute(img, m_featsBlob.key_points, m_featsBlob.descriptors);
 
+		// 20201116，把特征点输出到图像中 //////////////////////////////////////////////
+// 		cv::Mat imgOut;
+// 		cv::drawKeypoints(img, m_featsBlob.key_points, imgOut, Scalar(0, 255, 0));
+// 
+// 		CString strInfo;
+// 		strInfo.Format("C:\\Users\\DeepV\\Desktop\\缩比图像\\jpg\\000000.jpg");
+// 		imwrite(strInfo.GetBuffer(), imgOut);
+		//////////////////////////////////////////////////////////////////////////////
+
 		///////////////////////////////////////////////////////////////////
 // 		FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\desp_sift.txt", "w");
 // 		for (int i = 0; i < m_featsBlob.descriptors.rows; ++i)

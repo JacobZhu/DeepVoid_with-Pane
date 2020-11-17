@@ -1082,7 +1082,7 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 	vector<double> vds(l);
 
-//	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(XYZs,Ks,Rs,ts,dists,distTypes,vImgPts_vmask,covInvs,j_fixed,i_fixed,ptrMat,info,tau,itermax,eps1,eps2);
+//	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, info, tau, itermax, eps1, eps2);
 	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
 	
 	// 下面还要将优化完的参数和点坐标全部赋回去

@@ -426,6 +426,25 @@ void CDeepVoidApp::OnFileOpenimages()
 	}	
 
 	delete [] pBuffer;
+
+
+
+	// 20201116，直接调用SfM //////////////////////////////////////////////
+	OnSfm();
+
+// 	int n_imgs = m_vCams.size();
+// 
+// 	m_vCams.clear();
+// 
+// 	int i;
+// 	for (i = 0; i < n_imgs; i++)
+// 	{
+// 		cam_data cam;
+// 		m_vCams.push_back(cam);
+// 	}
+// 
+// 	AfxBeginThread(SfM, this, THREAD_PRIORITY_NORMAL);
+	//////////////////////////////////////////////////////////////////////
 }
 
 
@@ -767,37 +786,37 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200519 涿州测量
- 		//double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
- 		//pApp->m_vCams[i].fx = f;
- 		//pApp->m_vCams[i].fy = f;
- 		//pApp->m_vCams[i].s  = 0;
- 		//pApp->m_vCams[i].cx = 501.5;
- 		//pApp->m_vCams[i].cy = 500.5;
+ 		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+ 		pApp->m_vCams[i].fx = f;
+ 		pApp->m_vCams[i].fy = f;
+ 		pApp->m_vCams[i].s  = 0;
+ 		pApp->m_vCams[i].cx = 501.5;
+ 		pApp->m_vCams[i].cy = 500.5;
  
- 		//pApp->m_vCams[i].m_K(0, 0) = f;
- 		//pApp->m_vCams[i].m_K(1, 1) = f;
- 		//pApp->m_vCams[i].m_K(0, 1) = 0;
- 		//pApp->m_vCams[i].m_K(0, 2) = 501.5;
- 		//pApp->m_vCams[i].m_K(1, 2) = 500.5;
- 		//pApp->m_vCams[i].m_K(2, 2) = 1;
- 		//pApp->m_vCams[i].m_bCalibed = true;
+ 		pApp->m_vCams[i].m_K(0, 0) = f;
+ 		pApp->m_vCams[i].m_K(1, 1) = f;
+ 		pApp->m_vCams[i].m_K(0, 1) = 0;
+ 		pApp->m_vCams[i].m_K(0, 2) = 501.5;
+ 		pApp->m_vCams[i].m_K(1, 2) = 500.5;
+ 		pApp->m_vCams[i].m_K(2, 2) = 1;
+ 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200626 四时田园“马雕塑”
 		// iphone se2 rear camera parameters
-		double f = /*521.2902*/657.1836;
-		pApp->m_vCams[i].fx = f;
-		pApp->m_vCams[i].fy = f;
-		pApp->m_vCams[i].s = 0;
-		pApp->m_vCams[i].cx = /*299.5*/399.5;
-		pApp->m_vCams[i].cy = /*399.5*/299.5;
-
-		pApp->m_vCams[i].m_K(0, 0) = f;
-		pApp->m_vCams[i].m_K(1, 1) = f;
-		pApp->m_vCams[i].m_K(0, 1) = 0;
-		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
-		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
-		pApp->m_vCams[i].m_K(2, 2) = 1;
-		pApp->m_vCams[i].m_bCalibed = true;
+// 		double f = /*521.2902*/657.1836;
+// 		pApp->m_vCams[i].fx = f;
+// 		pApp->m_vCams[i].fy = f;
+// 		pApp->m_vCams[i].s = 0;
+// 		pApp->m_vCams[i].cx = /*299.5*/399.5;
+// 		pApp->m_vCams[i].cy = /*399.5*/299.5;
+// 
+// 		pApp->m_vCams[i].m_K(0, 0) = f;
+// 		pApp->m_vCams[i].m_K(1, 1) = f;
+// 		pApp->m_vCams[i].m_K(0, 1) = 0;
+// 		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
+// 		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
+// 		pApp->m_vCams[i].m_K(2, 2) = 1;
+// 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -990,8 +1009,8 @@ UINT SfM(LPVOID param)
 				map_pairwise_F_matches_pWrdPts.insert(make_pair(make_pair(i, j), make_pair(make_pair(mF, matches), pWrdPts)));
 
 				Mat disp_matches;
-//				drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches,
-//					disp_matches, Scalar(0,255,0), Scalar(0,0,255)/*,std::vector<char>(), 1*/);
+// 				drawMatches(vImages[i], pApp->m_vCams[i].m_feats.key_points, vImages[j], pApp->m_vCams[j].m_feats.key_points, matches,
+// 					disp_matches, Scalar(0,255,0), Scalar(0,0,255)/*,std::vector<char>(), 1*/);
 				drawMatchesRefImg(vImages[i], pApp->m_vCams[i].m_feats.key_points, pApp->m_vCams[j].m_feats.key_points, matches,
 					disp_matches);
 				strInfo.Format("E:\\all\\matches between image %03d and %03d.bmp", i, j);
