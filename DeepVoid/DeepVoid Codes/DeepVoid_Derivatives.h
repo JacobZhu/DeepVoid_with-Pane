@@ -1565,6 +1565,7 @@ void optim_sparse_lm_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,					// 输入兼输出：n
 								    const vector<uchar> & j_fixed,			// 输入：m维向量，哪些图像的参数是固定的（j_fixed[j]=1），如果图像 j 参数固定，那么 Aij = 0 对于任何其中的观测点 i 都成立
 								    const vector<uchar> & i_fixed,			// 输入：n维向量，哪些空间点坐标是固定的（i_fixed[i]=1），如果点 i 坐标固定，那么 Bij = 0 对于任何观测到该点的图像 j 都成立
 								    const SparseMat & ptrMat,				// 输入：带一维存储索引的可视矩阵，ptrMat(i,j)存的是像点xij在xys向量中存储的位置索引，以及Aij，Bij和eij在各自向量中存储的位置索引
+									vector<double> & vds,					// 输出：每个像点的重投影残差
 									double * info = NULL,					// output:	runtime info, 5-vector
 																			// info[0]:	the initial reprojection error
 																			// info[1]:	the final reprojection error

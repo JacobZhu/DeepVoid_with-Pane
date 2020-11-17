@@ -13958,6 +13958,7 @@ void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,				// ÊäÈë¼
 											 const vector<uchar> & j_fixed,			// ÊäÈë£ºmÎ¬ÏòÁ¿£¬ÄÄĞ©Í¼ÏñµÄ²ÎÊıÊÇ¹Ì¶¨µÄ£¨j_fixed[j]=1£©£¬Èç¹ûÍ¼Ïñ j ²ÎÊı¹Ì¶¨£¬ÄÇÃ´ Aij = 0 ¶ÔÓÚÈÎºÎÆäÖĞµÄ¹Û²âµã i ¶¼³ÉÁ¢
 											 const vector<uchar> & i_fixed,			// ÊäÈë£ºnÎ¬ÏòÁ¿£¬ÄÄĞ©¿Õ¼äµã×ø±êÊÇ¹Ì¶¨µÄ£¨i_fixed[i]=1£©£¬Èç¹ûµã i ×ø±ê¹Ì¶¨£¬ÄÇÃ´ Bij = 0 ¶ÔÓÚÈÎºÎ¹Û²âµ½¸ÃµãµÄÍ¼Ïñ j ¶¼³ÉÁ¢
 											 const SparseMat & ptrMat,				// ÊäÈë£º´øÒ»Î¬´æ´¢Ë÷ÒıµÄ¿ÉÊÓ¾ØÕó£¬ptrMat(i,j)´æµÄÊÇÏñµãxijÔÚxysÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı£¬ÒÔ¼°Aij£¬BijºÍeijÔÚ¸÷×ÔÏòÁ¿ÖĞ´æ´¢µÄÎ»ÖÃË÷Òı
+											 vector<double> & vds,					// Êä³ö£ºÃ¿¸öÏñµãµÄÖØÍ¶Ó°²Ğ²î
 											 double * info /*= NULL*/,				// output:	runtime info, 5-vector
 																					// info[0]:	the initial reprojection error
 																					// info[1]:	the final reprojection error
@@ -14018,7 +14019,7 @@ void SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(vector<Point3d> & XYZs,				// ÊäÈë¼
 	vector<Matx<double,4,1>> eb(n),eb_new(n);
 	vector<Matx<double,6,1>> da(m);
 	vector<Matx<double,4,1>> db(n);
-	vector<double> vds(l);
+//	vector<double> vds(l);
 
 	derivatives::j_f_w_t_XYZW(XYZWs,Ks,Rs,ts,dists,distTypes,xys,covInvs,j_fixed,i_fixed,ptrMat,U,V,W,ea,eb,f,g,vds);
 

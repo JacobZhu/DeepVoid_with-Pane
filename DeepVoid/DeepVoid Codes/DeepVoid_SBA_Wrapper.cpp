@@ -1082,8 +1082,19 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 	vector<double> vds(l);
 
-//	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, info, tau, itermax, eps1, eps2);
+//	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, info, tau, itermax, eps1, eps2);
 	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
+
+	// 20201117，输出每个像点的重投影残差，做数据图写报告用 ////////////////////
+// 	FILE * file = fopen("C:\\Users\\DeepV\\Desktop\\vds.txt", "w");
+// 	 
+// 	for (int i = 0; i < vds.size(); ++i)
+// 	{
+// 		fprintf(file, "%d	%f\n", i, vds[i]);
+// 	}
+// 	
+// 	fclose(file);
+	/////////////////////////////////////////////////////////////////////////
 	
 	// 下面还要将优化完的参数和点坐标全部赋回去
 	for (int i=0;i<m;++i)
