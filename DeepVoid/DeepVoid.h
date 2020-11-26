@@ -181,6 +181,7 @@ public:
 	afx_msg void OnUpdate2featurematching(CCmdUI *pCmdUI);
 	afx_msg void On1featuresManual();
 	afx_msg void OnUpdate1featuresManual(CCmdUI *pCmdUI);
+	afx_msg void OnCapture3dview();
 };
 
 extern CDeepVoidApp theApp;

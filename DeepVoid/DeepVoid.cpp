@@ -84,6 +84,7 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_UPDATE_COMMAND_UI(ID_2FEATUREMATCHING, &CDeepVoidApp::OnUpdate2featurematching)
 	ON_COMMAND(ID_1FEATURES_MANUAL, &CDeepVoidApp::On1featuresManual)
 	ON_UPDATE_COMMAND_UI(ID_1FEATURES_MANUAL, &CDeepVoidApp::OnUpdate1featuresManual)
+	ON_COMMAND(ID_CAPTURE_3DVIEW, &CDeepVoidApp::OnCapture3dview)
 END_MESSAGE_MAP()
 
 
@@ -11616,13 +11617,15 @@ void CDeepVoidApp::On3dreconstructionDensereconstruction()
 // //	wrd3d.saveScreenshot("C:\\Users\\DeepV\\Desktop\\screenshot.png");
 }
 
+viz::Viz3d wnd3d("3D View");
+
 void CDeepVoidApp::On3dview()
 {
 	// TODO: Add your command handler code here
 //	SfM_ZZK::Draw3DScene(m_wnd3d, m_ptcloud, m_map_pointcloud, m_vCams, m_map_tracks, 2);
 
 	// 初始化三维显示窗口
-	viz::Viz3d wnd3d("3D View");
+//	viz::Viz3d wnd3d("3D View");
 	wnd3d.setWindowSize(cv::Size(800, 600));
 	wnd3d.setWindowPosition(cv::Point(150, 150));
 	wnd3d.setBackgroundColor(); // black by default
@@ -12332,4 +12335,11 @@ void CDeepVoidApp::OnUpdate1featuresManual(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
 	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnCapture3dview()
+{
+	// TODO: Add your command handler code here
+	wnd3d.saveScreenshot("E:\\all\\3D view capture.png");
 }
