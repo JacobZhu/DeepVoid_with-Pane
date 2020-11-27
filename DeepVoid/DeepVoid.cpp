@@ -11629,6 +11629,7 @@ void CDeepVoidApp::On3dview()
 	wnd3d.setWindowSize(cv::Size(800, 600));
 	wnd3d.setWindowPosition(cv::Point(150, 150));
 	wnd3d.setBackgroundColor(); // black by default
+//	wnd3d.setBackgroundColor(cv::viz::Color::white());
 //	wnd3d.setBackgroundMeshLab(); // MeshLab style background
 
 	CString str;
