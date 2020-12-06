@@ -479,7 +479,8 @@ bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img, /* input: t
 bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
 											    int ix, int iy,					// input: the center of the region
 											    int r,							// input: the radius of the circular region
-											    double & dxIC, double & dyIC	// output:the location of the calculated intensity centroid (in terms of offsets)
+											    double & dxIC, double & dyIC,	// output:the location of the calculated intensity centroid (in terms of offsets)
+												double * pm00_1/* = NULL*/		// output:1/m00
 											    )
 {
 	int w = img.cols;
@@ -537,6 +538,138 @@ bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input:
 	dxIC = m00_1*m10;
 	dyIC = m00_1*m01;
 
+	if (pm00_1)
+	{
+		(*pm00_1) = m00_1;
+	}
+
+	return true;
+}
+
+
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+// 20201205，给定图像灰度高斯随机噪声的标准差，输出计算得到的灰度质心坐标不确定度标准差
+bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
+											    int ix, int iy,					// input: the center of the region
+											    int r,							// input: the radius of the circular region
+											    double & dxIC, double & dyIC,	// output:the location of the calculated intensity centroid (in terms of offsets)
+											    double sigma_I,					// input: the standard deviation of the Gaussian random noise of image intensity
+											    double & sigma_xIC, double & sigma_yIC	// output: the standard deviation of the x y coordinates of the intensity centroid propagated by the random noise of intensity
+											    )
+{
+	int w = img.cols;
+	int h = img.rows;
+
+	int m00 = 0;
+	int m10 = 0;
+	int m01 = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			int I = img.at<uchar>(i, j);
+
+			m00 += I;		// m00 = sum(I)
+			m10 += dj*I;	// m10 = sum(xI)
+			m01 += di*I;	// m01 = sum(yI)
+		}
+	}
+
+	// 区域内的图像灰度全黑，即全为 0，则有可能出现 m00 仍为 0 的情况
+	if (m00 == 0)
+	{
+		return false;
+	}
+
+	double m00_1 = 1.0 / m00;
+
+	dxIC = m00_1*m10;
+	dyIC = m00_1*m01;
+
+	// 20201205，开始计算误差传递
+	double dxIC_1 = 1.0 / dxIC;
+	double z = dyIC*dxIC_1; // z=dy/dx
+	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
+	double sigma2_I = sigma_I*sigma_I;
+	double sigma2_xIC = 0;
+	double sigma2_yIC = 0;
+	double sigma2_ang = 0;
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;		
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		double ayc_aIk = (di - dyIC)*m00_1;
+		double yk2 = ayc_aIk*ayc_aIk;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double axc_aIk = (dj - dxIC)*m00_1;
+			double xk2 = axc_aIk*axc_aIk;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			sigma2_xIC += xk2*sigma2_I;
+			sigma2_yIC += yk2*sigma2_I;
+
+			double dang_dIk = dang_dz*dxIC_1*(ayc_aIk - axc_aIk*z);
+
+			sigma2_ang += dang_dIk*dang_dIk*sigma2_I;
+		}
+	}
+
+	sigma_xIC = std::sqrt(sigma2_xIC);
+	sigma_yIC = std::sqrt(sigma2_yIC);
+	double sigma_IC = std::sqrt(sigma2_xIC + sigma2_yIC);
+
+	double sigma_ang = std::sqrt(sigma2_ang)*R2D;
+
 	return true;
 }
 
@@ -549,6 +682,9 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,	// input: the input gray scal
 {
 	double dx, dy;
 
+	double sigma_xIC, sigma_yIC;
+
+//	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy, 5, sigma_xIC, sigma_yIC)) // 说明图像区域内灰度值全为 0，即全黑
 	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy)) // 说明图像区域内灰度值全为 0，即全黑
 	{
 		return false;
@@ -563,6 +699,84 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,	// input: the input gray scal
 // 	}
 	
 	angle = radian*R2D;
+
+	return true;
+}
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+bool DeepVoid::CornerAngle_IC(const cv::Mat & img,		// input: the input gray scale image
+							  int ix, int iy,			// input: the center of the region
+							  int r,					// input: the radius of the circular region
+							  double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+							  double & sigma_angle,		// output:the standard deviation of the corner angle propagated by the random noise of intensity
+							  double sigma_I /*= 5.0*/	// input: the standard deviation of the Gaussian random noise of image intensity					
+							  )
+{
+	double dx, dy;
+
+	double sigma_xIC, sigma_yIC;
+
+	double m00_1;
+
+	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy, &m00_1)) // 说明图像区域内灰度值全为 0，即全黑
+	{
+		return false;
+	}
+
+	double radian = std::atan2(dy, dx); // [-π; +π]
+	
+	angle = radian*R2D; // 特征方向角度
+
+	// 20201205，开始计算误差传递
+	int w = img.cols;
+	int h = img.rows;
+	double dx_1 = 1.0 / dx;
+	double z = dy*dx_1; // z=dy/dx
+	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
+	double sigma2_I = sigma_I*sigma_I;
+	double sigma2_radian = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		double ayc_aIk = (di - dy)*m00_1;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			double axc_aIk = (dj - dx)*m00_1;
+
+			double dang_dIk = dang_dz*dx_1*(ayc_aIk - axc_aIk*z);
+
+			sigma2_radian += dang_dIk*dang_dIk*sigma2_I;
+		}
+	}
+	
+	sigma_angle = std::sqrt(sigma2_radian)*R2D; // 特征方向角度不确定度标准差
 
 	return true;
 }
@@ -664,7 +878,10 @@ bool DeepVoid::FeatureRadiusAngle_dAng(const cv::Mat & img,			// input: the inpu
 	double preAng;
 	double dAng = 10000000;
 
-	if (!CornerAngle_IC(img, ix, iy, r, preAng))
+	double sigma_angle;
+
+//	if (!CornerAngle_IC(img, ix, iy, r, preAng))
+	if (!CornerAngle_IC(img, ix, iy, r, preAng, sigma_angle, 5))
 	{
 		return false;
 	}
@@ -678,7 +895,8 @@ bool DeepVoid::FeatureRadiusAngle_dAng(const cv::Mat & img,			// input: the inpu
 			return false;
 		}
 
-		CornerAngle_IC(img, ix, iy, r, angle); // [-360; +360]
+//		CornerAngle_IC(img, ix, iy, r, angle); // [-360; +360]
+		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, 5); // [-360; +360]
 
 		dAng = std::abs(angle - preAng);
 

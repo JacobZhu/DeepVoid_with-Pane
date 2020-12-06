@@ -253,7 +253,18 @@ bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input
 bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
 									  int ix, int iy,				// input: the center of the region
 									  int r,						// input: the radius of the circular region
-									  double & dxIC, double & dyIC	// output:the location of the calculated intensity centroid (in terms of offsets)
+									  double & dxIC, double & dyIC,	// output:the location of the calculated intensity centroid (in terms of offsets)
+									  double * pm00_1 = NULL		// output:1/m00
+									  );
+
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+// 20201205，给定图像灰度高斯随机噪声的标准差，输出计算得到的灰度质心坐标不确定度标准差
+bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
+									  int ix, int iy,				// input: the center of the region
+									  int r,						// input: the radius of the circular region
+									  double & dxIC, double & dyIC,	// output:the location of the calculated intensity centroid (in terms of offsets)
+									  double sigma_I,				// input: the standard deviation of the Gaussian random noise of image intensity
+									  double & sigma_xIC, double & sigma_yIC	// output: the standard deviation of the x y coordinates of the intensity centroid propagated by the random noise of intensity
 									  );
 
 // 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
@@ -261,6 +272,16 @@ bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
 					int ix, int iy,			// input: the center of the region
 					int r,					// input: the radius of the circular region
 					double & angle			// output:the location of the calculated intensity centroid (in terms of offsets)
+					);
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
+					int ix, int iy,			// input: the center of the region
+					int r,					// input: the radius of the circular region
+					double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+					double & sigma_angle,	// output:the standard deviation of the corner angle propagated by the random noise of intensity
+					double sigma_I = 5.0	// input: the standard deviation of the Gaussian random noise of image intensity					
 					);
 
 // 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向

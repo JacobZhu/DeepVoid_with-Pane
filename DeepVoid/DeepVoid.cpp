@@ -431,7 +431,7 @@ void CDeepVoidApp::OnFileOpenimages()
 
 
 	// 20201116，直接调用SfM //////////////////////////////////////////////
-	OnSfm();
+//	OnSfm();
 
 // 	int n_imgs = m_vCams.size();
 // 
