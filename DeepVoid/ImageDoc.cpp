@@ -163,7 +163,8 @@ void CImageDoc::ExtractPointsContinuously(BOOL bClear)
 // 			keypt.angle = angle;
 // 		}
 
-		if (FeatureRadiusAngle_dAng(im_gray, pt.x, pt.y, r, angle, 1.0))
+//		if (FeatureRadiusAngle_dAng(im_gray, pt.x, pt.y, r, angle, 1.0))
+		if (FeatureRadiusAngle_sigmaAng(im_gray, pt.x, pt.y, r, angle, 5.0, 1.0, 100))
 		{
 			keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
 			keypt.angle = angle;
