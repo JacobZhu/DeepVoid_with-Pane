@@ -779,9 +779,10 @@ struct cam_data
 // 				keypt.angle = angle;
 // 			}
 
-			if (FeatureRadiusAngle_dAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 3.0))
+//			if (FeatureRadiusAngle_dAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 3.0))
+			if (FeatureRadiusAngle_sigmaAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 5.0, 1.0, 100))
 			{
-				keypt.size = 2 * r + 1; // keypoint::size 表征特征的直径 diameter
+				keypt.size = (2 * r + 1)/**0.3*/; // keypoint::size 表征特征的直径 diameter
 				keypt.angle = angle;
 			}
 			//////////////////////////////////////////////////////////////////////////
