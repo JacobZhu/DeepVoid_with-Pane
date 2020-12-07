@@ -329,6 +329,27 @@ bool FeatureRadiusAngle_dAng(const cv::Mat & img,		// input: the input gray scal
 							 int r_max = 100			// input: 允许的最大邻域半径值
 							 );
 
+// 20201207，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 特征的区域半径由可以可靠确定特征方向角度时的区域大小来确定
+// 角度范围为[0,360)
+bool FeatureRadiusAngle_sigmaAng(const cv::Mat & img,			// input: the input gray scale image
+								 int ix, int iy,				// input: the center of the region
+								 int & r,						// output:the estimated radius of the circular region
+								 double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+								 double sigma_I = 5.0,			// input: the standard deviation of the Gaussian random noise of image intensity
+								 double thresh_sigmaAng = 1.0,	// input: 当当前特征方向角度不确定度标准差小于该阈值时才认为其为可靠的特征方向，并由此定下特征尺度大小
+								 int r_max = 100				// input: 允许的最大邻域半径值
+								 );
+
+bool FeatureRadiusAngle_sigmaAng(const cv::Mat & img,			// input: the input gray scale image
+								 double x, double y,			// input: the center of the region
+								 int & r,						// output:the estimated radius of the circular region
+								 double & angle,				// output:the location of the calculated intensity centroid (in terms of offsets)
+								 double sigma_I = 5.0,			// input: the standard deviation of the Gaussian random noise of image intensity
+								 double thresh_sigmaAng = 1.0,	// input: 当当前特征方向角度不确定度标准差小于该阈值时才认为其为可靠的特征方向，并由此定下特征尺度大小
+								 int r_max = 100				// input: 允许的最大邻域半径值
+								 );
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
