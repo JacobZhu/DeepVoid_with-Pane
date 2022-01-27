@@ -2347,6 +2347,300 @@ UINT SfM(LPVOID param)
 	return TRUE;
 }
 
+// 20220127，该函数负责在所有图像完成了特征提取、特征跟踪，已经拥有特征轨迹的基础上进行增量式SfM稀疏重建和图像定向
+UINT SfM_incremental(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
+
+	CString strInfo;
+
+	// relative orientation //////////////////////////////////////////////////////////////////////////
+//	CMatrix mRT; vector<CloudPoint> clouds;
+
+	// 20151105 point cloud based on std::map
+//	SfM_ZZK::PointCloud map_pointcloud;
+	SfM_ZZK::PointCloud & pointCloud = pApp->m_map_pointcloud;
+	pointCloud.clear(); // 先清空一下，这是SfM环节的主要产出
+
+	SfM_ZZK::MultiTracks & tracks = pApp->m_map_tracks; // 20220127，在SfM环节对tracks做的修改仅在于为每个像点是否为内点的标志位赋上值
+
+	vector<int> status(nCam);
+	for (int i = 0; i < nCam; i++)
+	{
+		status[i] = 0;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	vector<SfM_ZZK::pair_ij_k> pairs;
+	SfM_ZZK::RankImagePairs_TrackLengthSum(map_pairwise_F_matches_pWrdPts, tracks, pairs);
+
+// 	vector<Point2i> pairs;
+// 	FindPairObservingMostCommonTracks(pApp->m_vCams,allTracks,pairs);
+
+	CString strFile;
+	int idx_refimg;
+	bool bSuc_RO = false;
+
+//	for (k=0;k<pairs.size();k++)
+	for (auto iter_pair=pairs.begin();iter_pair!=pairs.end();++iter_pair)
+	{
+// 		i = pairs[k].x;
+// 		j = pairs[k].y;
+
+		i = iter_pair->first.first;
+		j = iter_pair->first.second;
+
+		cam_data & cam_i = pApp->m_vCams[i];
+		cam_data & cam_j = pApp->m_vCams[j];
+
+		// 找到两者之间的特征匹配
+//		auto iter_found = map_pairwise_matches.find(iter_pair->first);
+		auto iter_found = map_pairwise_F_matches_pWrdPts.find(iter_pair->first);
+
+		Matx33d mR;
+		Matx31d mt;
+		SfM_ZZK::PointCloud map_pointcloud_tmp;
+
+		// 相对定向
+		bSuc_RO = RelativeOrientation(cam_i, cam_j, iter_found->second.first.first, iter_found->second.first.second,
+			mR, mt, map_pointcloud_tmp, 0, thresh_reproj_ro/*, 0.5*/); // 20200623 inspect
+
+		if (bSuc_RO)
+		{
+			cam_i.m_R = Matx33d();
+			cam_i.m_t = Matx31d();
+			cam_i.m_R(0,0)=cam_i.m_R(1,1)=cam_i.m_R(2,2)=1;
+
+			cam_j.m_R = mR;
+			cam_j.m_t = mt;
+
+			map_pointcloud = map_pointcloud_tmp; // 正式录用所有生成的物点
+
+			strInfo.Format("Relative orientation between image %03d and %03d finished, number of cloud points are %d", i, j, map_pointcloud.size());
+			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+			status[i] = 1;
+			status[j] = 1;
+
+			cam_i.m_bOriented = true;
+			cam_j.m_bOriented = true;
+
+			idx_refimg = i;
+
+			// 将所有重建出来的像点暂时赋上都为内点
+			for (auto iter_wrdpt = map_pointcloud.begin();iter_wrdpt!=map_pointcloud.end();++iter_wrdpt)
+			{
+				const int & trackID = iter_wrdpt->first;
+
+				auto iter_found_track = map_tracks.find(trackID);
+
+				auto iter_found_i = iter_found_track->second.find(i);
+				auto iter_found_j = iter_found_track->second.find(j);
+
+				iter_found_i->second.second = 1; // 为内点
+				iter_found_j->second.second = 1; // 为内点
+			}
+
+			strFile.Format("point cloud after RO of images %03d and %03d.txt", i, j);
+
+			break;
+		}
+	}
+
+	// 20200607，如果没有任何像对相对定向成功那就直接退出
+	if (!bSuc_RO)
+	{
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Relative Orientation failed for all image pair candidates!"));
+		return TRUE;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+
+	CString strOut;
+	strOut.Format("E:\\all\\");
+
+//	OutputPointCloud(strOut+strFile,pApp->m_vCams,clouds);
+
+	vector<CloudPoint> cloud_old;
+
+	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2);
+
+	double d_mean = MeanMinDistance_3D(cloud_old);
+	strInfo.Format("average distance between cloud points is: %lf", d_mean);
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+	vector<SfM_ZZK::pair_ij> imgRank;
+//	RankImages_NumObjPts(pApp->m_vCams, clouds, status, imgRank);
+	RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
+
+	// 20151103，全自动的增量式 SfM 循环 ////////////////////////////////////
+	double thresh_inlier_rpjerr = 1.5;
+	double thresh_inlier_ratio = 0.15;
+
+	int n_pointcloud_size_old = map_pointcloud.size();
+
+	bool bAllFail = false;
+	while (imgRank.size()>0 && !bAllFail) // 还有图没有完成定向且并不是所有剩余图像都定向失败了就继续
+	{
+		bAllFail = true;
+		vector<SfM_ZZK::pair_ij> imgRank_tmp = imgRank;
+
+		for (auto iter_img=imgRank_tmp.begin();iter_img!=imgRank_tmp.end();++iter_img)
+		{
+			const int & I = iter_img->first; // image I
+
+			cam_data & cam_I = pApp->m_vCams[I];
+
+			// 1. 尝试 RANSAC 后方交会
+			Matx33d mR;
+			Matx31d mt;
+			bool bEOSuc;
+			try
+			{
+				bEOSuc = EO_PnP_RANSAC(cam_I, map_pointcloud, mR, mt, thresh_inlier_rpjerr, thresh_inlier_ratio);
+			}
+			catch (cv::Exception & e)
+			{
+				CString str;
+				str = e.msg.c_str();
+				str+="	error happened in RANSAC EO";
+				AfxMessageBox(str);
+			}
+			
+			if (!bEOSuc) // 如果后方交会失败就考虑排在后面的图像
+			{
+				continue;
+			}
+
+			// 到这里就说明后方交会成功了
+			bAllFail = false;
+			
+			// 正式录入外参初值
+			cam_I.m_R = mR;
+			cam_I.m_t = mt;
+
+			status[I] = 1;
+			cam_I.m_bOriented = true;
+
+			// 2. 稀疏光束法平差。只利用现有的物点，还没有利用新加入的图像前方交会新的物点
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
+			double info[10], rltUctt, uctt_f;
+			try
+			{
+//				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+				// 20200607 同时优化所有图像共有的等效焦距 f
+				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+			}
+			catch (cv::Exception & e)
+			{
+				CString str;
+				str = e.msg.c_str();
+				str+="	error happened in SBA";
+				AfxMessageBox(str);
+			}
+			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+				map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
+			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
+			try
+			{
+				SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2/*3*//*1*/);	
+			}
+			catch (cv::Exception & e)
+			{
+				CString str;
+				str = e.msg.c_str();
+				str+="	error happened in OutputPointCloud";
+				AfxMessageBox(str);
+			}
+
+			// 更新阈值
+//			thresh_inlier_rpjerr = 3*info[1];
+
+			// 3. 前方交会
+			try
+			{
+				SfM_ZZK::Triangulation_AddOneImg(map_pointcloud,pApp->m_vCams,map_tracks,I,thresh_inlier_rpjerr);
+//				SfM_ZZK::Triangulation_AllImgs(map_pointcloud,pApp->m_vCams,map_tracks,thresh_inlier_rpjerr);
+			}
+			catch (cv::Exception & e)
+			{
+				CString str;
+				str = e.msg.c_str();
+				str+="	error happened in Triangulation";
+				AfxMessageBox(str);
+			}
+			
+
+			// 4. 如果点云拓展了，就对剩下的图像重新进行排序
+			int n_pointcloud_size_new = map_pointcloud.size();
+			if (n_pointcloud_size_new != n_pointcloud_size_old)
+			{
+				try
+				{
+					RankImages_NumObjPts(pApp->m_vCams, map_pointcloud, imgRank);
+				}
+				catch (cv::Exception & e)
+				{
+					CString str;
+					str = e.msg.c_str();
+					str+="	error happened in RankImages";
+					AfxMessageBox(str);
+				}
+
+				n_pointcloud_size_old = n_pointcloud_size_new;
+				break;
+			}
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	// 最后总的来一次稀疏光束法平差
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
+	double info[10], rltUctt, uctt_f;
+//	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
+	// 20200607 同时优化所有图像共有的等效焦距 f
+	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(map_pointcloud, pApp->m_vCams, map_tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+		map_pointcloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
+	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+	std::map<int,int> hist_cloudpoint_inlier;
+	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(map_pointcloud,map_tracks,hist_cloudpoint_inlier);
+
+	FILE * file = fopen("E:\\all\\hist.txt", "w");
+	for (auto iter_hist=hist_cloudpoint_inlier.begin();iter_hist!=hist_cloudpoint_inlier.end();++iter_hist)
+	{
+		fprintf(file,"%d	%d\n", iter_hist->first, iter_hist->second);
+	}
+	fprintf(file,"%lf", length_average);
+	fclose(file);
+
+	// 输出点云
+	strFile.Format("Final point cloud.txt");
+	SfM_ZZK::OutputPointCloud(strOut+strFile,map_pointcloud,pApp->m_vCams,map_tracks,cloud_old,2/*3*//*1*/);
+
+	// 输出像机定向
+	// save all cameras' parameters
+	for (i=0;i<nCam;i++)
+	{
+		CString strtmp;
+		strFile.Format("cam%02d.txt", i);
+		SaveCameraData(strOut+strFile, pApp->m_vCams[i]);
+	}
+
+	// 20200630
+//	pApp->m_map_pointcloud = map_pointcloud;
+//	pApp->m_map_tracks = map_tracks;
+
+	// 20220127，用来表征完成了稀疏三维重建，使能三维显示
+	pApp->m_b3DReady_sparse = TRUE;
+
+	return TRUE;
+}
+
+
 void CDeepVoidApp::OnSfm()
 {
 	// TODO: Add your command handler code here
