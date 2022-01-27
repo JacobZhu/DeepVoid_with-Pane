@@ -85,6 +85,8 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_1FEATURES_MANUAL, &CDeepVoidApp::On1featuresManual)
 	ON_UPDATE_COMMAND_UI(ID_1FEATURES_MANUAL, &CDeepVoidApp::OnUpdate1featuresManual)
 	ON_COMMAND(ID_CAPTURE_3DVIEW, &CDeepVoidApp::OnCapture3dview)
+	ON_UPDATE_COMMAND_UI(ID_3DVIEW, &CDeepVoidApp::OnUpdate3dview)
+	ON_UPDATE_COMMAND_UI(ID_CAPTURE_3DVIEW, &CDeepVoidApp::OnUpdateCapture3dview)
 END_MESSAGE_MAP()
 
 
@@ -144,6 +146,10 @@ CDeepVoidApp::CDeepVoidApp()
 
 	m_bNoneImages = TRUE;
 	m_bSfMFeatsReady = FALSE;
+	m_bTracksReady = FALSE;
+	m_b3DReady_sparse = FALSE;
+	m_b3DReady_dense = FALSE;
+	m_b3DViewOn = FALSE;
 
 //	m_wnd3d = viz::Viz3d("3D Window"); // give the 3D visualizer window a name
 
@@ -787,37 +793,37 @@ UINT SfM(LPVOID param)
 // 		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200519 涿州测量
- 		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
- 		pApp->m_vCams[i].fx = f;
- 		pApp->m_vCams[i].fy = f;
- 		pApp->m_vCams[i].s  = 0;
- 		pApp->m_vCams[i].cx = 501.5;
- 		pApp->m_vCams[i].cy = 500.5;
- 
- 		pApp->m_vCams[i].m_K(0, 0) = f;
- 		pApp->m_vCams[i].m_K(1, 1) = f;
- 		pApp->m_vCams[i].m_K(0, 1) = 0;
- 		pApp->m_vCams[i].m_K(0, 2) = 501.5;
- 		pApp->m_vCams[i].m_K(1, 2) = 500.5;
- 		pApp->m_vCams[i].m_K(2, 2) = 1;
- 		pApp->m_vCams[i].m_bCalibed = true;
+//  		double f = /*7692.31*/2000.0/*2692.31*//*1700*/;
+//  		pApp->m_vCams[i].fx = f;
+//  		pApp->m_vCams[i].fy = f;
+//  		pApp->m_vCams[i].s  = 0;
+//  		pApp->m_vCams[i].cx = 501.5;
+//  		pApp->m_vCams[i].cy = 500.5;
+//  
+//  		pApp->m_vCams[i].m_K(0, 0) = f;
+//  		pApp->m_vCams[i].m_K(1, 1) = f;
+//  		pApp->m_vCams[i].m_K(0, 1) = 0;
+//  		pApp->m_vCams[i].m_K(0, 2) = 501.5;
+//  		pApp->m_vCams[i].m_K(1, 2) = 500.5;
+//  		pApp->m_vCams[i].m_K(2, 2) = 1;
+//  		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20200626 四时田园“马雕塑”
 		// iphone se2 rear camera parameters
-// 		double f = /*521.2902*/657.1836;
-// 		pApp->m_vCams[i].fx = f;
-// 		pApp->m_vCams[i].fy = f;
-// 		pApp->m_vCams[i].s = 0;
-// 		pApp->m_vCams[i].cx = /*299.5*/399.5;
-// 		pApp->m_vCams[i].cy = /*399.5*/299.5;
-// 
-// 		pApp->m_vCams[i].m_K(0, 0) = f;
-// 		pApp->m_vCams[i].m_K(1, 1) = f;
-// 		pApp->m_vCams[i].m_K(0, 1) = 0;
-// 		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
-// 		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
-// 		pApp->m_vCams[i].m_K(2, 2) = 1;
-// 		pApp->m_vCams[i].m_bCalibed = true;
+		double f = /*521.2902*/657.1836;
+		pApp->m_vCams[i].fx = f;
+		pApp->m_vCams[i].fy = f;
+		pApp->m_vCams[i].s = 0;
+		pApp->m_vCams[i].cx = /*299.5*/399.5;
+		pApp->m_vCams[i].cy = /*399.5*/299.5;
+
+		pApp->m_vCams[i].m_K(0, 0) = f;
+		pApp->m_vCams[i].m_K(1, 1) = f;
+		pApp->m_vCams[i].m_K(0, 1) = 0;
+		pApp->m_vCams[i].m_K(0, 2) = /*299.5*/399.5;
+		pApp->m_vCams[i].m_K(1, 2) = /*399.5*/299.5;
+		pApp->m_vCams[i].m_K(2, 2) = 1;
+		pApp->m_vCams[i].m_bCalibed = true;
 
 		// 20150212
 // 		pApp->m_vCams[i].fx = 1816.431947;
@@ -1364,6 +1370,9 @@ UINT SfM(LPVOID param)
 	// 20200630
 	pApp->m_map_pointcloud = map_pointcloud;
 	pApp->m_map_tracks = map_tracks;
+
+	// 20220127，用来表征完成了稀疏三维重建，使能三维显示
+	pApp->m_b3DReady_sparse = TRUE;
 
 	return TRUE;
 
@@ -11829,6 +11838,10 @@ void CDeepVoidApp::On3dview()
 	// BOTH 是既画路径线PATH，又画坐标轴FRAMES
 	wnd3d.showWidget("image trajectory", viz::WTrajectory(imgTraj, viz::WTrajectory::BOTH, 1.0, color));
 
+	// 20220127，表征开启了三维显示，使能三维视图截图功能
+	m_b3DViewOn = TRUE;
+
+	// 正式开独立线程开始显示。
 	wnd3d.spin();
 }
 
@@ -12343,4 +12356,18 @@ void CDeepVoidApp::OnCapture3dview()
 {
 	// TODO: Add your command handler code here
 	wnd3d.saveScreenshot("E:\\all\\3D view capture.png");
+}
+
+
+void CDeepVoidApp::OnUpdate3dview(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_b3DReady_sparse);
+}
+
+
+void CDeepVoidApp::OnUpdateCapture3dview(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_b3DViewOn);
 }

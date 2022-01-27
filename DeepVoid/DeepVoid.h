@@ -65,8 +65,8 @@ public:
 	viz::WCloud m_ptcloud = viz::WCloud(Mat(1, 1, CV_64FC3));
 
 	// 20200630
-	SfM_ZZK::PointCloud m_map_pointcloud;
-	SfM_ZZK::MultiTracks m_map_tracks;
+	SfM_ZZK::PointCloud m_map_pointcloud; // 20220127，map<trackID, CloudPoint>，这是SfM之后形成的【全局】稀疏点云。
+	SfM_ZZK::MultiTracks m_map_tracks; // 20220127，map<trackID, map<imgID, <featID, bInlier>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
 
 	// 20161029, the calibration of the camera used to do MVS
 	double m_fx, m_fy, m_s, m_cx, m_cy;
@@ -80,7 +80,11 @@ public:
 	vector<CloudPoint> m_cloud_old;
 
 	BOOL m_bNoneImages;
-	BOOL m_bSfMFeatsReady;
+	BOOL m_bSfMFeatsReady;	// 20220127，每幅图是否提取完了图像特征、每个特征是否生成了特征描述，用来表征是否能够开始进行feature tracking了。
+	BOOL m_bTracksReady;	// 20220127，是否完成了feature tracking，用来表征是否能够开始进行SfM了。
+	BOOL m_b3DReady_sparse;	// 20220127，是否完成了稀疏三维重建，用来表征是否能够开始进行三维显示了。
+	BOOL m_b3DReady_dense;	// 20220127，是否完成了密集三维重建。
+	BOOL m_b3DViewOn;		// 20220127，是否在进行三维点云显示，用来表征是否能够进行三维视图截图了。
 
 	// parameters for sift feature extraction
 	int m_nfeaturesSift;
@@ -182,6 +186,8 @@ public:
 	afx_msg void On1featuresManual();
 	afx_msg void OnUpdate1featuresManual(CCmdUI *pCmdUI);
 	afx_msg void OnCapture3dview();
+	afx_msg void OnUpdate3dview(CCmdUI *pCmdUI);
+	afx_msg void OnUpdateCapture3dview(CCmdUI *pCmdUI);
 };
 
 extern CDeepVoidApp theApp;
