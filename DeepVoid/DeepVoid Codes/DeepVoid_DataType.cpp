@@ -77,6 +77,26 @@ CString DeepVoid::GetFileNameOnly(CString filePath)
 	return strFileName;
 }
 
+CString DeepVoid::GetFolderPath(CString filePath)
+{
+	CString pathFolder = filePath.Left(filePath.ReverseFind('\\')) + '\\';
+
+	return pathFolder;
+}
+
+CString DeepVoid::GetFileNameNoSuffix(CString filePath)
+{
+	// 先把带尾缀的文件名给提取出来
+	CString fileNameWithSuffix = GetFileNameOnly(filePath);
+
+	// 再把尾缀给去掉
+//	int index = fileNameWithSuffix.GetLength() - fileNameWithSuffix.ReverseFind('.') - 1;
+
+	CString fileNameNoSuffix = fileNameWithSuffix.Left(fileNameWithSuffix.ReverseFind('.'));
+	
+	return fileNameNoSuffix;
+}
+
 // 计算角度的cos值，输入为角度
 double DeepVoid::cosd(double angle)
 {
@@ -4188,38 +4208,65 @@ void DeepVoid::SaveCameraData(CString path, const cam_data & cam)
 
 void DeepVoid::ReadCameraData(CString path, cam_data & cam)
 {
-	int i,j;
-
 	FILE * file = fopen(path, "r");
 
-	fscanf(file, "Intrinsic Parameters\n");
-	fscanf(file, "%lf	%lf	%lf	%lf	%lf\n\n", &cam.fx, &cam.fy, &cam.cx, &cam.cy, &cam.s);
-
-	fscanf(file, "Distortion Coefficients\n");
-	for (i=0;i<5;i++)
+	if (file)
 	{
-		fscanf(file, "%lf", &cam.k[i]);
-	}
-	fscanf(file, "\n\n");
+		// 先读入内参数 ///////////////////////////////////////////////////////////
+		fscanf(file, "Intrinsic Parameters\n");
+		fscanf(file, "%lf	%lf	%lf	%lf	%lf\n\n", &cam.fx, &cam.fy, &cam.cx, &cam.cy, &cam.s);
+		cam.m_K(0, 0) = cam.fx;
+		cam.m_K(1, 1) = cam.fy;
+		cam.m_K(0, 2) = cam.cx;
+		cam.m_K(1, 2) = cam.cy;
+		cam.m_K(0, 1) = cam.s;
+		cam.m_K(2, 2) = 1;
+		//////////////////////////////////////////////////////////////////////////
 
-	fscanf(file, "Rotation Matrix\n");
-	for (i=0;i<3;i++)
-	{
-		for (j=0;j<3;j++)
+
+		// 再读入像差系数 /////////////////////////////////////////////////////////
+		fscanf(file, "Distortion Coefficients\n");
+		for (int i = 0; i < 5; i++)
 		{
-			fscanf(file, "%lf", &cam.R[i*3+j]);
+			fscanf(file, "%lf", &cam.k[i]);
+			
+			cam.m_dist(i) = cam.k[i];
 		}
-	}
-	fscanf(file, "\n\n");
+		cam.dist_type = 1; // 默认为 D.C. Brown 的像差系数类型
+		fscanf(file, "\n\n");
+		//////////////////////////////////////////////////////////////////////////
 
-	fscanf(file, "Translation Vector\n");
-	for (i=0;i<3;i++)
-	{
-		fscanf(file, "%lf", &cam.t[i]);
-	}
-	fscanf(file, "\n\n");
 
-	fclose(file);
+		// 再读入旋转矩阵 /////////////////////////////////////////////////////////
+		fscanf(file, "Rotation Matrix\n");
+		for (int i = 0; i < 3; i++)
+		{
+			for (int j = 0; j < 3; j++)
+			{
+				fscanf(file, "%lf", &cam.R[i * 3 + j]);
+
+				cam.m_R(i, j) = cam.R[i * 3 + j];
+			}
+		}
+		fscanf(file, "\n\n");
+		//////////////////////////////////////////////////////////////////////////
+
+
+		// 最后读入平移向量 ///////////////////////////////////////////////////////
+		fscanf(file, "Translation Vector\n");
+		for (int i = 0; i < 3; i++)
+		{
+			fscanf(file, "%lf", &cam.t[i]);
+
+			cam.m_t(i) = cam.t[i];
+		}
+		fscanf(file, "\n\n");
+		//////////////////////////////////////////////////////////////////////////
+
+		cam.m_bCalibed = true; // 20220128，这里只默认图像是内标定完了的，即使是已有了有效外参数
+
+		fclose(file);
+	}
 }
 
 void DeepVoid::DetermineInterval(double val_max, double val_min, double val_cur, double radius, double & inter_max, double & inter_min)

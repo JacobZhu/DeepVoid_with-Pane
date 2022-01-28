@@ -378,6 +378,12 @@ BOOL DisplayImage(CDC * pDC,									// pointer to CDC
 
 CString GetFileNameOnly(CString filePath);
 
+// 20220128，返回文件所在文件夹路径
+CString GetFolderPath(CString filePath);
+
+// 20220128，返回不带尾缀的纯文件名
+CString GetFileNameNoSuffix(CString filePath);
+
 enum FeatureType
 {
 	Feature_SIFT_SIFT      = 0,     

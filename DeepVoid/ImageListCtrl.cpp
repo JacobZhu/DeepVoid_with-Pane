@@ -239,17 +239,46 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 	// 20220128，这里首先看看图像文件夹下有没有calibration.txt文件
 	// 这个文件应包含提前给定的像机内参数fx,fy,cx,cy,s，及像差系数d0-d4
 	// 这些内参数可能在后续平差环节中被进一步调整优化，也可能不进一步优化
-	int len = path.GetLength();
-	int len01 = path.ReverseFind('\\');
+	CString pathFolder = GetFolderPath(path);
 
-	int index = path.GetLength() - path.ReverseFind('\\') - 1;
-	CString strFileName = path.Right(index);
-	CString strJia = path.Left(len01) + '\\';
-	
+	FILE * fileCalib = fopen(pathFolder + "calibration.txt", "r");
+
+	if (fileCalib)
+	{
+		double fx, fy, cx, cy, s, k0, k1, k2, k3, k4;
+		fscanf(fileCalib, "%lf", &fx);	fscanf(fileCalib, "%lf", &fy);
+		fscanf(fileCalib, "%lf", &cx);	fscanf(fileCalib, "%lf", &cy);
+		fscanf(fileCalib, "%lf", &s);
+
+		fscanf(fileCalib, "%lf", &k0);	fscanf(fileCalib, "%lf", &k1);
+		fscanf(fileCalib, "%lf", &k2);	fscanf(fileCalib, "%lf", &k3);
+		fscanf(fileCalib, "%lf", &k4);
+
+		cam.fx = cam.m_K(0, 0) = fx;
+		cam.fy = cam.m_K(1, 1) = fy;
+		cam.cx = cam.m_K(0, 2) = cx;
+		cam.cy = cam.m_K(1, 2) = cy;
+		cam.s  = cam.m_K(0, 1) = s;
+				 cam.m_K(2, 2) = 1;
+
+		cam.k[0] = cam.m_dist(0) = k0;
+		cam.k[1] = cam.m_dist(1) = k1;
+		cam.k[2] = cam.m_dist(2) = k2;
+		cam.k[3] = cam.m_dist(3) = k3;
+		cam.k[4] = cam.m_dist(4) = k4;
+
+		cam.dist_type = 1; // 默认像差类型为 D.C. Brown的
+
+		cam.m_bCalibed = true; // 能到这里说明至少是已经有内参数初值
+
+		fclose(fileCalib);
+	}	
 
 	// 20220128，再看看\results结果文件夹中有没有当前图像的参数文件
 	// 如果有，那就将图像所有参数均更新为结果文件中的参数
+	CString pathFileParam = pathFolder + "results\\" + GetFileNameNoSuffix(path) + "_param.txt";
 
+	DeepVoid::ReadCameraData(pathFileParam, cam);
 
 	theApp.m_vCams.push_back(cam);
 
