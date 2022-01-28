@@ -2363,6 +2363,22 @@ UINT SfM_incremental(LPVOID param)
 	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
 
 	//////////////////////////////////////////////////////////////////////////
+
+
+	// 一些参数 ///////////////////////////////////////////////////////////////
+	int nCam = pApp->m_vCams.size();
+
+	double thresh_reproj_ro = 1.0;
+
+	double opts[5];
+//	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+	opts[0] = 1.0E-6;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+	opts[1] = 1.0E-8;	// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+	opts[2] = 1.0E-8;	// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+	opts[3] = 1.0E-12;	// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+	opts[4] = 0;		// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+	//////////////////////////////////////////////////////////////////////////
+	
 	vector<SfM_ZZK::pair_ij_k> pairs;
 	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracks, pairs);
 
@@ -12375,7 +12391,9 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
-	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清楚掉所有匹配映射
+	// 下面这两个变量是图像特征匹配环节的核心成果，所以需要先清空归零。
+	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清除掉所有匹配映射
+	pApp->m_mapTracks.clear(); // 先清空
 
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
@@ -12456,8 +12474,6 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
-	pApp->m_mapTracks.clear(); // 先清空
-
 	int idx_count = 0;
 	for (auto iter_track = map_tracks_init.begin(); iter_track != map_tracks_init.end(); ++iter_track)
 	{

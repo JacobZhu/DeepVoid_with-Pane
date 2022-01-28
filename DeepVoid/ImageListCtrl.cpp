@@ -235,6 +235,22 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 
 	// add a new corresponding cam_data
 	cam_data cam;
+
+	// 20220128，这里首先看看图像文件夹下有没有calibration.txt文件
+	// 这个文件应包含提前给定的像机内参数fx,fy,cx,cy,s，及像差系数d0-d4
+	// 这些内参数可能在后续平差环节中被进一步调整优化，也可能不进一步优化
+	int len = path.GetLength();
+	int len01 = path.ReverseFind('\\');
+
+	int index = path.GetLength() - path.ReverseFind('\\') - 1;
+	CString strFileName = path.Right(index);
+	CString strJia = path.Left(len01) + '\\';
+	
+
+	// 20220128，再看看\results结果文件夹中有没有当前图像的参数文件
+	// 如果有，那就将图像所有参数均更新为结果文件中的参数
+
+
 	theApp.m_vCams.push_back(cam);
 
 	// 20200719，把图保留在内存里
