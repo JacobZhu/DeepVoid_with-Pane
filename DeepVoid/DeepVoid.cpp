@@ -87,6 +87,9 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_CAPTURE_3DVIEW, &CDeepVoidApp::OnCapture3dview)
 	ON_UPDATE_COMMAND_UI(ID_3DVIEW, &CDeepVoidApp::OnUpdate3dview)
 	ON_UPDATE_COMMAND_UI(ID_CAPTURE_3DVIEW, &CDeepVoidApp::OnUpdateCapture3dview)
+	ON_COMMAND(ID_3SFM_INCREMENTALSFM, &CDeepVoidApp::On3sfmIncrementalsfm)
+	ON_UPDATE_COMMAND_UI(ID_3SFM_INCREMENTALSFM, &CDeepVoidApp::OnUpdate3sfmIncrementalsfm)
+	ON_UPDATE_COMMAND_UI(ID_3SFM_GLOBALSFM, &CDeepVoidApp::OnUpdate3sfmGlobalsfm)
 END_MESSAGE_MAP()
 
 
@@ -2352,9 +2355,20 @@ UINT SfM_incremental(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
-	CString strInfo;
+	// 20220128，先在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
+	char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(0);
 
-	// 先把要更新和要用的全局变量引用过来 ///////////////////////////////////////
+	CString strInfo;
+	strInfo.Format(_T("%s"), pDir);
+	strInfo.Trim();
+
+	CString pathOutputDir = GetFolderPath(strInfo) + "results\\";
+
+	int code = mkdir(pathOutputDir);
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 先把要更新和要用的全局变量引用过来 //////////////////////////////////////
 	SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
 	pointCloud.clear(); // 先清空一下，这是SfM环节的主要产出
 
@@ -12538,6 +12552,8 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	strInfo.Format("number of good tracks: %07d", n_tracklength_more_than_1);
 	listCtrl.AddOneInfo(strInfo);
 
+	pApp->m_bTracksReady = TRUE;
+
 	return TRUE;
 }
 
@@ -12657,4 +12673,30 @@ void CDeepVoidApp::OnUpdateCapture3dview(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
 	pCmdUI->Enable(m_b3DViewOn);
+}
+
+
+void CDeepVoidApp::On3sfmIncrementalsfm()
+{
+	// TODO: Add your command handler code here
+// 	if (m_vCams.size() < 1) // 没有图像就直接退出
+// 	{
+// 		return;
+// 	}
+
+	AfxBeginThread(SfM_incremental, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnUpdate3sfmIncrementalsfm(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_bTracksReady);
+}
+
+
+void CDeepVoidApp::OnUpdate3sfmGlobalsfm(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_bTracksReady);
 }

@@ -189,6 +189,9 @@ public:
 	afx_msg void OnCapture3dview();
 	afx_msg void OnUpdate3dview(CCmdUI *pCmdUI);
 	afx_msg void OnUpdateCapture3dview(CCmdUI *pCmdUI);
+	afx_msg void On3sfmIncrementalsfm();
+	afx_msg void OnUpdate3sfmIncrementalsfm(CCmdUI *pCmdUI);
+	afx_msg void OnUpdate3sfmGlobalsfm(CCmdUI *pCmdUI);
 };
 
 extern CDeepVoidApp theApp;
