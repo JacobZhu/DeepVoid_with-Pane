@@ -65,8 +65,9 @@ public:
 	viz::WCloud m_ptcloud = viz::WCloud(Mat(1, 1, CV_64FC3));
 
 	// 20200630
-	SfM_ZZK::PointCloud m_map_pointcloud; // 20220127，map<trackID, CloudPoint>，这是SfM之后形成的【全局】稀疏点云。
-	SfM_ZZK::MultiTracks m_map_tracks; // 20220127，map<trackID, map<imgID, <featID, bInlier>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
+	SfM_ZZK::PointCloud m_mapPointCloud; // 20220127，map<trackID, CloudPoint>，这是SfM之后形成的【全局】稀疏点云。
+	SfM_ZZK::MultiTracks m_mapTracks; // 20220127，map<trackID, map<imgID, <featID, bInlier>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
+	SfM_ZZK::PairWise_F_matches_pWrdPts m_mapPairwiseFMatchesWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
 
 	// 20161029, the calibration of the camera used to do MVS
 	double m_fx, m_fy, m_s, m_cx, m_cy;
@@ -106,8 +107,8 @@ public:
 	int m_nSfMFeatures;
 	int m_nPrptFeatures;
 
-	SfM_ZZK::PairWise_F_matches_pWrdPts m_mapPairwiseFMatchesWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
-	SfM_ZZK::MultiTracks m_mapTracks;
+//	SfM_ZZK::PairWise_F_matches_pWrdPts m_mapPairwiseFMatchesWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
+//	SfM_ZZK::MultiTracks m_mapTracks;
 
 	// 两视图特征匹配需要的参数设置
 	bool m_fmbOptim;					// input:	whether optimize F using Golden Standard algorithm or not
