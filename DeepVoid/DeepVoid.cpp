@@ -162,6 +162,8 @@ CDeepVoidApp::CDeepVoidApp()
 	m_pathImageCalibration = "";
 
 	m_strOut = "";
+	m_pathDirOut = "";			// 20220129，默认是空的，如果选择了图像后才会有路径
+	m_nameDirOut = "results";	// 20220129，这里名称一改就都改了
 
 	// parameters for sift feature extraction
 	m_nfeaturesSift = 0;	// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
@@ -429,6 +431,12 @@ void CDeepVoidApp::OnFileOpenimages()
 		while (pos)
 		{
 			strFilePath = dlgFile.GetNextPathName(pos);
+
+			if (m_pathDirOut == "")
+			{
+				m_pathDirOut = GetFolderPath(strFilePath) + m_nameDirOut + "\\";
+			}
+
 			((CMainFrame *)m_pMainWnd)->m_wndImgThumbnailPane.m_wndImgListCtrl.AddOneImage(strFilePath);
 		}
 
@@ -483,6 +491,12 @@ void CDeepVoidApp::OnFileAddimages()
 		while (pos)
 		{
 			strFilePath = dlgFile.GetNextPathName(pos);
+
+			if (m_pathDirOut == "")
+			{
+				m_pathDirOut = GetFolderPath(strFilePath) + m_nameDirOut + "\\";
+			}
+
 			((CMainFrame *)m_pMainWnd)->m_wndImgThumbnailPane.m_wndImgListCtrl.AddOneImage(strFilePath);
 		}
 
@@ -2359,27 +2373,32 @@ UINT SfM_incremental(LPVOID param)
 	
 	// 20220128，先在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
 	// 20220129，还把每幅图像名给存下来（纯名称，不带路径和尾缀）////////////////
-	CString strInfo, pathOutputDir;
-	std::vector<CString> vImgNames;
+	CString strInfo/*, pathOutputDir*/;
+//	std::vector<CString> vImgNames;
 
-	for (int i = 0; i < nCam; ++i)
-	{
-		char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(i);
+	const CString & dirOut = pApp->m_pathDirOut;
+	const std::vector<CString> & vImgNames = pApp->m_vNameImgs;
 
-		strInfo.Format(_T("%s"), pDir);
-		strInfo.Trim();
+	int code = mkdir(dirOut);
 
-		CString nameImg = DeepVoid::GetFileNameNoSuffix(strInfo);
-
-		vImgNames.push_back(nameImg);
-
-		if (i == 0) // 由第一幅图的路径来新建结果输出目录
-		{
-			pathOutputDir = GetFolderPath(strInfo) + "results\\";
-
-			int code = mkdir(pathOutputDir);
-		}
-	}
+// 	for (int i = 0; i < nCam; ++i)
+// 	{
+// 		char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(i);
+// 
+// 		strInfo.Format(_T("%s"), pDir);
+// 		strInfo.Trim();
+// 
+// 		CString nameImg = DeepVoid::GetFileNameNoSuffix(strInfo);
+// 
+// 		vImgNames.push_back(nameImg);
+// 
+// 		if (i == 0) // 由第一幅图的路径来新建结果输出目录
+// 		{
+// 			pathOutputDir = GetFolderPath(strInfo) + "results\\";
+// 
+// 			int code = mkdir(pathOutputDir);
+// 		}
+// 	}
 	//////////////////////////////////////////////////////////////////////////
 
 
@@ -2481,7 +2500,7 @@ UINT SfM_incremental(LPVOID param)
 	//////////////////////////////////////////////////////////////////////////
 	vector<CloudPoint> cloud_old;
 
-	SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2);
+	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2);
 
 	double d_mean = MeanMinDistance_3D(cloud_old);
 	strInfo.Format("average distance between cloud points is: %lf", d_mean);
@@ -2562,7 +2581,7 @@ UINT SfM_incremental(LPVOID param)
 //			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
 			try
 			{
-				SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+				SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2621,7 +2640,7 @@ UINT SfM_incremental(LPVOID param)
 	std::map<int,int> hist_cloudpoint_inlier;
 	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(pointCloud, tracks, hist_cloudpoint_inlier);
 
-	FILE * file = fopen(pathOutputDir + "hist.txt", "w");
+	FILE * file = fopen(dirOut + "hist.txt", "w");
 	for (auto iter_hist = hist_cloudpoint_inlier.begin(); iter_hist != hist_cloudpoint_inlier.end(); ++iter_hist)
 	{
 		fprintf(file,"%d	%d\n", iter_hist->first, iter_hist->second);
@@ -2631,14 +2650,14 @@ UINT SfM_incremental(LPVOID param)
 
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
-	SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
 
 	// 输出像机定向
 	// save all cameras' parameters
 	for (int i = 0; i < nCam; i++)
 	{
 		strFile = vImgNames[i] + "_param.txt";
-		SaveCameraData(pathOutputDir + strFile, pApp->m_vCams[i]);
+		SaveCameraData(dirOut + strFile, pApp->m_vCams[i]);
 	}
 
 	// 20220127，用来表征完成了稀疏三维重建，使能三维显示
@@ -12098,19 +12117,15 @@ void CDeepVoidApp::On3dview()
 
 		imgTraj.push_back(pose);
 		
-//		str = m_vImgPaths[i];
-
-//		Mat img = imread(str.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
-		
 		str.Format("image %03d", i);
 
 		// 画视景锥，以及实测图像
-		wnd3d.showWidget(str.GetBuffer(), viz::WCameraPosition(cam.m_K, m_imgsOriginal[i]/*img*/, 1.0, color), pose);
+		wnd3d.showWidget(str.GetBuffer(), viz::WCameraPosition(cam.m_K, m_imgsOriginal[i], 1.0, color), pose);
 
 		str.Format("%d", i);
 
 		// 标出图像序号
-		wnd3d.showWidget(str.GetBuffer(), viz::WText3D(str.GetBuffer(), cv::Point3d(c), 0.5, true, color));
+		wnd3d.showWidget(str.GetBuffer(), viz::WText3D(m_vNameImgs[i].GetBuffer()/*str.GetBuffer()*/, cv::Point3d(c), 0.5, true, color));
 
 		// 20200712，把光心位置不确定度椭球可视化
 		Point3d ptStart, ptEnd;

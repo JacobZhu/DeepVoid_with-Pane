@@ -29,6 +29,11 @@ public:
 	std::vector<cv::Mat> m_imgsOriginal; // 20200719，还是把选择的图像都读进内存
 	std::vector<cv::Mat> m_imgsProcessed;// 20200719，这是内容相较于原图已经发生变化的图，比方说画了提取的特征点在上面的图
 
+	std::vector<CString> m_vPathImgs;	// 20220129，包含所有图像完整的路径
+	std::vector<CString> m_vNameImgs;	// 20220129，包含所有图像纯文件名称（不含尾缀）
+	CString m_pathDirOut;				// 20220129，结果输出文件夹的路径
+	CString m_nameDirOut;				// 20220129，结果输出文件夹名称
+
 	ULONG_PTR m_gdiplusToken; // zhaokunz, 20140226, add GDI+
 
 	CString m_pathStereoImg0;

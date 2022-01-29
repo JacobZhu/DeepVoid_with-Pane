@@ -60,10 +60,13 @@ BOOL CImageListCtrl::InitImgListCtrl(int w, int h)
 
 	DeleteAllItems();
 	m_imgList.DeleteImageList();
-	theApp.m_vCams.clear();		// delete all corresponding cam data
-	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
-	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
+	theApp.m_vCams.clear();			// delete all corresponding cam data
+	theApp.m_imgsOriginal.clear();	// delete all corresponding original images
+	theApp.m_imgsProcessed.clear();	// delete all corresponding processed images
 	theApp.m_vPImgCocs.clear();
+	theApp.m_vPathImgs.clear();		// 20220129，清空所有图像文件路径
+	theApp.m_vNameImgs.clear();		// 20220129，清空所有图像纯文件名
+	theApp.m_pathDirOut = "";			// 20220129，输出路径置空
 
 	m_w = w;
 	m_h = h;
@@ -115,6 +118,9 @@ BOOL CImageListCtrl::InitImgListCtrl(void)
 	theApp.m_imgsOriginal.clear(); // delete all corresponding original images
 	theApp.m_imgsProcessed.clear(); // delete all corresponding processed images
 	theApp.m_vPImgCocs.clear();
+	theApp.m_vPathImgs.clear();
+	theApp.m_vNameImgs.clear();
+	theApp.m_pathDirOut = "";
 
 	SetExtendedStyle(LVS_EX_CHECKBOXES);
 
@@ -288,6 +294,8 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 	theApp.m_imgsOriginal.push_back(image);
 	theApp.m_imgsProcessed.push_back(cv::Mat()/*image.clone()*/); // 20200728，如果不是 clone 的话，两张图就共用一个图像数据块
 	theApp.m_vPImgCocs.push_back(NULL);
+	theApp.m_vPathImgs.push_back(path);
+	theApp.m_vNameImgs.push_back(GetFileNameNoSuffix(path));
 	
 	return TRUE;
 }
@@ -326,6 +334,8 @@ void CImageListCtrl::DeleteSelImages(void)
 		theApp.m_vCams.erase(theApp.m_vCams.begin() + nItem); // delete corresponding cam_data
 		theApp.m_imgsOriginal.erase(theApp.m_imgsOriginal.begin() + nItem); // delete all corresponding original images
 		theApp.m_imgsProcessed.erase(theApp.m_imgsProcessed.begin() + nItem); // delete all corresponding processed images
+		theApp.m_vPathImgs.erase(theApp.m_vPathImgs.begin() + nItem);
+		theApp.m_vNameImgs.erase(theApp.m_vNameImgs.begin() + nItem);
 
 		pos = GetFirstSelectedItemPosition();
 	}
