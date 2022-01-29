@@ -276,9 +276,11 @@ BOOL CImageListCtrl::AddOneImage(CString path)
 
 	// 20220128，再看看\results结果文件夹中有没有当前图像的参数文件
 	// 如果有，那就将图像所有参数均更新为结果文件中的参数
-	CString pathFileParam = pathFolder + "results\\" + GetFileNameNoSuffix(path) + "_param.txt";
+	// 20220129，暂时还是先不读结果文件吧，因为我发现读进来的外参数影响了SfM结果，按说应该不影响的
+	// 可能是因为SfM里哪个环节的哪个函数是基于R矩阵里的值来判断图像是否完成了定向，而非基于cam.m_bOriented来判断的，所以
+//	CString pathFileParam = pathFolder + "results\\" + GetFileNameNoSuffix(path) + "_param.txt";
 
-	DeepVoid::ReadCameraData(pathFileParam, cam);
+//	DeepVoid::ReadCameraData(pathFileParam, cam);
 
 	theApp.m_vCams.push_back(cam);
 
