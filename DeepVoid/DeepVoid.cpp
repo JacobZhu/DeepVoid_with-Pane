@@ -2355,16 +2355,31 @@ UINT SfM_incremental(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
+	int nCam = pApp->m_vCams.size();
+	
 	// 20220128，先在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
-	char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(0);
+	// 20220129，还把每幅图像名给存下来（纯名称，不带路径和尾缀）////////////////
+	CString strInfo, pathOutputDir;
+	std::vector<CString> vImgNames;
 
-	CString strInfo;
-	strInfo.Format(_T("%s"), pDir);
-	strInfo.Trim();
+	for (int i = 0; i < nCam; ++i)
+	{
+		char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(i);
 
-	CString pathOutputDir = GetFolderPath(strInfo) + "results\\";
+		strInfo.Format(_T("%s"), pDir);
+		strInfo.Trim();
 
-	int code = mkdir(pathOutputDir);
+		CString nameImg = DeepVoid::GetFileNameNoSuffix(strInfo);
+
+		vImgNames.push_back(nameImg);
+
+		if (i == 0) // 由第一幅图的路径来新建结果输出目录
+		{
+			pathOutputDir = GetFolderPath(strInfo) + "results\\";
+
+			int code = mkdir(pathOutputDir);
+		}
+	}
 	//////////////////////////////////////////////////////////////////////////
 
 
@@ -2375,13 +2390,10 @@ UINT SfM_incremental(LPVOID param)
 	SfM_ZZK::MultiTracks & tracks = pApp->m_mapTracks; // 20220127，在SfM环节对tracks做的修改仅在于为每个像点是否为内点的标志位赋上值
 
 	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
-
 	//////////////////////////////////////////////////////////////////////////
 
 
 	// 一些参数 ///////////////////////////////////////////////////////////////
-	int nCam = pApp->m_vCams.size();
-
 	double thresh_reproj_ro = 1.0;
 
 	double opts[5];
@@ -2430,7 +2442,7 @@ UINT SfM_incremental(LPVOID param)
 
 			pointCloud = map_pointcloud_tmp; // 正式录用所有生成的物点
 
-			strInfo.Format("Relative orientation between image %03d and %03d finished, number of cloud points are %d", i, j, pointCloud.size());
+			strInfo.Format("Relative orientation between " + vImgNames[i] + " and " + vImgNames[j] + " finished, number of cloud points are %d", pointCloud.size());
 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			cam_i.m_bOriented = true;
@@ -2452,7 +2464,8 @@ UINT SfM_incremental(LPVOID param)
 				iter_found_j->second.second = 1; // 为内点
 			}
 
-			strFile.Format("point cloud after RO of images %03d and %03d.txt", i, j);
+			strFile = "point cloud after RO of " + vImgNames[i] + " and " + vImgNames[j] + ".txt";
+//			strFile.Format("point cloud after RO of images "+vImgNames[i]+" and "+vImgNames[j]+".txt", i, j);
 
 			break;
 		}
@@ -2466,15 +2479,9 @@ UINT SfM_incremental(LPVOID param)
 	}
 
 	//////////////////////////////////////////////////////////////////////////
-
-	CString strOut;
-	strOut.Format("E:\\all\\");
-
-//	OutputPointCloud(strOut+strFile,pApp->m_vCams,clouds);
-
 	vector<CloudPoint> cloud_old;
 
-	SfM_ZZK::OutputPointCloud(strOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2);
+	SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2);
 
 	double d_mean = MeanMinDistance_3D(cloud_old);
 	strInfo.Format("average distance between cloud points is: %lf", d_mean);
@@ -2490,7 +2497,7 @@ UINT SfM_incremental(LPVOID param)
 	int n_pointcloud_size_old = pointCloud.size();
 
 	bool bAllFail = false;
-	while (imgRank.size()>0 && !bAllFail) // 还有图没有完成定向且并不是所有剩余图像都定向失败了就继续
+	while (imgRank.size() > 0 && !bAllFail) // 还有图没有完成定向且并不是所有剩余图像都定向失败了就继续
 	{
 		bAllFail = true;
 		vector<SfM_ZZK::pair_ij> imgRank_tmp = imgRank;
@@ -2551,10 +2558,11 @@ UINT SfM_incremental(LPVOID param)
 				pointCloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
-			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
+			strFile = "point cloud after successful EO of " + vImgNames[I] + " and bundle adjustment.txt";
+//			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
 			try
 			{
-				SfM_ZZK::OutputPointCloud(strOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+				SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2563,9 +2571,6 @@ UINT SfM_incremental(LPVOID param)
 				str+="	error happened in OutputPointCloud";
 				AfxMessageBox(str);
 			}
-
-			// 更新阈值
-//			thresh_inlier_rpjerr = 3*info[1];
 
 			// 3. 前方交会
 			try
@@ -2616,7 +2621,7 @@ UINT SfM_incremental(LPVOID param)
 	std::map<int,int> hist_cloudpoint_inlier;
 	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(pointCloud, tracks, hist_cloudpoint_inlier);
 
-	FILE * file = fopen("E:\\all\\hist.txt", "w");
+	FILE * file = fopen(pathOutputDir + "hist.txt", "w");
 	for (auto iter_hist = hist_cloudpoint_inlier.begin(); iter_hist != hist_cloudpoint_inlier.end(); ++iter_hist)
 	{
 		fprintf(file,"%d	%d\n", iter_hist->first, iter_hist->second);
@@ -2626,20 +2631,15 @@ UINT SfM_incremental(LPVOID param)
 
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
-	SfM_ZZK::OutputPointCloud(strOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+	SfM_ZZK::OutputPointCloud(pathOutputDir + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
 
 	// 输出像机定向
 	// save all cameras' parameters
 	for (int i = 0; i < nCam; i++)
 	{
-		CString strtmp;
-		strFile.Format("cam%02d.txt", i);
-		SaveCameraData(strOut + strFile, pApp->m_vCams[i]);
+		strFile = vImgNames[i] + "_param.txt";
+		SaveCameraData(pathOutputDir + strFile, pApp->m_vCams[i]);
 	}
-
-	// 20200630
-//	pApp->m_mapPointCloud = map_pointcloud;
-//	pApp->m_mapTracks = map_tracks;
 
 	// 20220127，用来表征完成了稀疏三维重建，使能三维显示
 	pApp->m_b3DReady_sparse = TRUE;
@@ -12098,14 +12098,14 @@ void CDeepVoidApp::On3dview()
 
 		imgTraj.push_back(pose);
 		
-		str = m_vImgPaths[i];
+//		str = m_vImgPaths[i];
 
-		Mat img = imread(str.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
+//		Mat img = imread(str.GetBuffer(), CV_LOAD_IMAGE_UNCHANGED);
 		
 		str.Format("image %03d", i);
 
 		// 画视景锥，以及实测图像
-		wnd3d.showWidget(str.GetBuffer(), viz::WCameraPosition(cam.m_K, img, 1.0, color), pose);
+		wnd3d.showWidget(str.GetBuffer(), viz::WCameraPosition(cam.m_K, m_imgsOriginal[i]/*img*/, 1.0, color), pose);
 
 		str.Format("%d", i);
 
