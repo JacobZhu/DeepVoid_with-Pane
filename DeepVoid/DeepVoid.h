@@ -126,6 +126,16 @@ public:
 	double m_fmfEps;					// input:	threshold
 	int m_prptTh;
 
+	// SfM需要的参数设置
+	double m_threshRpjErrRO;			// 相对定向时要用到的重投影残差阈值
+	double m_optsLM[5];					// Levenberg-Marquartz方法需要的一些参数
+	double m_threshRpjErrInlier;		// EO和BA中用于判断是否内点的重投影残差阈值
+	double m_threshRatioInlier;			// EO中所允许的最小内点集占比
+	int m_methodRO;						// 指定RO方法类型。0:PIRO; 1:extract [R|t] from essential matrix, just like recoverPose() from opencv
+	double m_threshMeanAngRO;			// RO中要用到的物点平均交会角阈值
+	int m_nMinInilier;					// 至少得有该个数图像观测到该点才会被输出
+	int m_nMaxIter;						// 最大迭代次数
+
 // operations
 public:
 	CDocument * CreateDocument(CMultiDocTemplate * pTemplate, CFrameWnd * pWnd = NULL);

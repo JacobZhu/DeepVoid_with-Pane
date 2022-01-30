@@ -195,6 +195,20 @@ CDeepVoidApp::CDeepVoidApp()
 	m_fmxEps = 1.0E-8;						// input:	threshold
 	m_fmfEps = 1.0E-6;						// input:	threshold
 	m_prptTh = 1;
+
+	// SfM需要的参数设置
+	m_threshRpjErrRO = 1.0;					// 相对定向时要用到的重投影残差阈值
+	m_optsLM[0] = 1.0E-6;					// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+	m_optsLM[1] = 1.0E-8;					// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+	m_optsLM[2] = 1.0E-8;					// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+	m_optsLM[3] = 1.0E-12;					// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+	m_optsLM[4] = 0;						// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+	m_threshRpjErrInlier = 1.5;				// EO和BA中用于判断是否内点的重投影残差阈值
+	m_threshRatioInlier = 0.15;				// EO中所允许的最小内点集占比
+	m_methodRO = 0;							// 指定RO方法类型。0:PIRO; 1:extract [R|t] from essential matrix, just like recoverPose() from opencv
+	m_threshMeanAngRO = 5.0;				// RO中要用到的物点平均交会角阈值
+	m_nMinInilier = 2;						// 至少得有该个数图像观测到该点才会被输出
+	m_nMaxIter = 64;						// 最大迭代次数
 }
 
 // The one and only CDeepVoidApp object
@@ -2369,40 +2383,17 @@ UINT SfM_incremental(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp * )param;
 
-	int nCam = pApp->m_vCams.size();
+	int nCam = pApp->m_vCams.size(); // 图像总数量
 	
-	// 20220128，先在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
-	// 20220129，还把每幅图像名给存下来（纯名称，不带路径和尾缀）////////////////
-	CString strInfo/*, pathOutputDir*/;
-//	std::vector<CString> vImgNames;
+	CString strInfo;
 
-	const CString & dirOut = pApp->m_pathDirOut;
-	const std::vector<CString> & vImgNames = pApp->m_vNameImgs;
+	const CString & dirOut = pApp->m_pathDirOut; // 结果输出文件夹路径
+	const std::vector<CString> & vImgNames = pApp->m_vNameImgs; // 所有图像的纯名称（不含路径和尾缀）
 
-	int code = mkdir(dirOut);
+	// 20220128，在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
+	int code = mkdir(dirOut); // code=0 说明成功新建；code=-1 说明文件夹已存在
 
-// 	for (int i = 0; i < nCam; ++i)
-// 	{
-// 		char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(i);
-// 
-// 		strInfo.Format(_T("%s"), pDir);
-// 		strInfo.Trim();
-// 
-// 		CString nameImg = DeepVoid::GetFileNameNoSuffix(strInfo);
-// 
-// 		vImgNames.push_back(nameImg);
-// 
-// 		if (i == 0) // 由第一幅图的路径来新建结果输出目录
-// 		{
-// 			pathOutputDir = GetFolderPath(strInfo) + "results\\";
-// 
-// 			int code = mkdir(pathOutputDir);
-// 		}
-// 	}
-	//////////////////////////////////////////////////////////////////////////
-
-
-	// 先把要更新和要用的全局变量引用过来 //////////////////////////////////////
+	// 把要更新和要用的全局变量引用过来 //////////////////////////////////////
 	SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
 	pointCloud.clear(); // 先清空一下，这是SfM环节的主要产出
 
@@ -2411,19 +2402,6 @@ UINT SfM_incremental(LPVOID param)
 	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
 	//////////////////////////////////////////////////////////////////////////
 
-
-	// 一些参数 ///////////////////////////////////////////////////////////////
-	double thresh_reproj_ro = 1.0;
-
-	double opts[5];
-//	opts[0] = 1.0E-3;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
-	opts[0] = 1.0E-6;	// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
-	opts[1] = 1.0E-8;	// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
-	opts[2] = 1.0E-8;	// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
-	opts[3] = 1.0E-12;	// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
-	opts[4] = 0;		// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
-	//////////////////////////////////////////////////////////////////////////
-	
 	vector<SfM_ZZK::pair_ij_k> pairs;
 	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracks, pairs);
 
@@ -2448,7 +2426,7 @@ UINT SfM_incremental(LPVOID param)
 
 		// 相对定向
 		bSuc_RO = RelativeOrientation(cam_i, cam_j, iter_found->second.first.first, iter_found->second.first.second,
-			mR, mt, map_pointcloud_tmp, 0, thresh_reproj_ro/*, 0.5*/); // 20200623 inspect
+			mR, mt, map_pointcloud_tmp, pApp->m_methodRO, pApp->m_threshRpjErrRO); // 20200623 inspect
 
 		if (bSuc_RO)
 		{
@@ -2461,7 +2439,7 @@ UINT SfM_incremental(LPVOID param)
 
 			pointCloud = map_pointcloud_tmp; // 正式录用所有生成的物点
 
-			strInfo.Format("Relative orientation between " + vImgNames[i] + " and " + vImgNames[j] + " finished, number of cloud points are %d", pointCloud.size());
+			strInfo.Format("RO between " + vImgNames[i] + " and " + vImgNames[j] + " succeeded: number of cloud points are %d", pointCloud.size());
 			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			cam_i.m_bOriented = true;
@@ -2484,9 +2462,13 @@ UINT SfM_incremental(LPVOID param)
 			}
 
 			strFile = "point cloud after RO of " + vImgNames[i] + " and " + vImgNames[j] + ".txt";
-//			strFile.Format("point cloud after RO of images "+vImgNames[i]+" and "+vImgNames[j]+".txt", i, j);
 
 			break;
+		}
+		else
+		{
+			strInfo = "RO between " + vImgNames[i] + " and " + vImgNames[j] + " failed!";
+			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 		}
 	}
 
@@ -2500,7 +2482,7 @@ UINT SfM_incremental(LPVOID param)
 	//////////////////////////////////////////////////////////////////////////
 	vector<CloudPoint> cloud_old;
 
-	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2);
+	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, pApp->m_nMinInilier);
 
 	double d_mean = MeanMinDistance_3D(cloud_old);
 	strInfo.Format("average distance between cloud points is: %lf", d_mean);
@@ -2510,9 +2492,6 @@ UINT SfM_incremental(LPVOID param)
 	RankImages_NumObjPts(pApp->m_vCams, pointCloud, imgRank);
 
 	// 20151103，全自动的增量式 SfM 循环 ////////////////////////////////////
-	double thresh_inlier_rpjerr = 1.5;
-	double thresh_inlier_ratio = 0.15;
-
 	int n_pointcloud_size_old = pointCloud.size();
 
 	bool bAllFail = false;
@@ -2533,7 +2512,7 @@ UINT SfM_incremental(LPVOID param)
 			bool bEOSuc;
 			try
 			{
-				bEOSuc = EO_PnP_RANSAC(cam_I, pointCloud, mR, mt, thresh_inlier_rpjerr, thresh_inlier_ratio);
+				bEOSuc = EO_PnP_RANSAC(cam_I, pointCloud, mR, mt, pApp->m_threshRpjErrInlier, pApp->m_threshRatioInlier);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2545,6 +2524,9 @@ UINT SfM_incremental(LPVOID param)
 			
 			if (!bEOSuc) // 如果后方交会失败就考虑排在后面的图像
 			{
+				strInfo = "EO of " + vImgNames[I] + " failed!";
+				pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
 				continue;
 			}
 
@@ -2558,13 +2540,16 @@ UINT SfM_incremental(LPVOID param)
 			cam_I.m_bOriented = true;
 
 			// 2. 稀疏光束法平差。只利用现有的物点，还没有利用新加入的图像前方交会新的物点
-			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("SBA starts"));
+			strInfo = "EO of " + vImgNames[I] + " succeeded";
+			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
 			double info[10], rltUctt, uctt_f;
 			try
 			{
 //				int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
 				// 20200607 同时优化所有图像共有的等效焦距 f
-				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+				int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg,
+					pApp->m_threshRpjErrInlier, pApp->m_nMaxIter, pApp->m_optsLM, info);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2573,15 +2558,17 @@ UINT SfM_incremental(LPVOID param)
 				str+="	error happened in SBA";
 				AfxMessageBox(str);
 			}
+
 			strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
 				pointCloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
+
 			theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 			strFile = "point cloud after successful EO of " + vImgNames[I] + " and bundle adjustment.txt";
-//			strFile.Format("point cloud after successful EO of image %03d and bundle adjustment.txt", I);
+
 			try
 			{
-				SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+				SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, pApp->m_nMinInilier);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2594,7 +2581,7 @@ UINT SfM_incremental(LPVOID param)
 			// 3. 前方交会
 			try
 			{
-				SfM_ZZK::Triangulation_AddOneImg(pointCloud, pApp->m_vCams, tracks, I, thresh_inlier_rpjerr);
+				SfM_ZZK::Triangulation_AddOneImg(pointCloud, pApp->m_vCams, tracks, I, pApp->m_threshRpjErrInlier);
 			}
 			catch (cv::Exception & e)
 			{
@@ -2606,6 +2593,12 @@ UINT SfM_incremental(LPVOID param)
 
 			// 4. 如果点云拓展了，就对剩下的图像重新进行排序
 			int n_pointcloud_size_new = pointCloud.size();
+
+			int nPointsAdded = n_pointcloud_size_new - n_pointcloud_size_old;
+
+			strInfo.Format("%d new points are triangulated with " + vImgNames[I], nPointsAdded);
+			pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
 			if (n_pointcloud_size_new != n_pointcloud_size_old)
 			{
 				try
@@ -2621,6 +2614,7 @@ UINT SfM_incremental(LPVOID param)
 				}
 
 				n_pointcloud_size_old = n_pointcloud_size_new;
+
 				break;
 			}
 		}
@@ -2628,13 +2622,17 @@ UINT SfM_incremental(LPVOID param)
 	//////////////////////////////////////////////////////////////////////////
 
 	// 最后总的来一次稀疏光束法平差
-	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
+//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
+
 	double info[10], rltUctt, uctt_f;
 //	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
 	// 20200607 同时优化所有图像共有的等效焦距 f
-	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg, thresh_inlier_rpjerr, 64, opts, info);
+	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg,
+		pApp->m_threshRpjErrInlier, pApp->m_nMaxIter, pApp->m_optsLM, info);
+
 	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
 		pointCloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
+
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 	std::map<int,int> hist_cloudpoint_inlier;
@@ -2650,7 +2648,7 @@ UINT SfM_incremental(LPVOID param)
 
 	// 输出点云
 	strFile.Format("Final point cloud.txt");
-	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, 2/*3*//*1*/);
+	SfM_ZZK::OutputPointCloud(dirOut + strFile, pointCloud, pApp->m_vCams, tracks, cloud_old, pApp->m_nMinInilier);
 
 	// 输出像机定向
 	// save all cameras' parameters
@@ -12167,6 +12165,9 @@ UINT ExtractSift(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
+	const CString & dirOut = pApp->m_pathDirOut; // 20220130，结果输出文件夹路径
+	const std::vector<CString> & vNameImgs = pApp->m_vNameImgs; // 20220130，所有图像的纯文件名（不含路径和尾缀）
+
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12181,7 +12182,7 @@ UINT ExtractSift(LPVOID param)
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
-		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		strInfo.Format(vNameImgs[i] + " extracted %07d features", /*i, */cam.m_feats.key_points.size());
 		listCtrl.AddOneInfo(strInfo);
 
 		if (!pDoc || !pDoc->m_pImgView)
@@ -12220,6 +12221,9 @@ UINT ExtractFAST(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
+	const CString & dirOut = pApp->m_pathDirOut; // 20220130，结果输出文件夹路径
+	const std::vector<CString> & vNameImgs = pApp->m_vNameImgs; // 20220130，所有图像的纯文件名（不含路径和尾缀）
+
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12235,7 +12239,7 @@ UINT ExtractFAST(LPVOID param)
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
-		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		strInfo.Format(vNameImgs[i] + " extracted %07d features", /*i, */cam.m_feats.key_points.size());
 		listCtrl.AddOneInfo(strInfo);
 
 		if (!pDoc || !pDoc->m_pImgView)
@@ -12274,6 +12278,9 @@ UINT ExtractSiftandFAST(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
+	const CString & dirOut = pApp->m_pathDirOut; // 20220130，结果输出文件夹路径
+	const std::vector<CString> & vNameImgs = pApp->m_vNameImgs; // 20220130，所有图像的纯文件名（不含路径和尾缀）
+
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12288,7 +12295,7 @@ UINT ExtractSiftandFAST(LPVOID param)
 			pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
-		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		strInfo.Format(vNameImgs[i] + " extracted %07d features", /*i, */cam.m_feats.key_points.size());
 		listCtrl.AddOneInfo(strInfo);
 
 		if (!pDoc || !pDoc->m_pImgView)
@@ -12328,6 +12335,9 @@ UINT GenSfMFeatures(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
+	const CString & dirOut = pApp->m_pathDirOut; // 20220130，结果输出文件夹路径
+	const std::vector<CString> & vNameImgs = pApp->m_vNameImgs; // 20220130，所有图像的纯文件名（不含路径和尾缀）
+
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12338,7 +12348,7 @@ UINT GenSfMFeatures(LPVOID param)
 
 		cam.GenSfMFeatures(pApp->m_nSfMFeatures, pApp->m_nPrptFeatures);
 
-		strInfo.Format("Image %03d extracted %07d features", i, cam.m_feats.key_points.size());
+		strInfo.Format(vNameImgs[i] + " extracted %07d features", /*i, */cam.m_feats.key_points.size());
 		listCtrl.AddOneInfo(strInfo);
 
 		if (!pDoc || !pDoc->m_pImgView)
@@ -12420,6 +12430,9 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 	CShowInfoListCtrl & listCtrl = pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl;
 
+	const CString & dirOut = pApp->m_pathDirOut; // 20220130，输出文件夹路径
+	const std::vector<CString> & vNameImgs = pApp->m_vNameImgs; // 20220130，所有图像的纯名称（不带路径、尾缀）
+
 	// 下面这两个变量是图像特征匹配环节的核心成果，所以需要先清空归零。
 	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清除掉所有匹配映射
 	pApp->m_mapTracks.clear(); // 先清空
@@ -12489,7 +12502,7 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 		if (bSuc)
 		{
-			strInfo.Format("matching between image %03d and %03d finished: %04d matches are found", i, j, matches.size());
+			strInfo.Format("matching between " + vNameImgs[i] + " and " + vNameImgs[j] + " finished: %04d matches are found", matches.size());
 			listCtrl.AddOneInfo(strInfo);
 
 			pApp->m_mapPairwiseFMatchesWrdPts.insert(make_pair(make_pair(i, j), make_pair(make_pair(mF, matches), wrdPts)));
@@ -12673,7 +12686,8 @@ void CDeepVoidApp::OnUpdate1featuresManual(CCmdUI *pCmdUI)
 void CDeepVoidApp::OnCapture3dview()
 {
 	// TODO: Add your command handler code here
-	wnd3d.saveScreenshot("E:\\all\\3D view capture.png");
+	CString fileName = m_pathDirOut + "3D view capture.png";
+	wnd3d.saveScreenshot(fileName.GetBuffer());
 }
 
 
