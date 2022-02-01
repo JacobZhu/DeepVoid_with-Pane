@@ -11480,6 +11480,144 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matc
 	}
 }
 
+// 20220201，采用新的数据结构
+void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
+								   MultiTracksWithFlags & map_tracks							// output:	all the found tracks
+								   )
+{
+	//	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::vector<std::pair<std::pair<int, int>, int>> vec_w_IJ; // contains all the weights: collection of {<I,J>, weight}
+	std::map<std::pair<int, int>, int> map_trackID_Ii; // contains all the features and their current trackID: collection of {<I,i>, trackID}
+
+	int n_features = 0; // number of all features
+
+	// 1. record all the weights between each IJ //////////////////////////////////////////////////////////////////////////////////
+	// and initialize every feature as a single track, and build the mapping from map_trackID_Ii to map_tracks using trackID //////
+	for (auto iter = map_F_matches_pWrdPts.begin(); iter != map_F_matches_pWrdPts.end(); ++iter)
+	{
+		const int & I = iter->first.first; // image I
+		const int & J = iter->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter->second.first.second; // the pairwise matches found between image I and J
+		int w_IJ = vec_matches_IJ.size(); // number of matches, considered as the edge weight between any matches found between I and J
+
+		vec_w_IJ.push_back(make_pair(iter->first, w_IJ));
+
+		for (auto iter_matches_IJ = vec_matches_IJ.begin(); iter_matches_IJ != vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			// check if the query feature Ii has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(I, iter_matches_IJ->queryIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(I, iter_matches_IJ->queryIdx), n_features));
+//				OneTrack map_one_track;
+				trackWithFlags map_one_track;
+//				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx, 0)));
+				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx, std::vector<int>(1)))); // 每个像点先安排一个标志位，并初始化其值为0
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+
+			// then check if the train feature Jj has already been grouped into some track
+			if (map_trackID_Ii.find(make_pair(J, iter_matches_IJ->trainIdx)) == map_trackID_Ii.end())
+			{
+				// initialize each feature as a track
+				map_trackID_Ii.insert(make_pair(make_pair(J, iter_matches_IJ->trainIdx), n_features));
+//				OneTrack map_one_track;
+				trackWithFlags map_one_track;
+//				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx, 0)));
+				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx, std::vector<int>(1)))); // 每个像点先安排一个标志位，并初始化其值为0
+				map_tracks.insert(make_pair(n_features, map_one_track));
+
+				++n_features;
+			}
+		}
+	}
+
+	// sort image pairs according to the number of matches found between them before merging
+	sort(vec_w_IJ.begin(), vec_w_IJ.end(),
+		[](const std::pair<std::pair<int, int>, int> & a, const std::pair<std::pair<int, int>, int> & b) {return a.second > b.second; });
+
+	// 2. merge non-conflicted tracks between currently the most weighted image pair ////////////////////////////////////////////////////
+	for (auto iter_max = vec_w_IJ.begin(); iter_max != vec_w_IJ.end(); ++iter_max)
+	{
+		auto iter_max_IJ = map_F_matches_pWrdPts.find(iter_max->first);
+
+		const int & I = iter_max->first.first; // image I
+		const int & J = iter_max->first.second; // image J
+		const std::vector<DMatch> & vec_matches_IJ = iter_max_IJ->second.first.second; // the pairwise matches found between image I and J
+
+		// start merging
+		for (auto iter_matches_IJ = vec_matches_IJ.begin(); iter_matches_IJ != vec_matches_IJ.end(); ++iter_matches_IJ)
+		{
+			std::pair<int, int> idx_Ii = make_pair(I, iter_matches_IJ->queryIdx);
+			std::pair<int, int> idx_Jj = make_pair(J, iter_matches_IJ->trainIdx);
+
+			auto iter_Ii = map_trackID_Ii.find(idx_Ii);
+			auto iter_Jj = map_trackID_Ii.find(idx_Jj);
+
+			if (iter_Ii->second == iter_Jj->second)
+			{
+				// this means that features Ii and Jj are already grouped into the same track, no need to merge them
+				continue;
+			}
+
+			auto iter_track_Ii = map_tracks.find(iter_Ii->second);
+			auto iter_track_Jj = map_tracks.find(iter_Jj->second);
+
+//			OneTrack track_merged;
+			trackWithFlags track_merged;
+			track_merged.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+			track_merged.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+			if (track_merged.size() < (iter_track_Ii->second.size() + iter_track_Jj->second.size()))
+			{
+				// this means that there are conflicts between these two tracks ie the merged track contains more than one feature in one image
+				// in this case we do not merge them
+				continue;
+			}
+
+			// if there are no conflicts, two tracks are merged
+			// the track with smaller trackID is augmented, whereas the other is erased
+			// and the trackID of all features in the erased track are updated to the smaller trackID
+			if (iter_Ii->second < iter_Jj->second)
+			{
+				int trackID = iter_track_Ii->first;
+
+				// in this case track of Ii is kept
+				iter_track_Ii->second.insert(iter_track_Jj->second.begin(), iter_track_Jj->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter = iter_track_Jj->second.begin(); iter != iter_track_Jj->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Jj);
+			}
+			else
+			{
+				int trackID = iter_track_Jj->first;
+
+				// in this case track of Jj is kept
+				iter_track_Jj->second.insert(iter_track_Ii->second.begin(), iter_track_Ii->second.end());
+
+				// update trackID of all features in the to-be-erased track
+				for (auto iter = iter_track_Ii->second.begin(); iter != iter_track_Ii->second.end(); ++iter)
+				{
+					auto iter_tmp = map_trackID_Ii.find(make_pair(iter->first, iter->second.first));
+					iter_tmp->second = trackID;
+				}
+
+				// erase the track with bigger trackID
+				map_tracks.erase(iter_track_Ii);
+			}
+		}
+	}
+}
+
 // 20151128，老的特征估计结构
 void SfM_ZZK::FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
 								   MultiTracks_old & map_tracks				// output:	all the found tracks
@@ -12401,6 +12539,43 @@ double SfM_ZZK::BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTra
 	return sum_length/(double)n_total;
 }
 
+// 2015.10.08, build the track length histogram
+// 2015.10.21, and return the average track length
+// 20220201，采用新结构
+double SfM_ZZK::BuildTrackLengthHistogram(const MultiTracksWithFlags & map_tracks,	// input:	all the tracks
+										  std::map<int,int> & hist					// output:	the histogram
+										  )
+{
+	for (auto iter = map_tracks.begin(); iter != map_tracks.end(); ++iter)
+	{
+		int length = iter->second.size();
+
+		auto iter_find = hist.find(length);
+
+		if (iter_find == hist.end())
+		{
+			// does not exist
+			hist.insert(make_pair(length, 1));
+		}
+		else
+		{
+			// exist
+			++iter_find->second;
+		}
+	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter = hist.begin(); iter != hist.end(); ++iter)
+	{
+		n_total += iter->second;
+		sum_length += iter->first*iter->second;
+	}
+
+	return sum_length / (double)n_total;
+}
+
 // 20151103, zhaokunz, find image pair good for RO
 // rank all image pairs according to the sum of track lengths
 void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,// input:	all pairwise matches
@@ -12498,6 +12673,56 @@ void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & m
 	// sort image pairs according to the sum of track lengths in descending order
 	sort(pairs.begin(), pairs.end(),
 		[](const std::pair<std::pair<int, int>, int> & a, const std::pair<std::pair<int, int>, int> & b) {return a.second>b.second; });
+}
+
+// 20220201，zhaokunz，改用新的数据结构
+void SfM_ZZK::RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise matches
+										    const MultiTracksWithFlags & map_tracks,					// input:	all the tracks
+										    vector<pair_ij_k> & pairs									// output:	pairs in descending order
+										    )
+{
+	pairs.clear();
+
+	for (auto iter_pair_match = map_F_matches_pWrdPts.begin(); iter_pair_match != map_F_matches_pWrdPts.end(); ++iter_pair_match)
+	{
+		int count = 0;
+
+		const int & I = iter_pair_match->first.first; // image I
+		const int & J = iter_pair_match->first.second; // image J
+
+		for (auto iter_track = map_tracks.begin(); iter_track != map_tracks.end(); ++iter_track)
+		{
+//			const OneTrack & track = iter_track->second;
+			const trackWithFlags & track = iter_track->second;
+
+			auto iter_find_I = track.find(I); // first try find image I in this track
+
+			if (iter_find_I == track.end())
+			{
+				continue;
+			}
+
+			auto iter_find_J = track.find(J); // if image I exist then try find image J in this track
+
+			if (iter_find_J == track.end())
+			{
+				continue;
+			}
+
+			count += track.size(); // if this track contains both imge I and J, then add the length of this track to pair (I,J)
+		}
+
+		pair_ij_k ij_k;
+		ij_k.first.first = I;
+		ij_k.first.second = J;
+		ij_k.second = count;
+
+		pairs.push_back(ij_k);
+	}
+
+	// sort image pairs according to the sum of track lengths in descending order
+	sort(pairs.begin(), pairs.end(),
+		[](const std::pair<std::pair<int, int>, int> & a, const std::pair<std::pair<int, int>, int> & b) {return a.second > b.second; });
 }
 
 // 20151108，新加入一幅图像后，要前方交会新的点
@@ -13034,6 +13259,70 @@ void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	输出文件路径
 		int R = (int)sumR/count;
 		int G = (int)sumG/count;
 		int B = (int)sumB/count;
+
+		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", iter_wrdpt->second.m_pt.x, iter_wrdpt->second.m_pt.y, iter_wrdpt->second.m_pt.z, R, G, B);
+
+		CloudPoint cldpt;
+		cldpt.m_idx = trackID;
+		cldpt.m_pt = iter_wrdpt->second.m_pt;
+
+		cloud.push_back(cldpt);
+	}
+	fclose(file);
+}
+
+// 20151109，输出当前点云
+void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	输出文件路径
+							   const PointCloud & map_pointcloud,		// input:	点云
+							   const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
+							   const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+							   vector<DeepVoid::CloudPoint> & cloud,	// output:	老的点云结构体
+							   int n_minInilier /*= 2*/					// input:	至少得有该个数图像观测到该点
+							   )
+{
+	cloud.clear();
+
+	FILE * file = fopen(strFile, "w");
+	for (auto iter_wrdpt = map_pointcloud.begin(); iter_wrdpt != map_pointcloud.end(); ++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		double sumR = 0;
+		double sumG = 0;
+		double sumB = 0;
+
+		int count = 0;
+
+		for (auto iter_imgpt = iter_found_track->second.begin(); iter_imgpt != iter_found_track->second.end(); ++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second[0]; // 第一个标志位表示是否为inlier
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			const cam_data & cam = cams[I];
+
+			sumR += cam.m_feats.rgbs[i][2];
+			sumG += cam.m_feats.rgbs[i][1];
+			sumB += cam.m_feats.rgbs[i][0];
+
+			++count;
+		}
+
+		if (count < n_minInilier)
+		{
+			continue;
+		}
+
+		int R = (int)sumR / count;
+		int G = (int)sumG / count;
+		int B = (int)sumB / count;
 
 		fprintf(file, "%lf;%lf;%lf;%d;%d;%d\n", iter_wrdpt->second.m_pt.x, iter_wrdpt->second.m_pt.y, iter_wrdpt->second.m_pt.z, R, G, B);
 

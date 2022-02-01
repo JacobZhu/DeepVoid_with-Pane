@@ -12437,6 +12437,8 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清除掉所有匹配映射
 	pApp->m_mapTracks.clear(); // 先清空
 
+	SfM_ZZK::MultiTracksWithFlags mapTracksNew; // 20220201
+
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12514,12 +12516,50 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	SfM_ZZK::MultiTracks map_tracks_init;
 	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init); // 20200622
 
+	// 20220201
+	SfM_ZZK::MultiTracksWithFlags mapTracksNewInit;
+	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, mapTracksNewInit);
+
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
 	int idx_count = 0;
 	for (auto iter_track = map_tracks_init.begin(); iter_track != map_tracks_init.end(); ++iter_track)
 	{
 		pApp->m_mapTracks.insert(make_pair(idx_count, iter_track->second));
+
+		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
+		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
+		{
+			const int & I = iter_Ii->first; // image I
+			const int & i = iter_Ii->second.first; // feature i
+
+			cam_data & cam = pApp->m_vCams[I];
+
+			cam.m_feats.tracks[i] = idx_count;
+
+			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
+			if (i < cam.m_nSiftElected)
+			{
+				cam.m_featsBlob.tracks[i] = idx_count;
+			}
+			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
+			{
+				cam.m_featsCorner.tracks[i - cam.m_nSiftElected] = idx_count;
+			}
+			else
+			{
+				cam.m_featsManual.tracks[i - cam.m_nSiftElected - cam.m_nFastElected] = idx_count;
+			}
+		}
+
+		++idx_count;
+	}
+
+	// 20220201
+	idx_count = 0;
+	for (auto iter_track = mapTracksNewInit.begin(); iter_track != mapTracksNewInit.end(); ++iter_track)
+	{
+		mapTracksNew.insert(make_pair(idx_count, iter_track->second));
 
 		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
 		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
@@ -12567,6 +12607,11 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	// 统计特征轨迹直方图
 	std::map<int, int> hist_track;
 	SfM_ZZK::BuildTrackLengthHistogram(pApp->m_mapTracks, hist_track);
+
+	// 20220201
+	std::map<int, int> hist_track_new;
+	SfM_ZZK::BuildTrackLengthHistogram(mapTracksNew, hist_track_new);
+
 	int n_tracklength_more_than_1 = 0;
 	for (auto iter_n = hist_track.begin(); iter_n != hist_track.end(); ++iter_n)
 	{

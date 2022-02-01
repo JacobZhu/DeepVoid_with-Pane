@@ -1381,13 +1381,22 @@ typedef std::map<int,std::pair<int,int>> OneTrack;
 // 20151128, 老的特征轨迹结构，没有表示 outlier 的 value
 typedef std::map<int,int> OneTrack_old; 
 
+// 20220201，<ImgID, <FeatID, [flag1, flag2, flag3,...]>>
+// 之前的OneTrack里每个特征点只有1个标志位，通常用来表征该特征点在给定重投影残差阈值的情况下是否被判定为内点（1）还是外点（0）
+// 现在每个特征点拥有了一个标志位队列，这样可以任意添加标志位，而不用再改变或定义新的数据结构了
+// 还是存在需要给每个像点配多于一个标志位的情形，比方说除了要指明track中一个像点是否内点外，还需要标志位指明track中一个像点是否是最小二乘匹配的参考像点
+typedef std::map<int, std::pair<int, std::vector<int>>> trackWithFlags;
+
 // 2015.10.08, a map container to store all tracks: collection of {trackId, onetrack}
-typedef std::map<int,OneTrack> MultiTracks;
+typedef std::map<int, OneTrack> MultiTracks;
 // 20151128, 老的特征估计结构，没有表示 outlier 的 value
-typedef std::map<int,OneTrack_old> MultiTracks_old; 
+typedef std::map<int, OneTrack_old> MultiTracks_old;
+
+// 20220201，新的数据结构，里面的每条track里的每个像点都可以拥有多个标志位（std::vector<int>形式）
+typedef std::map<int, trackWithFlags> MultiTracksWithFlags;
 
 // 2015.11.04, a map container to store all the coordinates of the reconstructed tracks
-typedef std::map<int,DeepVoid::CloudPoint> PointCloud;
+typedef std::map<int, DeepVoid::CloudPoint> PointCloud;
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
 // global minimum weight version
@@ -1398,12 +1407,17 @@ void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pai
 						  );
 // 20151128，老的特征估计结构
 void FindAllTracks_Olsson(const PairWiseMatches & map_matches,	// input:	all pairwise matches
-						  MultiTracks_old & map_tracks				// output:	all the found tracks
+						  MultiTracks_old & map_tracks			// output:	all the found tracks
 						  );
 
 // 20200622，采用新的数据结构
 void FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
 						  MultiTracks & map_tracks									// output:	all the found tracks
+						  );
+
+// 20220201，采用新的数据结构
+void FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
+						  MultiTracksWithFlags & map_tracks							// output:	all the found tracks
 						  );
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>
@@ -1442,6 +1456,13 @@ double BuildTrackLengthHistogram(const vector<vector<Point2i>> & allTracks,	// i
 							     std::map<int,int> & hist						// output:	the histogram
 							     );
 
+// 2015.10.08, build the track length histogram
+// 2015.10.21, and return the average track length
+// 20220201，采用新结构
+double BuildTrackLengthHistogram(const MultiTracksWithFlags & map_tracks,	// input:	all the tracks
+								 std::map<int,int> & hist					// output:	the histogram
+							     );
+
 // 20151103, zhaokunz, find image pair good for RO
 // rank all image pairs according to the sum of track lengths
 void RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,	// input:	all pairwise matches
@@ -1452,6 +1473,12 @@ void RankImagePairs_TrackLengthSum(const PairWiseMatches & map_matches,	// input
 // 20200622, zhaokunz, 改用新的数据结构
 void RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise matches
 								   const MultiTracks & map_tracks,								// input:	all the tracks
+								   vector<pair_ij_k> & pairs									// output:	pairs in descending order
+								   );
+
+// 20220201，zhaokunz，改用新的数据结构
+void RankImagePairs_TrackLengthSum(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise matches
+								   const MultiTracksWithFlags & map_tracks,						// input:	all the tracks
 								   vector<pair_ij_k> & pairs									// output:	pairs in descending order
 								   );
 
@@ -1475,7 +1502,16 @@ void OutputPointCloud(CString strFile,							// input:	输出文件路径
 					  const PointCloud & map_pointcloud,		// input:	点云
 					  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
 					  const MultiTracks & map_tracks,			// input:	所有的特征轨迹
-					  vector<DeepVoid::CloudPoint> & cloud,			// output:	老的点云结构体
+					  vector<DeepVoid::CloudPoint> & cloud,		// output:	老的点云结构体
+					  int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
+					  );
+
+// 20151109，输出当前点云
+void OutputPointCloud(CString strFile,							// input:	输出文件路径
+					  const PointCloud & map_pointcloud,		// input:	点云
+					  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
+					  const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+					  vector<DeepVoid::CloudPoint> & cloud,		// output:	老的点云结构体
 					  int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
 					  );
 
