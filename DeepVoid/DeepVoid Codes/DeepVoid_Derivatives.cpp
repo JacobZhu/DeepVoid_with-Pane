@@ -13774,6 +13774,61 @@ double SfM_ZZK::BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud
 	return sum_length/(double)n_total;
 }
 
+// 20151112,统计每个点云点被观测次数的直方图
+// 20220202，采用新的数据结构
+double SfM_ZZK::BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,		// output:	点云
+											   const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+											   std::map<int,int> & hist					// output:	the histogram
+											   )
+{
+	for (auto iter_wrdpt = map_pointcloud.begin(); iter_wrdpt != map_pointcloud.end(); ++iter_wrdpt)
+	{
+		const int & trackID = iter_wrdpt->first;
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		int count = 0;
+
+		for (auto iter_imgpt = iter_found_track->second.begin(); iter_imgpt != iter_found_track->second.end(); ++iter_imgpt)
+		{
+			const int & I = iter_imgpt->first;
+			const int & i = iter_imgpt->second.first;
+			const int & bInlier = iter_imgpt->second.second[0]; // 20220202，第一个标志位指明该点是否内点
+
+			if (!bInlier)
+			{
+				continue;
+			}
+
+			++count;
+		}
+
+		auto iter_found_num = hist.find(count);
+
+		if (iter_found_num == hist.end())
+		{
+			// does not exist
+			hist.insert(make_pair(count, 1));
+		}
+		else
+		{
+			// exist
+			++iter_found_num->second;
+		}
+	}
+
+	int n_total = 0;
+	int sum_length = 0;
+
+	for (auto iter = hist.begin(); iter != hist.end(); ++iter)
+	{
+		n_total += iter->second;
+		sum_length += iter->first*iter->second;
+	}
+
+	return sum_length / (double)n_total;
+}
+
 // optimize Ri based on Rotation Averaging using Newton-Raphson method
 // 详细参考 Govindu 04 <Lie-algebraic averaging for globally consistent motion estimation> 中的 Algorithm A2
 void SfM_ZZK::optim_nr_Ri_Govindu04(const vector<Matx33d> & vRijs,	// 输入：		所有观测的相对旋转矩阵

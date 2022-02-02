@@ -1061,13 +1061,15 @@ UINT SfM(LPVOID param)
 
 
 	// feature tracking
-	SfM_ZZK::MultiTracks map_tracks_init;
+//	SfM_ZZK::MultiTracks map_tracks_init;
+	SfM_ZZK::MultiTracksWithFlags map_tracks_init; // 20220202
 //	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_matches, map_tracks_init);
 	SfM_ZZK::FindAllTracks_Olsson(map_pairwise_F_matches_pWrdPts, map_tracks_init); // 20200622
 
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
-	SfM_ZZK::MultiTracks map_tracks;
+//	SfM_ZZK::MultiTracks map_tracks;
+	SfM_ZZK::MultiTracksWithFlags map_tracks; // 20220202
 	int idx_count = 0;
 	for (auto iter_track=map_tracks_init.begin();iter_track!=map_tracks_init.end();++iter_track)
 	{
@@ -1205,8 +1207,8 @@ UINT SfM(LPVOID param)
 				auto iter_found_i = iter_found_track->second.find(i);
 				auto iter_found_j = iter_found_track->second.find(j);
 
-				iter_found_i->second.second = 1; // 为内点
-				iter_found_j->second.second = 1; // 为内点
+				iter_found_i->second.second[0] = 1; // 为内点
+				iter_found_j->second.second[0] = 1; // 为内点
 			}
 
 			strFile.Format("point cloud after RO of images %03d and %03d.txt", i, j);
@@ -2397,13 +2399,18 @@ UINT SfM_incremental(LPVOID param)
 	SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
 	pointCloud.clear(); // 先清空一下，这是SfM环节的主要产出
 
-	SfM_ZZK::MultiTracks & tracks = pApp->m_mapTracks; // 20220127，在SfM环节对tracks做的修改仅在于为每个像点是否为内点的标志位赋上值
+//	SfM_ZZK::MultiTracks & tracks = pApp->m_mapTracks; // 20220127，在SfM环节对tracks做的修改仅在于为每个像点是否为内点的标志位赋上值
+	SfM_ZZK::MultiTracksWithFlags & tracks = pApp->m_mapTracks; // 20220202，新数据结构
+
+//	SfM_ZZK::MultiTracksWithFlags tracksNew; // 20220202
 
 	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
 	//////////////////////////////////////////////////////////////////////////
 
 	vector<SfM_ZZK::pair_ij_k> pairs;
 	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracks, pairs);
+
+//	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracksNew, pairs); // 20220202
 
 	CString strFile;
 	int idx_refimg;
@@ -2457,8 +2464,8 @@ UINT SfM_incremental(LPVOID param)
 				auto iter_found_i = iter_found_track->second.find(i);
 				auto iter_found_j = iter_found_track->second.find(j);
 
-				iter_found_i->second.second = 1; // 为内点
-				iter_found_j->second.second = 1; // 为内点
+				iter_found_i->second.second[0] = 1; // 为内点
+				iter_found_j->second.second[0] = 1; // 为内点
 			}
 
 			strFile = "point cloud after RO of " + vImgNames[i] + " and " + vImgNames[j] + ".txt";
@@ -12000,7 +12007,7 @@ void CDeepVoidApp::On3dview()
 		{
 			const int & I = iter_imgpt->first;
 			const int & i = iter_imgpt->second.first;
-			const int & bInlier = iter_imgpt->second.second;
+			const int & bInlier = iter_imgpt->second.second[0]; // 20220202，第一个标志指明该点是否为内点
 
 			if (!bInlier)
 			{
@@ -12437,7 +12444,7 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清除掉所有匹配映射
 	pApp->m_mapTracks.clear(); // 先清空
 
-	SfM_ZZK::MultiTracksWithFlags mapTracksNew; // 20220201
+//	SfM_ZZK::MultiTracksWithFlags mapTracksNew; // 20220201
 
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
@@ -12513,12 +12520,15 @@ UINT TwoViewFeatureMatching(LPVOID param)
 
 	
 	// 2. Feature Tracking.
-	SfM_ZZK::MultiTracks map_tracks_init;
-	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init); // 20200622
+// 	SfM_ZZK::MultiTracks map_tracks_init;
+// 	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init); // 20200622
+	// 20220202，新数据结构
+	SfM_ZZK::MultiTracksWithFlags map_tracks_init;
+	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init);
 
 	// 20220201
-	SfM_ZZK::MultiTracksWithFlags mapTracksNewInit;
-	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, mapTracksNewInit);
+// 	SfM_ZZK::MultiTracksWithFlags mapTracksNewInit;
+// 	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, mapTracksNewInit);
 
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
@@ -12556,38 +12566,38 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	}
 
 	// 20220201
-	idx_count = 0;
-	for (auto iter_track = mapTracksNewInit.begin(); iter_track != mapTracksNewInit.end(); ++iter_track)
-	{
-		mapTracksNew.insert(make_pair(idx_count, iter_track->second));
-
-		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
-		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
-		{
-			const int & I = iter_Ii->first; // image I
-			const int & i = iter_Ii->second.first; // feature i
-
-			cam_data & cam = pApp->m_vCams[I];
-
-			cam.m_feats.tracks[i] = idx_count;
-
-			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
-			if (i < cam.m_nSiftElected)
-			{
-				cam.m_featsBlob.tracks[i] = idx_count;
-			}
-			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
-			{
-				cam.m_featsCorner.tracks[i - cam.m_nSiftElected] = idx_count;
-			}
-			else
-			{
-				cam.m_featsManual.tracks[i - cam.m_nSiftElected - cam.m_nFastElected] = idx_count;
-			}
-		}
-
-		++idx_count;
-	}
+// 	idx_count = 0;
+// 	for (auto iter_track = mapTracksNewInit.begin(); iter_track != mapTracksNewInit.end(); ++iter_track)
+// 	{
+// 		mapTracksNew.insert(make_pair(idx_count, iter_track->second));
+// 
+// 		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
+// 		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
+// 		{
+// 			const int & I = iter_Ii->first; // image I
+// 			const int & i = iter_Ii->second.first; // feature i
+// 
+// 			cam_data & cam = pApp->m_vCams[I];
+// 
+// 			cam.m_feats.tracks[i] = idx_count;
+// 
+// 			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
+// 			if (i < cam.m_nSiftElected)
+// 			{
+// 				cam.m_featsBlob.tracks[i] = idx_count;
+// 			}
+// 			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
+// 			{
+// 				cam.m_featsCorner.tracks[i - cam.m_nSiftElected] = idx_count;
+// 			}
+// 			else
+// 			{
+// 				cam.m_featsManual.tracks[i - cam.m_nSiftElected - cam.m_nFastElected] = idx_count;
+// 			}
+// 		}
+// 
+// 		++idx_count;
+// 	}
 
 	// 刷新并显示每个特征/手提点的全局 trackID 号
 	for (int i = 0; i < nImg; ++i)
@@ -12609,8 +12619,8 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	SfM_ZZK::BuildTrackLengthHistogram(pApp->m_mapTracks, hist_track);
 
 	// 20220201
-	std::map<int, int> hist_track_new;
-	SfM_ZZK::BuildTrackLengthHistogram(mapTracksNew, hist_track_new);
+// 	std::map<int, int> hist_track_new;
+// 	SfM_ZZK::BuildTrackLengthHistogram(mapTracksNew, hist_track_new);
 
 	int n_tracklength_more_than_1 = 0;
 	for (auto iter_n = hist_track.begin(); iter_n != hist_track.end(); ++iter_n)

@@ -71,7 +71,8 @@ public:
 
 	// 20200630
 	SfM_ZZK::PointCloud m_mapPointCloud; // 20220127，map<trackID, CloudPoint>，这是SfM之后形成的【全局】稀疏点云。
-	SfM_ZZK::MultiTracks m_mapTracks; // 20220127，map<trackID, map<imgID, <featID, bInlier>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
+//	SfM_ZZK::MultiTracks m_mapTracks; // 20220127，map<trackID, map<imgID, <featID, bInlier>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
+	SfM_ZZK::MultiTracksWithFlags m_mapTracks; // 20220202，新数据结构map<trackID, map<imgID, <featID, vectorFlags>>>，这是完成特征跟踪后形成的【全局】特征轨迹集，在SfM之后其中的bInlier会赋上值。
 	SfM_ZZK::PairWise_F_matches_pWrdPts m_mapPairwiseFMatchesWrdPts; // 20200622, {<i, j>, <<F, matches>, wrdpts>}
 
 	// 20161029, the calibration of the camera used to do MVS

@@ -1539,6 +1539,13 @@ double BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,	// outp
 									  std::map<int,int> & hist				// output:	the histogram
 									  );
 
+// 20151112,统计每个点云点被观测次数的直方图
+// 20220202，采用新的数据结构
+double BuildCloudPointInlierHistogram(const PointCloud & map_pointcloud,		// output:	点云
+									  const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+									  std::map<int,int> & hist					// output:	the histogram
+									  );
+
 // optimize Ri based on Rotation Averaging using Newton-Raphson method
 // 详细参考 Govindu 04 <Lie-algebraic averaging for globally consistent motion estimation> 中的 Algorithm A2
 void optim_nr_Ri_Govindu04(const vector<Matx33d> & vRijs,	// 输入：		所有观测的相对旋转矩阵

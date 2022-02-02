@@ -952,6 +952,17 @@ void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,						// ÊäÈ
 						 double ang_desired = 45											// ÊäÈë£º	ÆÚÍûµÄ½»»á½Ç¶ÈÖµ
 						 );
 
+// 20200622£¬»»ĞÂµÄÊı¾İ½á¹¹
+// 20220202£¬ĞÂÊı¾İ½á¹¹ MultiTracksWithFlags
+void ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,						// ÊäÈë:	ËùÓĞÎïµã
+						 const vector<cam_data> & cams,										// ÊäÈë:	ËùÓĞÍ¼Ïñ
+						 const SfM_ZZK::PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// ÊäÈë£º	ËùÓĞÍ¼Ïñ¶ÔµÄÌØÕ÷Æ¥Åä
+						 const SfM_ZZK::MultiTracksWithFlags & map_tracks,					// ÊäÈë£º	ÕÒµ½µÄËùÓĞÌØÕ÷¹ì¼£
+						 vector<vector<int>> & vIdxSupports,								// Êä³ö£º	È·¶¨µÄÃ¿¸öÍ¼ÏñµÄÖ§³ÖÍ¼Ë÷Òı
+						 int nSpt = 2,														// ÊäÈë£º	ÆÚÍûÃ¿·ùÍ¼Ïñ¹ØÁªµÄÖ§³ÖÍ¼µÄ¸öÊı
+						 double ang_desired = 45											// ÊäÈë£º	ÆÚÍûµÄ½»»á½Ç¶ÈÖµ
+						 );
+
 // feature points in all images are supposed to be distortion free
 bool ExteriorOrientation_PnP_RANSAC(vector<cam_data> & vCams,					// input&output:	all the images
 									int idx_cam,								// input:	the index of the image to be oriented

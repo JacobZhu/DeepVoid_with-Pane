@@ -10130,6 +10130,162 @@ void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,		
 	}
 }
 
+// 20200622，换新的数据结构
+// 20220202，新数据结构 MultiTracksWithFlags
+void DeepVoid::ScoreMatchingImages(const SfM_ZZK::PointCloud & map_pointcloud,							// 输入:	所有物点
+								   const vector<cam_data> & cams,										// 输入:	所有图像
+								   const SfM_ZZK::PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// 输入：	所有图像对的特征匹配
+								   const SfM_ZZK::MultiTracksWithFlags & map_tracks,					// 输入：	找到的所有特征轨迹
+								   vector<vector<int>> & vIdxSupports,									// 输出：	确定的每个图像的支持图索引
+								   int nSpt /*= 2*/,													// 输入：	期望每幅图像关联的支持图的个数
+								   double ang_desired /*= 45*/											// 输入：	期望的交会角度值
+								   )
+{
+	vIdxSupports.clear();
+
+	int m = cams.size();
+
+	double ang_sigma = ang_desired / 3.0;
+
+	typedef std::pair<int, std::pair<double, double>> pair_i_a_b; // i为图像索引，a为评分，b为平均交会角
+
+	std::map<int, vector<pair_i_a_b>> map_i_j_a_b;
+
+	for (int i = 0; i < m; ++i)
+	{
+		if (cams[i].m_bOriented)
+		{
+			vector<pair_i_a_b> vec_i_a_b;
+			map_i_j_a_b.insert(make_pair(i, vec_i_a_b));
+		}
+	}
+
+	for (auto iter_matches = map_F_matches_pWrdPts.begin(); iter_matches != map_F_matches_pWrdPts.end(); ++iter_matches)
+	{
+		const int & I = iter_matches->first.first;	// 图 I
+		const int & J = iter_matches->first.second;	// 图 J
+		const vector<DMatch> & match = iter_matches->second.first.second; // 图 IJ 间的特征匹配
+
+		const cam_data & cam_I = cams[I];
+		const cam_data & cam_J = cams[J];
+
+		if (!cam_I.m_bOriented || !cam_J.m_bOriented)
+		{
+			// 只有两幅图都完成定向的时候才可以考虑交会角的事情
+			continue;
+		}
+
+		double sum_w = 0;
+		double sum_ang = 0;
+		int n_count = 0;
+
+		// 考察IJ间的每个匹配
+		for (auto iter_match = match.begin(); iter_match != match.end(); ++iter_match)
+		{
+			int idx_i = iter_match->queryIdx;
+			int idx_j = iter_match->trainIdx;
+
+			int trackID_i = cam_I.m_feats.tracks[idx_i];
+			int trackID_j = cam_J.m_feats.tracks[idx_j];
+
+			if (trackID_i != trackID_j || trackID_i < 0 || trackID_j < 0)
+			{
+				// 匹配的两个特征点必须从属于同一个有效的特征轨迹
+				continue;
+			}
+
+			int trackID = trackID_i;
+
+			// 再考察这两幅图对于当前的空间坐标来说是不是内点
+			auto iter_found_track = map_tracks.find(trackID);
+			auto iter_found_I = iter_found_track->second.find(I);
+			auto iter_found_J = iter_found_track->second.find(J);
+
+			if (!iter_found_I->second.second[0] || !iter_found_J->second.second[0])
+			{
+				// 两个特征点必须同时是内点，这样才能最终确定两个特征点是匹配的
+				continue;
+			}
+
+			// 最后才把物点坐标取出来
+			auto iter_found_wrdpt = map_pointcloud.find(trackID);
+
+			Matx31d XYZ;
+			XYZ(0) = iter_found_wrdpt->second.m_pt.x;
+			XYZ(1) = iter_found_wrdpt->second.m_pt.y;
+			XYZ(2) = iter_found_wrdpt->second.m_pt.z;
+
+			Matx31d C_I = -cam_I.m_R.t()*cam_I.m_t;
+			Matx31d C_J = -cam_J.m_R.t()*cam_J.m_t;
+
+			Matx31d vec_I = XYZ - C_I;
+			double nVec_I = norm(vec_I);
+
+			Matx31d vec_J = XYZ - C_J;
+			double nVec_J = norm(vec_J);
+
+			Matx<double, 1, 1> cosa = vec_I.t() * vec_J;
+			double tmp = cosa(0) / (nVec_I*nVec_J);
+			if (tmp > 1)
+			{
+				tmp = 1;
+			}
+			if (tmp < -1)
+			{
+				tmp = -1;
+			}
+			double ang = acos(tmp)*R2D; // 0-180
+
+			double w = exp_miu_sigma(ang, ang_desired, ang_sigma); // compute the weight
+
+			sum_w += w;
+			sum_ang += ang;
+			++n_count;
+		}
+
+		double ang_avg = sum_ang / n_count;
+
+		auto iter_found_I = map_i_j_a_b.find(I);
+		auto iter_found_J = map_i_j_a_b.find(J);
+
+		pair_i_a_b I_a_b, J_a_b;
+		I_a_b.first = J; J_a_b.first = I;
+		I_a_b.second.first = J_a_b.second.first = sum_w;
+		I_a_b.second.second = J_a_b.second.second = ang_avg;
+
+		iter_found_I->second.push_back(I_a_b);
+		iter_found_J->second.push_back(J_a_b);
+	}
+
+	for (int i = 0; i < m; ++i)
+	{
+		auto iter_found_img = map_i_j_a_b.find(i);
+		vector<int> vIdxSpt;
+		if (iter_found_img == map_i_j_a_b.end())
+		{
+			// 说明第 i 幅图还没有完成定向，此时直接推入空的
+			vIdxSupports.push_back(vIdxSpt);
+			continue;
+		}
+
+		vector<pair_i_a_b> & vec_i_a_b = iter_found_img->second;
+
+		// 按权重值降序排列
+		sort(vec_i_a_b.begin(), vec_i_a_b.end(), [](const pair_i_a_b & a, const pair_i_a_b & b) {return a.second.first > b.second.first; });
+
+		// 20161029, 如果实际能和一个图配上的图像只有1个，那么如果强行要为该图找到2个或者更多的支持图显然是不太合理的
+		int n_vec = vec_i_a_b.size();
+		int nSpt_actual = n_vec < nSpt ? n_vec : nSpt;
+
+		for (int j = 0; j < nSpt_actual/*nSpt*/; ++j)
+		{
+			vIdxSpt.push_back(vec_i_a_b[j].first);
+		}
+
+		vIdxSupports.push_back(vIdxSpt);
+	}
+}
+
 // feature points in all images are supposed to be distortion free
 bool DeepVoid::ExteriorOrientation_PnP_RANSAC(vector<cam_data> & vCams,						// input&output:	all the images
 											  int idx_cam,									// input:	the index of the image to be oriented
