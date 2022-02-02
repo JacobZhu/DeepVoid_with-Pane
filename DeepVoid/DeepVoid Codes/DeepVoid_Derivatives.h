@@ -1490,6 +1490,15 @@ void Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	点云
 							 double thresh_inlier = 1.5					// input:	用来判断内点的重投影残差阈值
 							 );
 
+// 20151108，新加入一幅图像后，要前方交会新的点
+// 20220202，采用新结构MultiTracksWithFlags
+void Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	点云
+							 const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
+							 const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+							 int idx_newImg,							// input:	新完成定向图像的索引号
+							 double thresh_inlier = 1.5					// input:	用来判断内点的重投影残差阈值
+							 );
+
 // 20151111，利用特征轨迹中当前所有完成定向的图做前方交会，每两两交会得到一个坐标，最终取支持集最大的坐标更新
 int Triangulation_AllImgs(PointCloud & map_pointcloud,				// output:	点云
 						   const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
@@ -1506,7 +1515,7 @@ void OutputPointCloud(CString strFile,							// input:	输出文件路径
 					  int n_minInilier = 2						// input:	至少得有该个数图像观测到该点
 					  );
 
-// 20151109，输出当前点云
+// 20220201，输出当前点云
 void OutputPointCloud(CString strFile,							// input:	输出文件路径
 					  const PointCloud & map_pointcloud,		// input:	点云
 					  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像

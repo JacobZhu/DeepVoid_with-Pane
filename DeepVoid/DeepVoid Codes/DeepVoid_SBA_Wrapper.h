@@ -193,11 +193,90 @@ int  optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcloud,	// 输
 																			// info[9]，# number of linear systems solved，求解线性方程组的个数
 									 );
 
+// 20151105，自己基于 OpenCV 编写的 SBA 函数
+// 返回所有重投影像点个数
+// 20220202，输出不确定度；改用新数据结构 MultiTracksWithFlags
+int  optim_sba_levmar_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+											    vector<cam_data> & cams,				// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+											    SfM_ZZK::MultiTracksWithFlags & map_tracks,	// 输入：所有的特征轨迹
+												double & rltUctt_output,				// 输出：所有物点的综合相对不确定度水平（1倍sigma）
+											    int idx_refimg,							// input:	the reference image, whose R=I, and t =[0,0,0]'
+											    double tc = 1.5,						// input:	用来计算 Huber 权重的常量
+											    int itermax = 1024,						// 输入：最大迭代次数
+											    double * opts = NULL,					// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+																						// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+																						// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+																						// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+																						// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+																						// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+											    double * info = NULL					// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+																						// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
+																						// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
+																						// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
+																						// info[3]，||dp||_2 at estimated p，		在最终输出参数下，待优化参数 2 范数的变化量
+																						// info[4]，mu/max[J^T J]_ii at estimated p，tau (mu/max(Aii))
+																						// info[5]，# iterations，					总迭代次数
+																						// info[6]，reason for terminating，		迭代结束原因：
+																																// 1. 目标函数对优化参数导数太小
+																																// 2. 改正量，即优化参数变化太小
+																																// 3. 达到最大迭代次数
+																																// 4. 残差相对变化太小
+																																// 5. 残差太小
+																																// 6. stopped due to excessive failed attempts to increase damping for getting a positive
+																																//	  definite normal equations matrix. Typically, this indicates a programming error in the
+																																//    user-supplied Jacobian.
+																																// 7. stopped due to infinite values in the coordinates of the set of predicted projections.
+																																//    This signals a programming error in the user-supplied projection function func.
+																						// info[7]，# function evaluations，		目标函数调用次数
+																						// info[8]，# jacobian evaluations，		Jacobian 矩阵估计次数
+																						// info[9]，# number of linear systems solved，求解线性方程组的个数
+											    );
+
 // 20200607，采用迭代重加权最小二乘 IRLS 机制同时优化 f,XYZW,R,t
 // 返回所有重投影像点个数
 int  optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 												  vector<cam_data> & cams,				// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
 												  SfM_ZZK::MultiTracks & map_tracks,	// 输入：所有的特征轨迹
+												  double & rltUctt_output,				// 输出：所有物点的综合相对不确定度水平（1倍sigma）
+												  double & uctt_f,						// 输出：图像共有等效焦距的不确定度（1倍sigma）
+												  int idx_refimg,						// input:	the reference image, whose R=I, and t =[0,0,0]'
+												  double tc = 1.5,						// input:	用来计算 Huber 权重的常量
+												  int itermax = 1024,					// 输入：最大迭代次数
+												  double * opts = NULL,					// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+																						// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+																						// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+																						// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+																						// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+																						// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+												  double * info = NULL					// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+																						// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
+																						// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
+																						// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
+																						// info[3]，||dp||_2 at estimated p，		在最终输出参数下，待优化参数 2 范数的变化量
+																						// info[4]，mu/max[J^T J]_ii at estimated p，tau (mu/max(Aii))
+																						// info[5]，# iterations，					总迭代次数
+																						// info[6]，reason for terminating，		迭代结束原因：
+																						// 1. 目标函数对优化参数导数太小
+																						// 2. 改正量，即优化参数变化太小
+																						// 3. 达到最大迭代次数
+																						// 4. 残差相对变化太小
+																						// 5. 残差太小
+																						// 6. stopped due to excessive failed attempts to increase damping for getting a positive
+																						//	  definite normal equations matrix. Typically, this indicates a programming error in the
+																						//    user-supplied Jacobian.
+																						// 7. stopped due to infinite values in the coordinates of the set of predicted projections.
+																						//    This signals a programming error in the user-supplied projection function func.
+																						// info[7]，# function evaluations，		目标函数调用次数
+																						// info[8]，# jacobian evaluations，		Jacobian 矩阵估计次数
+																						// info[9]，# number of linear systems solved，求解线性方程组的个数
+												  );
+
+// 20200607，采用迭代重加权最小二乘 IRLS 机制同时优化 f,XYZW,R,t
+// 返回所有重投影像点个数
+// 20220202，采用新数据结构 MultiTracksWithFlags
+int  optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+												  vector<cam_data> & cams,				// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+												  SfM_ZZK::MultiTracksWithFlags & map_tracks,	// 输入：所有的特征轨迹
 												  double & rltUctt_output,				// 输出：所有物点的综合相对不确定度水平（1倍sigma）
 												  double & uctt_f,						// 输出：图像共有等效焦距的不确定度（1倍sigma）
 												  int idx_refimg,						// input:	the reference image, whose R=I, and t =[0,0,0]'

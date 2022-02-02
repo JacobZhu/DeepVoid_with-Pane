@@ -997,9 +997,9 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 	dists.push_back(cam_ref.m_dist);
 	distTypes.push_back(cam_ref.dist_type);
 
-	for (int i=0;i<cams.size();++i)
+	for (int i = 0; i < cams.size(); ++i)
 	{
-		if (!cams[i].m_bOriented || i==idx_refimg)
+		if (!cams[i].m_bOriented || i == idx_refimg)
 		{
 			continue;
 		}
@@ -1017,14 +1017,15 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 	vector<Point3d> XYZs;
 	
-	int sizes[] = {n, m};
-	SparseMat ptrMat(2,sizes,CV_32SC1);
+	// 20200607，n行m列的稀疏矩阵，用于存储各点于各图像上的可见性，其实不单单是可见性，其元素值其实为每个像点在像点坐标向量中的序号
+	int sizes[] = { n, m };
+	SparseMat ptrMat(2, sizes, CV_32SC1);
 
 	// 按可视矩阵按行扫描扫得的各像点坐标
 	vector<Point2d> vImgPts_vmask;
 
 	int i_tmp=0;
-	for (auto iter_objpt=map_pointcloud.begin();iter_objpt!=map_pointcloud.end();++iter_objpt)
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
 	{
 		const int & trackID = iter_objpt->first;
 
@@ -1040,7 +1041,7 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 			auto iter_found_img = one_track.find(idxcam);
 
-			if (iter_found_img==one_track.end())
+			if (iter_found_img == one_track.end())
 			{
 				// 在该 track 中没有找到指定已完成定向的观测图像
 				continue;
@@ -1048,13 +1049,11 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 			// 找到了指定图像
 			Point2d imgpt;
-// 			imgpt.x = vCams[j].m_feats.key_points[iter_found_img->second].pt.x;
-// 			imgpt.y = vCams[j].m_feats.key_points[iter_found_img->second].pt.y;
 			imgpt.x = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.x;
 			imgpt.y = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.y;
 			vImgPts_vmask.push_back(imgpt);
 
-			ptrMat.ref<int>(i_tmp,j) = vImgPts_vmask.size()-1;
+			ptrMat.ref<int>(i_tmp, j) = vImgPts_vmask.size() - 1;
 		}
 
 		++i_tmp;
@@ -1064,14 +1063,14 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 
 	// j_fixed 和 i_fixed 向量分别存放图像和空间点是否固定的情况
 	// j_fixed[j]=1表示图 j 的参数不参与平差调整，i_fixed[i]=1 表示点 i 的坐标不参与平差调整
-	vector<uchar> j_fixed(m),i_fixed(n);
+	vector<uchar> j_fixed(m), i_fixed(n);
 	j_fixed[0] = 1;
 
 	// covInv 存放每个观测像点的不确定度（协方差矩阵）的逆矩阵，其实也就是每个观测像点的权值矩阵
 	Matx22d cov;
-	cov(0,0) = cov(1,1) = 1;
+	cov(0, 0) = cov(1, 1) = 1;
 	vector<Matx22d> covInvs;
-	for (int k=0;k<l;++k)
+	for (int k = 0; k < l; ++k)
 	{
 		covInvs.push_back(cov);
 	}
@@ -1186,6 +1185,342 @@ int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec(SfM_ZZK::PointCloud & map_pointcl
 	return l;
 }
 
+// 20151105，自己基于 OpenCV 编写的 SBA 函数
+// 返回所有重投影像点个数
+// 20220202，输出不确定度；改用新数据结构 MultiTracksWithFlags
+int  DeepVoid::optim_sba_levmar_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,			// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+														  vector<cam_data> & cams,						// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+														  SfM_ZZK::MultiTracksWithFlags & map_tracks,	// 输入：所有的特征轨迹
+														  double & rltUctt_output,						// 输出：所有物点的综合相对不确定度水平（1倍sigma）
+														  int idx_refimg,								// input:	the reference image, whose R=I, and t =[0,0,0]'
+														  double tc /*= 1.5*/,							// input:	用来计算 Huber 权重的常量
+														  int itermax /*= 1024*/,						// 输入：最大迭代次数
+														  double * opts /*= NULL*/,						// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+																										// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+																										// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+																										// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+																										// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+																										// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+														  double * info /*= NULL*/						// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+																										// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
+																										// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
+																										// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
+																										// info[3]，||dp||_2 at estimated p，		在最终输出参数下，待优化参数 2 范数的变化量
+																										// info[4]，mu/max[J^T J]_ii at estimated p，tau (mu/max(Aii))
+																										// info[5]，# iterations，					总迭代次数
+																										// info[6]，reason for terminating，		迭代结束原因：
+																																				// 1. 目标函数对优化参数导数太小
+																																				// 2. 改正量，即优化参数变化太小
+																																				// 3. 达到最大迭代次数
+																																				// 4. 残差相对变化太小
+																																				// 5. 残差太小
+																																				// 6. stopped due to excessive failed attempts to increase damping for getting a positive
+																																				//	  definite normal equations matrix. Typically, this indicates a programming error in the
+																																				//    user-supplied Jacobian.
+																																				// 7. stopped due to infinite values in the coordinates of the set of predicted projections.
+																																				//    This signals a programming error in the user-supplied projection function func.
+																										// info[7]，# function evaluations，		目标函数调用次数
+																										// info[8]，# jacobian evaluations，		Jacobian 矩阵估计次数
+																										// info[9]，# number of linear systems solved，求解线性方程组的个数
+														  )
+{
+	// 首先可以肯定的是输入的标志点的空间坐标肯定都是有效的，即肯定是有 2 以上视图观测到了
+	// 并同名像点之间匹配上了，最后通过多目前方交会出来的，因此参与平差的标志点个数就是数组 pts 的长度
+	int n = map_pointcloud.size();
+
+	// 而至于参与平差的视图数目就不一定了，能参与平差的视图肯定是外参数已经标定出初值的视图
+	// 能通过标志点后方交会得到视图外参数初值就说明视图至少是能观测到 3 个空间坐标已知的标志点
+	// 而空间坐标已知的标志点肯定都包含在 pts 中，因此不用再去判断有外参初值的视图是否能至少观测到
+	// 3 个 pts 中的点了，因为有外参数初值本身就说明满足了该条件
+	vector<int> vIdxCams;	// 用来存放参与光束法平差的视图在数组 cams 中的索引
+	vector<Matx33d> Ks;
+	vector<Matx33d> Rs;
+	vector<Matx31d> ts;
+	vector<Matx<double, 5, 1>> dists;
+	vector<int> distTypes;
+
+	// 这样做是为了保证参考图排在第一位
+	cam_data & cam_ref = cams[idx_refimg];
+	vIdxCams.push_back(idx_refimg);
+	Ks.push_back(cam_ref.m_K);
+	Rs.push_back(cam_ref.m_R);
+	ts.push_back(cam_ref.m_t);
+	dists.push_back(cam_ref.m_dist);
+	distTypes.push_back(cam_ref.dist_type);
+
+	for (int i = 0; i < cams.size(); ++i)
+	{
+		if (!cams[i].m_bOriented || i == idx_refimg)
+		{
+			continue;
+		}
+
+		cam_data & cam = cams[i];
+		vIdxCams.push_back(i);
+		Ks.push_back(cam.m_K);
+		Rs.push_back(cam.m_R);
+		ts.push_back(cam.m_t);
+		dists.push_back(cam.m_dist);
+		distTypes.push_back(cam.dist_type);
+	}
+
+	int m = Ks.size();  // 参与光束法平差的视图数目
+
+	vector<Point3d> XYZs;
+
+	// 20200607，n行m列的稀疏矩阵，用于存储各点于各图像上的可见性，其实不单单是可见性，其元素值其实为每个像点在像点坐标向量中的序号
+	int sizes[] = { n, m };
+	SparseMat ptrMat(2, sizes, CV_32SC1);
+
+	// 按可视矩阵按行扫描扫得的各像点坐标
+	vector<Point2d> vImgPts_vmask;
+
+	int i_tmp = 0;
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
+	{
+		const int & trackID = iter_objpt->first;
+
+		XYZs.push_back(iter_objpt->second.m_pt);
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+		const SfM_ZZK::trackWithFlags & one_track = iter_found_track->second;
+
+		for (int j = 0; j < m; ++j)
+		{
+			int idxcam = vIdxCams[j];
+
+			auto iter_found_img = one_track.find(idxcam);
+
+			if (iter_found_img == one_track.end())
+			{
+				// 在该 track 中没有找到指定已完成定向的观测图像
+				continue;
+			}
+
+			// 找到了指定图像
+			Point2d imgpt;
+			imgpt.x = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.x;
+			imgpt.y = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.y;
+			vImgPts_vmask.push_back(imgpt);
+
+			ptrMat.ref<int>(i_tmp, j) = vImgPts_vmask.size() - 1;
+		}
+
+		++i_tmp;
+	}
+
+	int l = vImgPts_vmask.size(); // 所有观测像点的个数
+
+	// j_fixed 和 i_fixed 向量分别存放图像和空间点是否固定的情况
+	// j_fixed[j]=1表示图 j 的参数不参与平差调整，i_fixed[i]=1 表示点 i 的坐标不参与平差调整
+	vector<uchar> j_fixed(m), i_fixed(n);
+	j_fixed[0] = 1;
+
+	// covInv 存放每个观测像点的不确定度（协方差矩阵）的逆矩阵，其实也就是每个观测像点的权值矩阵
+	Matx22d cov;
+	cov(0, 0) = cov(1, 1) = 1;
+	vector<Matx22d> covInvs;
+	for (int k = 0; k < l; ++k)
+	{
+		covInvs.push_back(cov);
+	}
+
+	double tau  = opts[0];
+	double eps1 = opts[1];	// input:	threshold
+	double eps2 = opts[2];	// input:	threshold
+
+	vector<double> vds(l);
+
+	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
+
+	// 20220202，给出参数估计的协方差阵，也就是不确定度，或者内符合精度 /////////////////////////////////////////////////////////////////////////////////////////////
+	vector<Matx<double, 6, 6>> cov_a;		// m个图像独有参数的协方差阵
+	vector<Matx<double, 3, 3>> cov_b;		// n个空间点的坐标的协方差阵
+
+	derivatives::covarianceSBA_wj_cj_XiYiZi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, cov_a, cov_b);
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// 下面还要将优化完的参数和点坐标全部赋回去
+	double sum2_sigmaOptCtr = 0;
+
+	for (int i = 0; i < m; ++i)
+	{
+		int idxcam = vIdxCams[i];
+
+		cam_data & cam = cams[idxcam];
+
+		cam.m_R = Rs[i];
+		cam.m_t = ts[i];
+
+		// 20200712，把光心位置协方差矩阵取出来 ///////////////////////////////////////////
+		const Matx<double, 6, 6> & cov_img = cov_a[i];
+
+		Matx33d cov_optctr;
+
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			int iiplus3 = ii + 3;
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cov_optctr(ii, jj) = cov_img(iiplus3, jj + 3);
+			}
+		}
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		//	@param eigenvalues output vector of eigenvalues of the same type as src; the eigenvalues are stored in the descending order.
+		//	@param eigenvectors output matrix of eigenvectors; it has the same size and type as src;
+		//	the eigenvectors are stored as subsequent matrix rows, in the same order as the corresponding eigenvalues.
+		cv::eigen(cov_optctr, eigenVals, eigenVecs);
+		cv::Scalar sum2 = cv::sum(eigenVals);
+
+		sum2_sigmaOptCtr += sum2.val[0];
+
+		// 输出光心位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cam.m_optCtrUncertEllipsoid(ii, jj) = vec(jj);
+			}
+		}
+	}
+
+	double rms_sigmaOptCtr = std::sqrt(sum2_sigmaOptCtr / (m - 1));
+
+	// 用固定阈值来判断内外点
+	double sigma3 = tc;
+//	double sum2_sigmaObjPt = 0;
+
+	typedef std::pair<int, double> pair_nObsv_ang;
+	typedef std::pair<double, pair_nObsv_ang> pair_rltUctt_nObsv_ang;
+
+	vector<pair_rltUctt_nObsv_ang> vData; // 20200715，存储每个物点的平均相对不确定度大小，及其有效被观测次数
+
+	i_tmp = 0;
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
+	{
+		Point3d XYZ = XYZs[i_tmp];
+
+		iter_objpt->second.m_pt = XYZ;
+
+		// 20200712，把当前物点的协方差阵取出来 ///////////////////////////////////////
+		const Matx33d & cov_objpt = cov_b[i_tmp];
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		cv::eigen(cov_objpt, eigenVals, eigenVecs);
+
+		cv::Scalar sum2 = cv::sum(eigenVals);
+		double sum2_all = sum2.val[0];
+
+//		sum2_sigmaObjPt += sum2_all;
+
+		double rms_sigma = std::sqrt(sum2_all); // sigma = sqrt(sigma1^2 + sigma2^2 + sigma3^2)
+
+		// 输出物点位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				iter_objpt->second.m_uncertaintyEllipsoid(ii, jj) = vec(jj);
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////////
+
+		auto iter_found_track = map_tracks.find(iter_objpt->first);
+
+		Matx31d mXYZ;
+		mXYZ(0) = XYZ.x;
+		mXYZ(1) = XYZ.y;
+		mXYZ(2) = XYZ.z;
+
+		int nValid = 0; // 当前有多少个合理的观测值
+		double sum_d = 0;
+
+		vector<Matx31d> vVecObsers;
+
+		for (int j = 0; j < m; ++j)
+		{
+			const int * ptr = ptrMat.find<int>(i_tmp, j);
+
+			if (NULL == ptr)
+			{
+				// 如果 ptr == NULL，说明像点 xij 不存在
+				continue;
+			}
+
+			int idx_cam = vIdxCams[j];
+			double rpjerr = vds[*ptr];
+
+			auto iter_found_img = iter_found_track->second.find(idx_cam);
+
+			if (rpjerr < sigma3)
+			{
+				// 20151227，重投影残差足够小还不行，还得位于该图像正前方，否则该图像依然会被判为外点
+				const Matx33d & R = Rs[j];
+				const Matx31d & t = ts[j];
+
+				Matx31d mXYZ_C = R*mXYZ + t;
+
+				if (mXYZ_C(2) <= 0)
+				{
+					iter_found_img->second.second[0] = 0; // 物点位于图像后方
+				}
+				else
+				{
+					iter_found_img->second.second[0] = 1; // 物点位于图像前方
+
+					// 20200716，记录下当前图像对物点的观测方向（在世界系中给出）
+					Matx31d C = -R.t()*t;
+					Matx31d vecObser = mXYZ - C;
+					vVecObsers.push_back(vecObser);
+
+					// 有效时，算下观测距离
+					double d = cv::norm(mXYZ_C, cv::NormTypes::NORM_L2);
+
+					sum_d += d;
+
+					++nValid;
+				}
+			}
+			else
+			{
+				iter_found_img->second.second[0] = 0;
+			}
+		}
+
+		if (nValid >= 1) // 至少得有 1 个有效观测就可以算相对不确定度了
+		{
+			double rltUctt_overall = nValid*rms_sigma / sum_d;
+
+			double maxAng = maxAngleBetween3DVecs(vVecObsers);
+
+			vData.push_back(std::make_pair(rltUctt_overall, std::make_pair(nValid, maxAng)));
+
+			iter_objpt->second.m_rltUctt = rltUctt_overall; // 输出
+		}
+
+		++i_tmp;
+	}
+
+	// 相对不确定度中值
+	int nnn = vData.size();
+	int idx_median = 0.5*nnn;
+	std::sort(vData.begin(), vData.end(), [](const pair_rltUctt_nObsv_ang & a, const pair_rltUctt_nObsv_ang & b) {return a.first < b.first; });
+	rltUctt_output = vData[idx_median].first;
+
+	return l;
+}
+
 // 20200607，采用迭代重加权最小二乘 IRLS 机制同时优化 f,XYZW,R,t
 // 返回所有重投影像点个数
 int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
@@ -1237,7 +1572,7 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 	vector<Matx33d> Ks;
 	vector<Matx33d> Rs;
 	vector<Matx31d> ts;
-	vector<Matx<double,5,1>> dists;
+	vector<Matx<double, 5, 1>> dists;
 	vector<int> distTypes;
 
 	// 这样做是为了保证参考图排在第一位
@@ -1293,7 +1628,7 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 
 			auto iter_found_img = one_track.find(idxcam);
 
-			if (iter_found_img==one_track.end())
+			if (iter_found_img == one_track.end())
 			{
 				// 在该 track 中没有找到指定已完成定向的观测图像
 				continue;
@@ -1418,7 +1753,7 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 //	vector<double> vRltUctt; // 20200715，存储每个物点的平均相对不确定度大小
 	vector<pair_rltUctt_nObsv_ang> vData; // 20200715，存储每个物点的平均相对不确定度大小，及其有效被观测次数
 
-	i_tmp=0;
+	i_tmp = 0;
 	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
 	{
 		Point3d XYZ = XYZs[i_tmp];
@@ -1525,6 +1860,371 @@ int DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud &
 			iter_objpt->second.m_rltUctt = rltUctt_overall; // 输出
 		}
 		
+		++i_tmp;
+	}
+
+	// 相对不确定度中值
+	int nnn = vData.size();
+	int idx_median = 0.5*nnn;
+	std::sort(vData.begin(), vData.end(), [](const pair_rltUctt_nObsv_ang & a, const pair_rltUctt_nObsv_ang & b) {return a.first < b.first; });
+	rltUctt_output = vData[idx_median].first;
+
+// 	// 相对不确定度均值
+// 	double uctt_mean = std::accumulate(vRltUcttnObsv.begin(), vRltUcttnObsv.end(), 0.0,
+// 		[](const double & a, const pair_rltUctt_nObsv & b) {return a + b.first; }) / nnn;
+// 
+// 	// 相对不确定度的RMS
+// 	double sum2_rltUctt = std::accumulate(vRltUctt.begin(), vRltUctt.end(), 0.0, [](const double & a, const double & b) {return a + b*b; });
+// 
+// 	double uctt_rms = std::sqrt(sum2_rltUctt / nnn);
+// 
+// 	// 这是用的每个物点的绝对不确定度的综合RMS，没有排除尺度的影响
+// 	double rms_sigmaObjPt = std::sqrt(sum2_sigmaObjPt / n);
+
+	return l;
+}
+
+// 20200607，采用迭代重加权最小二乘 IRLS 机制同时优化 f,XYZW,R,t
+// 返回所有重投影像点个数
+// 20220202，采用新数据结构 MultiTracksWithFlags
+int  DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_pointcloud,	// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+															vector<cam_data> & cams,				// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+															SfM_ZZK::MultiTracksWithFlags & map_tracks,	// 输入：所有的特征轨迹
+															double & rltUctt_output,				// 输出：所有物点的综合相对不确定度水平（1倍sigma）
+															double & uctt_f,						// 输出：图像共有等效焦距的不确定度（1倍sigma）
+															int idx_refimg,							// input:	the reference image, whose R=I, and t =[0,0,0]'
+															double tc /*= 1.5*/,					// input:	用来计算 Huber 权重的常量
+															int itermax /*= 1024*/,					// 输入：最大迭代次数
+															double * opts /*= NULL*/,				// 输入：总共 5 个控制参数，如果为 NULL，则采用默认参数
+																									// opts[0]，\mu，							levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
+																									// opts[1]，||J^T e||_inf，					当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
+																									// opts[2]，||dp||_2，						当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+																									// opts[3]，||e||_2，						当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
+																									// opts[4]，(||e||_2-||e_new||_2)/||e||_2，	当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
+															double * info /*= NULL*/				// 输出：总共 10 个过程输出量，如果不需要输出，则置为 NULL
+																									// info[0]，||e||_2 at initial p，			在初始参数下的残差值，写的误差矢量的 2 范数，其实应该是误差矢量的 2 范数的平方
+																									// info[1]，||e||_2 at estimated p，		在最终输出参数下的残差值，同样应该是误差矢量的 2 范数的平方
+																									// info[2]，||J^T e||_inf at estimated p，	在最终输出参数下的目标函数对各待优化参数的最大导数
+																									// info[3]，||dp||_2 at estimated p，		在最终输出参数下，待优化参数 2 范数的变化量
+																									// info[4]，mu/max[J^T J]_ii at estimated p，tau (mu/max(Aii))
+																									// info[5]，# iterations，					总迭代次数
+																									// info[6]，reason for terminating，		迭代结束原因：
+																																			// 1. 目标函数对优化参数导数太小
+																																			// 2. 改正量，即优化参数变化太小
+																																			// 3. 达到最大迭代次数
+																																			// 4. 残差相对变化太小
+																																			// 5. 残差太小
+																																			// 6. stopped due to excessive failed attempts to increase damping for getting a positive
+																																			//	  definite normal equations matrix. Typically, this indicates a programming error in the
+																																			//    user-supplied Jacobian.
+																																			// 7. stopped due to infinite values in the coordinates of the set of predicted projections.
+																																			//    This signals a programming error in the user-supplied projection function func.
+																									// info[7]，# function evaluations，		目标函数调用次数
+																									// info[8]，# jacobian evaluations，		Jacobian 矩阵估计次数
+																									// info[9]，# number of linear systems solved，求解线性方程组的个数
+												  )
+{
+	// 首先可以肯定的是输入的标志点的空间坐标肯定都是有效的，即肯定是有 2 以上视图观测到了
+	// 并同名像点之间匹配上了，最后通过多目前方交会出来的，因此参与平差的标志点个数就是数组 pts 的长度
+	int n = map_pointcloud.size();
+
+	// 而至于参与平差的视图数目就不一定了，能参与平差的视图肯定是外参数已经标定出初值的视图
+	// 能通过标志点后方交会得到视图外参数初值就说明视图至少是能观测到 3 个空间坐标已知的标志点
+	// 而空间坐标已知的标志点肯定都包含在 pts 中，因此不用再去判断有外参初值的视图是否能至少观测到
+	// 3 个 pts 中的点了，因为有外参数初值本身就说明满足了该条件
+	vector<int> vIdxCams;	// 用来存放参与光束法平差的视图在数组 cams 中的索引
+	vector<Matx33d> Ks;
+	vector<Matx33d> Rs;
+	vector<Matx31d> ts;
+	vector<Matx<double, 5, 1>> dists;
+	vector<int> distTypes;
+
+	// 这样做是为了保证参考图排在第一位
+	cam_data & cam_ref = cams[idx_refimg];
+	vIdxCams.push_back(idx_refimg);
+	Ks.push_back(cam_ref.m_K);
+	Rs.push_back(cam_ref.m_R);
+	ts.push_back(cam_ref.m_t);
+	dists.push_back(cam_ref.m_dist);
+	distTypes.push_back(cam_ref.dist_type);
+
+	for (int i = 0; i < cams.size(); ++i)
+	{
+		if (!cams[i].m_bOriented || i == idx_refimg)
+		{
+			continue;
+		}
+
+		cam_data & cam = cams[i];
+		vIdxCams.push_back(i);
+		Ks.push_back(cam.m_K);
+		Rs.push_back(cam.m_R);
+		ts.push_back(cam.m_t);
+		dists.push_back(cam.m_dist);
+		distTypes.push_back(cam.dist_type);
+	}
+
+	int m = Ks.size();  // 参与光束法平差的视图数目
+
+	vector<Point3d> XYZs;
+
+	// 20200607，n行m列的稀疏矩阵，用于存储各点于各图像上的可见性，其实不单单是可见性，其元素值其实为每个像点在像点坐标向量中的序号
+	int sizes[] = { n, m };
+	SparseMat ptrMat(2, sizes, CV_32SC1);
+
+	// 按可视矩阵按行扫描扫得的各像点坐标
+	vector<Point2d> vImgPts_vmask;
+
+	int i_tmp = 0;
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
+	{
+		const int & trackID = iter_objpt->first;
+
+		XYZs.push_back(iter_objpt->second.m_pt);
+
+		auto iter_found_track = map_tracks.find(trackID);
+
+//		const SfM_ZZK::OneTrack & one_track = iter_found_track->second;
+		const SfM_ZZK::trackWithFlags & one_track = iter_found_track->second;
+
+		for (int j = 0; j < m; ++j)
+		{
+			int idxcam = vIdxCams[j];
+
+			auto iter_found_img = one_track.find(idxcam);
+
+			if (iter_found_img == one_track.end())
+			{
+				// 在该 track 中没有找到指定已完成定向的观测图像
+				continue;
+			}
+
+			// 找到了指定图像
+			Point2d imgpt;
+			imgpt.x = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.x;
+			imgpt.y = cams[idxcam].m_feats.key_points[iter_found_img->second.first].pt.y;
+			vImgPts_vmask.push_back(imgpt);
+
+			ptrMat.ref<int>(i_tmp, j) = vImgPts_vmask.size() - 1;
+		}
+
+		++i_tmp;
+	}
+
+	int l = vImgPts_vmask.size(); // 所有观测像点的个数
+
+	// j_fixed 和 i_fixed 向量分别存放图像和空间点是否固定的情况
+	// j_fixed[j]=1表示图 j 的参数不参与平差调整，i_fixed[i]=1 表示点 i 的坐标不参与平差调整
+	// 20200607 内外参数应该有别，共有参数一般为内参数，不怎么存在参数固定不优化的情形
+	// 20200607 22:30，真正跟到计算Jacobian的函数中看，就知道j_fixed只对每幅图像独有的A类参数起作用
+	// 即约束Aij是否为空，图像共有参数是C类参数，对应的Jacobian是Cij。
+	vector<uchar> j_fixed(m), i_fixed(n);
+	j_fixed[0] = 1;
+
+	// covInv 存放每个观测像点的不确定度（协方差矩阵）的逆矩阵，其实也就是每个观测像点的权值矩阵
+	Matx22d cov;
+	cov(0, 0) = cov(1, 1) = 1;
+	vector<Matx22d> covInvs;
+	for (int k = 0; k < l; ++k)
+	{
+		covInvs.push_back(cov);
+	}
+
+	double tau = opts[0];
+	double eps1 = opts[1];	// input:	threshold
+	double eps2 = opts[2];	// input:	threshold
+
+	vector<double> vds(l);
+
+	SBA_ZZK::optim_sparse_lm_f_wj_tj_XiYiZiWi_IRLS_Huber(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, vds, tc, info, tau, itermax, eps1, eps2);
+
+	// 20200709，给出参数估计的协方差阵，也就是不确定度，或者内符合精度 /////////////////////////////////////////////////////////////////////////////////////////////
+	vector<Matx<double, 6, 6>> cov_a;		// m个图像独有参数的协方差阵
+	vector<Matx<double, 3, 3>> cov_b;		// n个空间点的坐标的协方差阵
+	Matx<double, 1, 1> cov_c;				// 共参数的协方差阵
+	vector<Matx<double, 1, 6>> cov_ca;		// 图像共参数和各图像独有参数之间的协方差阵
+
+	derivatives::covarianceSBA_f_wj_cj_XiYiZi(XYZs, Ks, Rs, ts, dists, distTypes, vImgPts_vmask, covInvs, j_fixed, i_fixed, ptrMat, cov_a, cov_b, cov_c, cov_ca);
+
+	uctt_f = std::sqrt(cov_c(0));
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// 下面还要将优化完的参数和点坐标全部赋回去
+	double sum2_sigmaOptCtr = 0;
+
+	for (int i = 0; i < m; ++i)
+	{
+		int idxcam = vIdxCams[i];
+
+		cam_data & cam = cams[idxcam];
+
+		cam.m_K = Ks[i]; // 20200607,也更新内参数，因为等效焦距 f 也得到了优化
+		cam.fx = cam.m_K(0, 0);
+		cam.fy = cam.m_K(1, 1);
+		cam.cx = cam.m_K(0, 2);
+		cam.cy = cam.m_K(1, 2);
+		cam.s = cam.m_K(0, 1);
+
+		cam.m_R = Rs[i];
+		cam.m_t = ts[i];
+
+		// 20200712，把光心位置协方差矩阵取出来 ///////////////////////////////////////////
+		const Matx<double, 6, 6> & cov_img = cov_a[i];
+
+		Matx33d cov_optctr;
+
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			int iiplus3 = ii + 3;
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cov_optctr(ii, jj) = cov_img(iiplus3, jj + 3);
+			}
+		}
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		//	@param eigenvalues output vector of eigenvalues of the same type as src; the eigenvalues are stored in the descending order.
+		//	@param eigenvectors output matrix of eigenvectors; it has the same size and type as src;
+		//	the eigenvectors are stored as subsequent matrix rows, in the same order as the corresponding eigenvalues.
+		cv::eigen(cov_optctr, eigenVals, eigenVecs);
+		cv::Scalar sum2 = cv::sum(eigenVals);
+
+		sum2_sigmaOptCtr += sum2.val[0];
+
+		// 输出光心位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				cam.m_optCtrUncertEllipsoid(ii, jj) = vec(jj);
+			}
+		}
+	}
+
+	double rms_sigmaOptCtr = std::sqrt(sum2_sigmaOptCtr / (m - 1));
+
+	// 用固定阈值来判断内外点
+	double sigma3 = tc;
+//	double sum2_sigmaObjPt = 0;
+
+	typedef std::pair<int, double> pair_nObsv_ang;
+	typedef std::pair<double, pair_nObsv_ang> pair_rltUctt_nObsv_ang;
+
+//	vector<double> vRltUctt; // 20200715，存储每个物点的平均相对不确定度大小
+	vector<pair_rltUctt_nObsv_ang> vData; // 20200715，存储每个物点的平均相对不确定度大小，及其有效被观测次数
+
+	i_tmp = 0;
+	for (auto iter_objpt = map_pointcloud.begin(); iter_objpt != map_pointcloud.end(); ++iter_objpt)
+	{
+		Point3d XYZ = XYZs[i_tmp];
+
+		iter_objpt->second.m_pt = XYZ;
+
+		// 20200712，把当前物点的协方差阵取出来 ///////////////////////////////////////
+		const Matx33d & cov_objpt = cov_b[i_tmp];
+
+		Matx31d eigenVals;
+		Matx33d eigenVecs;
+
+		cv::eigen(cov_objpt, eigenVals, eigenVecs);
+
+		cv::Scalar sum2 = cv::sum(eigenVals);
+		double sum2_all = sum2.val[0];
+
+//		sum2_sigmaObjPt += sum2_all;
+
+		double rms_sigma = std::sqrt(sum2_all); // sigma = sqrt(sigma1^2 + sigma2^2 + sigma3^2)
+
+		// 输出物点位置的不确定度椭球，方便三维可视化
+		for (int ii = 0; ii < 3; ++ii)
+		{
+			Matx13d vec = std::sqrt(eigenVals(ii))*eigenVecs.row(ii);
+
+			for (int jj = 0; jj < 3; ++jj)
+			{
+				iter_objpt->second.m_uncertaintyEllipsoid(ii, jj) = vec(jj);
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////////		
+
+		auto iter_found_track = map_tracks.find(iter_objpt->first);
+
+		Matx31d mXYZ;
+		mXYZ(0) = XYZ.x;
+		mXYZ(1) = XYZ.y;
+		mXYZ(2) = XYZ.z;
+
+		int nValid = 0; // 当前有多少个合理的观测值
+		double sum_d = 0;
+
+		vector<Matx31d> vVecObsers;
+
+		for (int j = 0; j < m; ++j)
+		{
+			const int * ptr = ptrMat.find<int>(i_tmp, j);
+
+			if (NULL == ptr)
+			{
+				// 如果 ptr == NULL，说明像点 xij 不存在
+				continue;
+			}
+
+			int idx_cam = vIdxCams[j];
+			double rpjerr = vds[*ptr];
+
+			auto iter_found_img = iter_found_track->second.find(idx_cam);
+
+			if (rpjerr < sigma3)
+			{
+				// 20151227，重投影残差足够小还不行，还得位于该图像正前方，否则该图像依然会被判为外点
+				const Matx33d & R = Rs[j];
+				const Matx31d & t = ts[j];
+
+				Matx31d mXYZ_C = R*mXYZ + t;
+
+				if (mXYZ_C(2) <= 0)
+				{
+					iter_found_img->second.second[0] = 0; // 物点位于图像后方
+				}
+				else
+				{
+					iter_found_img->second.second[0] = 1; // 物点位于图像前方
+
+					// 20200716，记录下当前图像对物点的观测方向（在世界系中给出）
+					Matx31d C = -R.t()*t;
+					Matx31d vecObser = mXYZ - C;
+					vVecObsers.push_back(vecObser);
+
+					// 有效时，算下观测距离
+					double d = cv::norm(mXYZ_C, cv::NormTypes::NORM_L2);
+
+					sum_d += d;
+
+					++nValid;
+				}
+			}
+			else
+			{
+				iter_found_img->second.second[0] = 0;
+			}
+		}
+
+		if (nValid >= 1) // 至少得有 1 个有效观测就可以算相对不确定度了
+		{
+			double rltUctt_overall = nValid*rms_sigma / sum_d;
+
+			double maxAng = maxAngleBetween3DVecs(vVecObsers);
+
+			vData.push_back(std::make_pair(rltUctt_overall, std::make_pair(nValid, maxAng)));
+
+			iter_objpt->second.m_rltUctt = rltUctt_overall; // 输出
+		}
+
 		++i_tmp;
 	}
 

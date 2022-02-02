@@ -13017,6 +13017,294 @@ void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:
 	}
 }
 
+
+// 20151108，新加入一幅图像后，要前方交会新的点
+// 20220202，采用新结构MultiTracksWithFlags
+void SfM_ZZK::Triangulation_AddOneImg(PointCloud & map_pointcloud,				// output:	点云
+									  const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
+									  const MultiTracksWithFlags & map_tracks,	// input:	所有的特征轨迹
+									  int idx_newImg,							// input:	新完成定向图像的索引号
+									  double thresh_inlier /*= 1.5*/			// input:	用来判断内点的重投影残差阈值
+									  )
+{
+	// 统计有哪些需要进行前方交会的特征轨迹
+	typedef std::pair<Point3d, std::pair<int, double>> pair_XYZ_n_e; // <XYZi, ni, ei> 分别存储候选物点的坐标、内点个数和重投影残差
+	typedef std::vector<pair_XYZ_n_e> vec_wrdpt_candidate;
+	// 这里是统计的需要进行前方交会的特征轨迹
+	std::map<int, std::vector<pair_XYZ_n_e>> map_tracks_need_triang; // <ID, <XYZ1, n1, e1>, <XYZ2, n2, e2>, ...>
+
+	// 1. 考察每一条特征轨迹，统计有哪些特征轨迹需要进行前方交会
+	for (auto iter_track = map_tracks.begin(); iter_track != map_tracks.end(); ++iter_track)
+	{
+		const int & trackID = iter_track->first;
+
+		// 先看当前特征轨迹中包不包含新加入图像中的特征点
+		auto iter_found_newImgPt = iter_track->second.find(idx_newImg);
+		if (iter_found_newImgPt == iter_track->second.end())
+		{
+			// 说明当前考察的特征轨迹中不包含新加入图像中的特征点
+			continue;
+		}
+
+		// 在包含当前新加入图像特征点的前提下，再看该特征轨迹是否事先已被重建出来
+		auto iter_found_objpt = map_pointcloud.find(trackID);
+		if (iter_found_objpt != map_pointcloud.end())
+		{
+			// 说明已被重建出来
+			if (iter_found_newImgPt->second.second[0]) // 20220202，第一个标志位为内点标志位
+			{
+				// 且新加入图像中的特征点已被判为内点，这时什么都不用做
+				continue;
+			}
+
+			// 运行到此说明新加入图像中特征点被判为外点，这时该特征点可以申诉，和其它完成定向的图像交会，以期找到更好的物点坐标估计
+			// 且其已经有一个候选物点坐标估计了
+			vec_wrdpt_candidate vec_candidates;
+			vec_candidates.push_back(make_pair(iter_found_objpt->second.m_pt, make_pair(0, 0)));
+			map_tracks_need_triang.insert(make_pair(trackID, vec_candidates));
+		}
+		else
+		{
+			// 说明还未被重建出来，需要进行前方交会
+			// 且目前没有任何已有的候选物点坐标估计
+			vec_wrdpt_candidate vec_candidates;
+			map_tracks_need_triang.insert(make_pair(trackID, vec_candidates));
+		}
+	}
+
+	// 新加入图像的参数
+	const cam_data & cam = cams[idx_newImg];
+	const Matx33d & mK = cam.m_K;
+	const Matx33d & mR = cam.m_R;
+	const Matx31d & mt = cam.m_t;
+
+	// 2. 利用新加入的图像和每一幅已定向好的图像实施前方交会
+	for (int i = 0; i < cams.size(); ++i)
+	{
+		const cam_data & cam_other = cams[i];
+
+		if (!cam_other.m_bOriented || i == idx_newImg)
+		{
+			// 该图像没有定向好
+			continue;
+		}
+
+		// 第 i 幅图像的参数
+		const Matx33d & mK_other = cam_other.m_K;
+		const Matx33d & mR_other = cam_other.m_R;
+		const Matx31d & mt_other = cam_other.m_t;
+
+		vector<int> trackIDs;
+		vector<Point2d> imgpts;
+		vector<Point2d> imgpts_other;
+
+		// 遍历每个需要进行前方交会的特征轨迹，看哪些特征轨迹同时被第 i 幅图和新加入的图像观测到
+		for (auto iter_track_need_triang = map_tracks_need_triang.begin(); iter_track_need_triang != map_tracks_need_triang.end(); ++iter_track_need_triang)
+		{
+			const int & trackID = iter_track_need_triang->first;
+
+			auto iter_track = map_tracks.find(trackID);
+
+			auto iter_found_imgi = iter_track->second.find(i);
+
+			if (iter_found_imgi == iter_track->second.end())
+			{
+				// 于第 i 幅中没被找到
+				continue;
+			}
+
+			auto iter_found_newImg = iter_track->second.find(idx_newImg);
+
+			// 记录两幅图上的像点坐标
+			Point2d imgpt, imgpt_other;
+
+			imgpt.x = cam.m_feats.key_points[iter_found_newImg->second.first].pt.x;
+			imgpt.y = cam.m_feats.key_points[iter_found_newImg->second.first].pt.y;
+
+			imgpt_other.x = cam_other.m_feats.key_points[iter_found_imgi->second.first].pt.x;
+			imgpt_other.y = cam_other.m_feats.key_points[iter_found_imgi->second.first].pt.y;
+
+			trackIDs.push_back(trackID);
+			imgpts.push_back(imgpt);
+			imgpts_other.push_back(imgpt_other);
+		}
+
+		// 20151125, 有可能两图之间没有任何需要进行交会的点，这时直接continue
+		if (imgpts.size() < 1)
+		{
+			continue;
+		}
+
+		// 执行最优双目前方交会
+		vector<Point3d> wrdpts;
+		vector<Point2d> errs;
+		double rpj_err;
+		try
+		{
+			rpj_err = Triangulate_Optimal(imgpts_other, mK_other, mR_other, mt_other, imgpts, mK, mR, mt, wrdpts, errs);
+		}
+		catch (cv::Exception & e)
+		{
+			CString str;
+			str = e.msg.c_str();
+			str += "	error happened in Triangulate_Optimal";
+			AfxMessageBox(str);
+		}
+
+		for (int j = 0; j < wrdpts.size(); ++j)
+		{
+			const Point3d & pt3d = wrdpts[j];
+
+			if (errs[j].x >= thresh_inlier || errs[j].y >= thresh_inlier)
+			{
+				continue;
+			}
+
+			// 20151224，交会出来的物点坐标必须得是位于参与交会的两幅图前面，否则就不合理了，不采纳其为一候选物点坐标
+			Matx31d XYZ;
+			XYZ(0) = pt3d.x;
+			XYZ(1) = pt3d.y;
+			XYZ(2) = pt3d.z;
+
+			Matx31d XYZ_0 = mR*XYZ + mt;
+			Matx31d XYZ_1 = mR_other*XYZ + mt_other;
+
+			if (XYZ_0(2) <= 0 || XYZ_1(2) <= 0)
+			{
+				// 说明至少有一幅图像是位于该重建物点的前面了
+				continue;
+			}
+
+			// 录入一个有效的物点坐标
+			pair_XYZ_n_e XYZ_n_e = make_pair(pt3d/*wrdpts[j]*/, make_pair(0, 0));
+
+			auto iter_found_track_need_triang = map_tracks_need_triang.find(trackIDs[j]);
+			iter_found_track_need_triang->second.push_back(XYZ_n_e);
+		}
+	}
+
+	// 3. 对进行前方交会的所有特征轨迹的候选物点坐标进行评价，优先看内点集的大小，在内点集大小相同的情况下选择综合重投影残差最小的那个物点坐标输出
+	for (auto iter_track_need_triang = map_tracks_need_triang.begin(); iter_track_need_triang != map_tracks_need_triang.end(); ++iter_track_need_triang)
+	{
+		const int & trackID = iter_track_need_triang->first;
+
+		auto iter_track = map_tracks.find(trackID);
+
+		vector<pair_XYZ_n_e> & vec_XYZ_n_e = iter_track_need_triang->second;
+
+		// 如果连一个候选的物点坐标估计都没有的话就直接继续下一个
+		if (vec_XYZ_n_e.size() < 1)
+		{
+			continue;
+		}
+
+		// 考察评估每个候选物点估计
+		for (auto iter_one_candidate = vec_XYZ_n_e.begin(); iter_one_candidate != vec_XYZ_n_e.end(); ++iter_one_candidate)
+		{
+			const Point3d & wrdpt = iter_one_candidate->first;
+
+			Matx31d XYZ;
+			XYZ(0) = wrdpt.x;
+			XYZ(1) = wrdpt.y;
+			XYZ(2) = wrdpt.z;
+
+			int n_inliers = 0;
+			double sum_inliers_d2 = 0;
+
+			for (auto iter_oneimgpt = iter_track->second.begin(); iter_oneimgpt != iter_track->second.end(); ++iter_oneimgpt)
+			{
+				const int & I = iter_oneimgpt->first;
+				const int & i = iter_oneimgpt->second.first;
+
+				const cam_data & camI = cams[I];
+
+				if (!camI.m_bOriented)
+				{
+					// 没完成定向的图像就不做重投影
+					continue;
+				}
+
+				// 取出观测量
+				Point2d imgpt;
+				imgpt.x = camI.m_feats.key_points[i].pt.x;
+				imgpt.y = camI.m_feats.key_points[i].pt.y;
+
+				// 物点重投影
+				Matx31d xyz, XYZ_C;
+				try
+				{
+					XYZ_C = camI.m_R*XYZ + camI.m_t;
+					xyz = camI.m_K*XYZ_C;
+				}
+				catch (cv::Exception & e)
+				{
+					CString str;
+					str = e.msg.c_str();
+					str += "	error happened in compute projection";
+					AfxMessageBox(str);
+				}
+				xyz(0) /= xyz(2);
+				xyz(1) /= xyz(2);
+
+				double dx = xyz(0) - imgpt.x;
+				double dy = xyz(1) - imgpt.y;
+				double d = sqrt(dx*dx + dy*dy);
+
+				// 20151227，除了满足重投影残差足够小的条件外，还得保证物点位于图像前面
+				if (d < thresh_inlier && XYZ_C(2)>0)
+				{
+					++iter_one_candidate->second.first;
+					sum_inliers_d2 += d*d;
+					++n_inliers;
+				}
+			}
+
+			iter_one_candidate->second.second = sqrt(sum_inliers_d2 / n_inliers);
+		}
+
+		// 先按内点集大小从大到小排列
+		sort(vec_XYZ_n_e.begin(), vec_XYZ_n_e.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b) {return a.second.first > b.second.first; });
+
+		int n_inliers_max = vec_XYZ_n_e[0].second.first;
+
+		if (n_inliers_max < 2)
+		{
+			// 至少得有 2 个图像判为内点
+			continue;
+		}
+
+		vector<pair_XYZ_n_e> vec_XYZ_n_e_max;
+		for (int i = 0; i < vec_XYZ_n_e.size(); ++i)
+		{
+			if (vec_XYZ_n_e[i].second.first == n_inliers_max)
+			{
+				vec_XYZ_n_e_max.push_back(vec_XYZ_n_e[i]);
+			}
+		}
+
+		// 对于内点集大小相同的，再按照重投影残差从小到大排列
+		sort(vec_XYZ_n_e_max.begin(), vec_XYZ_n_e_max.end(),
+			[](const pair_XYZ_n_e & a, const pair_XYZ_n_e & b) {return a.second.second < b.second.second; });
+
+		auto iter_found_wrdpt = map_pointcloud.find(trackID);
+		if (iter_found_wrdpt != map_pointcloud.end())
+		{
+			// 如果已经存在了就直接更新坐标
+			iter_found_wrdpt->second.m_pt = vec_XYZ_n_e_max[0].first;
+		}
+		else
+		{
+			// 如果还不存在，则开辟新的
+			CloudPoint cloudpt;
+			cloudpt.m_idx = trackID;
+			cloudpt.m_pt = vec_XYZ_n_e_max[0].first;
+
+			map_pointcloud.insert(make_pair(trackID, cloudpt));
+		}
+	}
+}
+
 // 20151111，利用特征轨迹中当前所有完成定向的图做前方交会，每两两交会得到一个坐标，最终取支持集最大的坐标更新
 int SfM_ZZK::Triangulation_AllImgs(PointCloud & map_pointcloud,			// output:	点云
 								    const vector<DeepVoid::cam_data> & cams,// input:	所有图像
@@ -13271,7 +13559,7 @@ void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	输出文件路径
 	fclose(file);
 }
 
-// 20151109，输出当前点云
+// 20220201，输出当前点云
 void SfM_ZZK::OutputPointCloud(CString strFile,							// input:	输出文件路径
 							   const PointCloud & map_pointcloud,		// input:	点云
 							   const vector<DeepVoid::cam_data> & cams,	// input:	所有图像
