@@ -409,7 +409,8 @@ void DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 						double & h0, double & h1,				// 输入兼输出：最小二乘图像匹配参数
 						double & a0, double & a1, double & a2,	// 输入兼输出：最小二乘图像匹配参数
 						double & b0, double & b1, double & b2,	// 输入兼输出：最小二乘图像匹配参数
-						int IRLS /*= 0*/						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+						int IRLS /*= 0*/,						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+						double e_Huber /*= 50*/					// 输入：Huber IRLS 的阈值
 						)
 {
 	int k = 0;		// 迭代次数索引
@@ -437,9 +438,12 @@ void DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 
 	Matx<double, 8, 1> g, g_new, h;
 	Matx<double, 8, 8> JWJ;
+//	Matx<double, 1, 1> fwf;
 
-	Matx33d Wi;
-	Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = 1; // 权值矩阵默认为单位阵
+	F = 0;
+
+// 	Matx33d Wi;
+// 	Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = 1; // 权值矩阵默认为单位阵
 	
 	for (int i = 0; i < n; ++i)
 	{
@@ -455,15 +459,22 @@ void DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 
 		Matx31d fi;
 		Matx<double, 3, 8> Ji;
+		Matx33d Wi = Matx33d::eye();	// 权值矩阵默认为单位阵
 
 		derivatives::j_f_hi_ai_bi(x, y, R, G, B, img, h0, h1, a0, a1, a2, b0, b1, b2, fi, Ji);
 
 		if (IRLS == 1)
 		{
-
+			double L2fi = norm(fi);
+			double wi_Huber = derivatives::weight_Huber(L2fi, e_Huber);
+			Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = wi_Huber*wi_Huber;
 		}
 		
 		JWJ += Ji.t()*Wi*Ji;
+		g += Ji.t()*Wi*fi;
+		Matx<double, 1, 1> fiwifi = 0.5*fi.t()*Wi*fi;
+
+		F += fiwifi(0);
 	}
 }
 

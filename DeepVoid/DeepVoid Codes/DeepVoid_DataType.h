@@ -242,7 +242,8 @@ void shitshit(const vector<Point2d> & xys,				// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±
 			  double & h0, double & h1,					// ÊäÈë¼æÊä³ö£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
 			  double & a0, double & a1, double & a2,	// ÊäÈë¼æÊä³ö£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
 			  double & b0, double & b1, double & b2,	// ÊäÈë¼æÊä³ö£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
-			  int IRLS = 0								// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
+			  int IRLS = 0,								// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
+			  double e_Huber = 50						// ÊäÈë£ºHuber IRLS µÄãĞÖµ
 		      );
 
 void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
