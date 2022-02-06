@@ -22789,6 +22789,14 @@ bool DeepVoid::f_jacob_fk_drhxhyck_patchref_float_20140911(const Mat & patch_ref
 		return false;
 	}
 
+	// 20220204 //////////////////////////////////////////////////////////////
+// 	CString strInfo;
+// 	strInfo = "E:\\all\\refpatch.bmp";
+// 	imwrite(strInfo.GetBuffer(), patch_ref);
+// 	strInfo = "E:\\all\\rsmppatch.bmp";
+// 	imwrite(strInfo.GetBuffer(), mPatch_rsmp);
+	//////////////////////////////////////////////////////////////////////////
+
 	mJacob = Mat(nChannel*nValid, 4, CV_32FC1, Scalar(0));
 	mF = Mat(nChannel*nValid, 1, CV_32FC1, Scalar(0));
 

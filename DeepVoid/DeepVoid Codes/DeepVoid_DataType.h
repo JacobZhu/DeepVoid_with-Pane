@@ -236,6 +236,15 @@ bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
 					double * imgpt_y = NULL
 					);
 
+void shitshit(const vector<Point2d> & xys,				// 输入：参考图像中各参考像素的坐标
+			  const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
+			  const Mat & img,							// 输入：匹配图像
+			  double & h0, double & h1,					// 输入兼输出：最小二乘图像匹配参数
+			  double & a0, double & a1, double & a2,	// 输入兼输出：最小二乘图像匹配参数
+			  double & b0, double & b1, double & b2,	// 输入兼输出：最小二乘图像匹配参数
+			  int IRLS = 0								// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+		      );
+
 void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
 	                      int & x_new, int & y_new,	// output:	new center of rect, making sure the new rect with the same size are within border
 						  int wndSizeHalf,

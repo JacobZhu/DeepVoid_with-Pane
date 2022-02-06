@@ -403,6 +403,70 @@ bool DeepVoid::BilinearInterp(const Matx33d & mK,			// input:	the camera matrix
 	return BilinearInterp(img, img_x, img_y, r, g, b);
 }
 
+void DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考像素的坐标
+						const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
+						const Mat & img,						// 输入：匹配图像
+						double & h0, double & h1,				// 输入兼输出：最小二乘图像匹配参数
+						double & a0, double & a1, double & a2,	// 输入兼输出：最小二乘图像匹配参数
+						double & b0, double & b1, double & b2,	// 输入兼输出：最小二乘图像匹配参数
+						int IRLS /*= 0*/						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+						)
+{
+	int k = 0;		// 迭代次数索引
+	int v = 2;		// 更新 u 时需要用到的一个控制量      
+	double u;		// LM 优化算法中最关键的阻尼系数 (J'WJ + uI)h = -J'Wf
+	double r;		// gain ratio, 增益率，用来衡量近似展开式的好坏
+	double g_norm;  // 梯度的模
+	double h_norm;	// 改正量的模
+	double h_thresh;// 改正量收敛判断阈值 eps2*(norm(x)+eps2)
+	double F, F_new;// 目标函数值 0.5*ft*covInv*f 或者 0.5*f'Wf
+	double x_norm, x_norm_new; // 当前待优化参数向量的模，即2范数L2，||x||2
+	double L0_Lh;	// 泰勒展开式的函数值下降量
+
+	double ratio_1_3 = 1.0 / 3.0;
+
+	bool found = false; // 标识是否已经满足迭代收敛条件
+	int code = 2; // termination code
+
+	int n = xys.size(); // 参考窗口中的像素总个数
+
+	// Mat 结构
+// 	Mat g(12 + 3 * n, 1, CV_64FC1, Scalar(0)), g_new(12 + 3 * n, 1, CV_64FC1, Scalar(0));
+// 	Mat h(12 + 3 * n, 1, CV_64FC1, Scalar(0));
+// 	Mat tmp;
+
+	Matx<double, 8, 1> g, g_new, h;
+	Matx<double, 8, 8> JWJ;
+
+	Matx33d Wi;
+	Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = 1; // 权值矩阵默认为单位阵
+	
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2d & xy = xys[i];
+		const Vec3d & I = RGBs[i];
+
+		double x = xy.x;
+		double y = xy.y;
+
+		double R = I[0];
+		double G = I[1];
+		double B = I[2];
+
+		Matx31d fi;
+		Matx<double, 3, 8> Ji;
+
+		derivatives::j_f_hi_ai_bi(x, y, R, G, B, img, h0, h1, a0, a1, a2, b0, b1, b2, fi, Ji);
+
+		if (IRLS == 1)
+		{
+
+		}
+		
+		JWJ += Ji.t()*Wi*Ji;
+	}
+}
+
 void DeepVoid::MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
 									int & x_new, int & y_new,	// output:	new center of rect, making sure the new rect with the same size are within border
 									int wndSizeHalf,

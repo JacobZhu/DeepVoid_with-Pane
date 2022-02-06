@@ -209,6 +209,9 @@ CDeepVoidApp::CDeepVoidApp()
 	m_threshMeanAngRO = 5.0;				// RO中要用到的物点平均交会角阈值
 	m_nMinInilier = 2;						// 至少得有该个数图像观测到该点才会被输出
 	m_nMaxIter = 64;						// 最大迭代次数
+	m_bRefineImgPts = true;				// 是否优化像点坐标，默认是要进行优化
+	m_nFlagPerImgPt = 2;					// 一条特征轨迹中每个像点预设多少个标志位，一般至少 1 个标志位用于指明该像点当前是否被判定为内点
+	m_wndSizeImgptRefine = 7;				// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
 }
 
 // The one and only CDeepVoidApp object
@@ -2402,15 +2405,12 @@ UINT SfM_incremental(LPVOID param)
 //	SfM_ZZK::MultiTracks & tracks = pApp->m_mapTracks; // 20220127，在SfM环节对tracks做的修改仅在于为每个像点是否为内点的标志位赋上值
 	SfM_ZZK::MultiTracksWithFlags & tracks = pApp->m_mapTracks; // 20220202，新数据结构
 
-//	SfM_ZZK::MultiTracksWithFlags tracksNew; // 20220202
-
 	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
 	//////////////////////////////////////////////////////////////////////////
 
+	// 对所有图像对进行排序
 	vector<SfM_ZZK::pair_ij_k> pairs;
 	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracks, pairs);
-
-//	SfM_ZZK::RankImagePairs_TrackLengthSum(pairMatchInfos, tracksNew, pairs); // 20220202
 
 	CString strFile;
 	int idx_refimg;
@@ -2628,20 +2628,206 @@ UINT SfM_incremental(LPVOID param)
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	// 最后总的来一次稀疏光束法平差
-//	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(_T("Final SBA starts"));
 
+	// 完成最后一次前方交会后，物点个数就固定了，再总的来一次稀疏光束法平差 ///////
 	double info[10], rltUctt, uctt_f;
 //	int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
 	// 20200607 同时优化所有图像共有的等效焦距 f
 	int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg,
 		pApp->m_threshRpjErrInlier, pApp->m_nMaxIter, pApp->m_optsLM, info);
 
-	strInfo.Format("Final SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+	strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
 		pointCloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
 
 	theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+	//////////////////////////////////////////////////////////////////////////
 
+
+	// 20220203，进行像点坐标匹配优化（减少同名像点于不同图像间的匹配误差）///////
+	if (pApp->m_bRefineImgPts)
+	{
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("Image matching refinement starts");
+
+		typedef std::pair<int, std::pair<int, Matx31d>> pair_I_i_C; // 20220203，先定义一个下面要用到的数据结构，<I，i，C> 存储当前像点的图像索引号、像点索引号、图像光心坐标
+
+		for (auto iterObjPt = pointCloud.begin(); iterObjPt != pointCloud.end(); ++iterObjPt)
+		{
+			const int & ID = iterObjPt->first; // 先取出点的全局 ID 号
+
+			const DeepVoid::CloudPoint & objpt = iterObjPt->second;
+
+			Matx31d X;
+			X(0) = objpt.m_pt.x;
+			X(1) = objpt.m_pt.y;
+			X(2) = objpt.m_pt.z;
+
+			auto track = tracks.find(ID); // 再把该点对应的特征轨迹 track 给取出来
+
+			std::vector<pair_I_i_C> pIiCs;
+
+			// 这个循环就是把相关的特征信息给取出来
+			for (auto iterImgPt = track->second.begin(); iterImgPt != track->second.end(); ++iterImgPt)
+			{
+				const int & I = iterImgPt->first;					// 取出特征轨迹中每个像点的图像索引号
+				const int & i = iterImgPt->second.first;			// 取出特征轨迹中每个像点于其图像中的像点索引号
+				const int & bInlier = iterImgPt->second.second[0];	// 该像点当前是否被判定为内点
+
+				if (!bInlier)	// 如果不是内点就直接 next 了
+				{
+					continue;
+				}
+
+				const cam_data & cam = pApp->m_vCams[I];
+
+				Matx31d C = -cam.m_R.t()*cam.m_t; // 取出像点所在图像的光心坐标
+
+				pIiCs.push_back(make_pair(I, make_pair(i, C)));
+			}
+
+			// 20220204，虽然我直觉感觉一个物点既然都已经被交会出三维坐标了，那肯定会有至少 1 个内点吧（按说是2个吧，在BA过程中可能有那么1个点残差过大被判定为外点）
+			// 但我确实遇到过所有像点都被判定为 outliers 的情况，尤其是这段代码在 final SBA 之前时
+			// 按说在 Triangulation_AddOneImg() 之后我应该是把每个可能的物点三维坐标对应的支撑内点集的标志位都置为 1 才对吧？
+			// 我进 Triangulation_AddOneImg() 中看了，确实没有刻意置标志位为 1 的操作，也是有它道理的，因为判断内点的工作完全应由 SBA 环节来裁定
+			// 其它任何环节也就是提名坐标初值的作用，因此每次 Triangulation_AddOneImg() 之后就应该来一次 SBA 才行，否则很多点的内点标志位是不可信的
+			// 我把 image matching refinement 环节挪到 final SBA 之后是完全正确的。
+			if (pIiCs.empty())
+			{
+				continue;
+			}
+
+			int nValid = pIiCs.size(); // 到这里 nValid 是有可能为 1 的
+
+			std::vector<std::pair<int, double>> vsumd2;
+
+			for (int i = 0; i < nValid; ++i)
+			{
+				double sum2 = 0;
+
+				for (int j = 0; j < nValid; ++j)
+				{
+					if (i == j)
+					{
+						continue;
+					}
+
+					Matx31d dC = pIiCs[i].second.second - pIiCs[j].second.second; // 光心之间的距离
+
+					double d = norm(dC);
+
+					sum2 += d*d;
+				}
+
+				vsumd2.push_back(make_pair(i, sum2));
+			}
+
+			sort(vsumd2.begin(), vsumd2.end(),
+				[](const std::pair<int, double> & a, const std::pair<int, double> & b) {return a.second < b.second; });
+
+			// 把参考像点所在图像索引号和像点索引号取出来
+			const int & I_ref = pIiCs[vsumd2[0].first].first;
+			const int & i_ref = pIiCs[vsumd2[0].first].second.first;
+
+			auto iterImgPt = track->second.find(I_ref);
+			iterImgPt->second.second[1] = 1; // 将参考像点的相关标志位置 1 表明其身份为像点匹配优化环节中的参考像点
+
+			cam_data & cam0 = pApp->m_vCams[I_ref];
+			const Matx33d & mK0 = cam0.m_K;
+			const Matx33d & mR0 = cam0.m_R;
+			const Matx31d & mt0 = cam0.m_t;
+			const Mat & img0 = pApp->m_imgsOriginal[I_ref];
+			Point2f & pt0 = cam0.m_feats.key_points[i_ref].pt;
+			int x0 = FTOI(pt0.x);
+			int y0 = FTOI(pt0.y);
+
+			Matx31d C0 = -mR0.t()*mt0;
+
+			Matx31d X_C = mR0*X + mt0; // 物点在参考图像中的坐标
+			double d_ref = X_C(2); // 物点相对于参考图像的深度值
+
+			const int & wndSize = pApp->m_wndSizeImgptRefine;
+			int hWndSize = (wndSize - 1)*0.5; // half patch width
+
+			int y_real, x_real;
+			MakeSureNotOutBorder(x0, y0, x_real, y_real, hWndSize, img0.cols, img0.rows);
+
+			pt0.x = x_real;
+			pt0.y = y_real;
+
+			Matx31d xy1;
+			xy1(0) = x_real;
+			xy1(1) = y_real;
+			xy1(2) = 1;
+
+			Matx31d Rtuv1 = mR0.t()*mK0.inv()*xy1;
+
+			Mat mMask(wndSize, wndSize, CV_8UC1, Scalar(1));
+
+			std::vector<Mat> vMaski;
+			std::vector<int> vNumi;
+
+			vMaski.push_back(mMask);
+			vNumi.push_back(wndSize*wndSize);
+
+			// 从排行第 2 个开始就是非参考匹配像点了
+			for (int i = 1; i < nValid; ++i)
+			{
+				const int & I_other = pIiCs[vsumd2[i].first].first;
+				const int & i_other = pIiCs[vsumd2[i].first].second.first;
+
+				cam_data & cami = pApp->m_vCams[I_other];
+				Point2f & pti = cami.m_feats.key_points[i_other].pt;
+
+				std::vector<Matx33d> vKi, vRi;
+				std::vector<Matx31d> vti;
+				std::vector<Mat> vImgi;				
+
+				vKi.push_back(cami.m_K);
+				vRi.push_back(cami.m_R);
+				vti.push_back(cami.m_t);
+				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
+
+				double d_init = d_ref;
+				double hx_init = 0;
+				double hy_init = 0;
+				double score_init = 0;
+				double d_optim, hx_optim, hy_optim, score_optim;
+
+				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
+					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
+
+				Matx31d X_optim = C0 + d_optim*Rtuv1;
+				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
+
+				double x_new = xyi(0) / xyi(2);
+				double y_new = xyi(1) / xyi(2);
+
+				double dx = pti.x - x_new;
+				double dy = pti.y - y_new;
+
+				pti.x = x_new;
+				pti.y = y_new;
+			}
+		}
+
+		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("Image matching refinement ends");
+
+		// 这里应该再来一次 SBA，因为像点坐标变化了
+
+		double info[10], rltUctt, uctt_f;
+//		int nnn = optim_sba_levmar_XYZ_ext_rotvec(map_pointcloud, pApp->m_vCams, map_tracks, idx_refimg, thresh_inlier_rpjerr, /*1024*/64,opts, info);
+		// 20200607 同时优化所有图像共有的等效焦距 f
+		int nnn = DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(pointCloud, pApp->m_vCams, tracks, rltUctt, uctt_f, idx_refimg,
+			pApp->m_threshRpjErrInlier, pApp->m_nMaxIter, pApp->m_optsLM, info);
+
+		strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f, rltUctt(1): %f, uctt_f(1): %f",
+			pointCloud.size(), info[0], info[1], info[3], info[4], rltUctt, uctt_f);
+
+		theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 结果输出 //////////////////////////////////////////////////////////////////////////////
 	std::map<int,int> hist_cloudpoint_inlier;
 	double length_average = SfM_ZZK::BuildCloudPointInlierHistogram(pointCloud, tracks, hist_cloudpoint_inlier);
 
@@ -2664,6 +2850,8 @@ UINT SfM_incremental(LPVOID param)
 		strFile = vImgNames[i] + "_param.txt";
 		SaveCameraData(dirOut + strFile, pApp->m_vCams[i]);
 	}
+	/////////////////////////////////////////////////////////////////////////////////////////
+
 
 	// 20220127，用来表征完成了稀疏三维重建，使能三维显示
 	pApp->m_b3DReady_sparse = TRUE;
@@ -12444,8 +12632,6 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	pApp->m_mapPairwiseFMatchesWrdPts.clear(); // 先清除掉所有匹配映射
 	pApp->m_mapTracks.clear(); // 先清空
 
-//	SfM_ZZK::MultiTracksWithFlags mapTracksNew; // 20220201
-
 	int nImg = pApp->m_vCams.size();
 	CString strInfo;
 
@@ -12461,6 +12647,7 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	}
 
 	int nPair = vec_pairs.size();
+
 
 	// 1. Two-View Feature Matching.
 	for (int k = 0; k < nPair; ++k)
@@ -12521,14 +12708,8 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	
 	// 2. Feature Tracking.
 // 	SfM_ZZK::MultiTracks map_tracks_init;
-// 	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init); // 20200622
-	// 20220202，新数据结构
-	SfM_ZZK::MultiTracksWithFlags map_tracks_init;
-	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init);
-
-	// 20220201
-// 	SfM_ZZK::MultiTracksWithFlags mapTracksNewInit;
-// 	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, mapTracksNewInit);
+	SfM_ZZK::MultiTracksWithFlags map_tracks_init; // 20220202，新数据结构
+	SfM_ZZK::FindAllTracks_Olsson(pApp->m_mapPairwiseFMatchesWrdPts, map_tracks_init, pApp->m_nFlagPerImgPt); // 20200622
 
 	// 确保特征轨迹从0开始依次计数
 	// 并建立特征轨迹中包含的特征点至该特征轨迹的映射
@@ -12565,40 +12746,6 @@ UINT TwoViewFeatureMatching(LPVOID param)
 		++idx_count;
 	}
 
-	// 20220201
-// 	idx_count = 0;
-// 	for (auto iter_track = mapTracksNewInit.begin(); iter_track != mapTracksNewInit.end(); ++iter_track)
-// 	{
-// 		mapTracksNew.insert(make_pair(idx_count, iter_track->second));
-// 
-// 		// 建立该特征轨迹中包含的特征点至该特征轨迹的映射，通过 trackID 来索引
-// 		for (auto iter_Ii = iter_track->second.begin(); iter_Ii != iter_track->second.end(); ++iter_Ii)
-// 		{
-// 			const int & I = iter_Ii->first; // image I
-// 			const int & i = iter_Ii->second.first; // feature i
-// 
-// 			cam_data & cam = pApp->m_vCams[I];
-// 
-// 			cam.m_feats.tracks[i] = idx_count;
-// 
-// 			// 20200810，给 sift、fast 特征点 和 手提点赋上全局 trackID，以便显示。
-// 			if (i < cam.m_nSiftElected)
-// 			{
-// 				cam.m_featsBlob.tracks[i] = idx_count;
-// 			}
-// 			else if (i >= cam.m_nSiftElected && i < (cam.m_nSiftElected + cam.m_nFastElected))
-// 			{
-// 				cam.m_featsCorner.tracks[i - cam.m_nSiftElected] = idx_count;
-// 			}
-// 			else
-// 			{
-// 				cam.m_featsManual.tracks[i - cam.m_nSiftElected - cam.m_nFastElected] = idx_count;
-// 			}
-// 		}
-// 
-// 		++idx_count;
-// 	}
-
 	// 刷新并显示每个特征/手提点的全局 trackID 号
 	for (int i = 0; i < nImg; ++i)
 	{
@@ -12617,10 +12764,6 @@ UINT TwoViewFeatureMatching(LPVOID param)
 	// 统计特征轨迹直方图
 	std::map<int, int> hist_track;
 	SfM_ZZK::BuildTrackLengthHistogram(pApp->m_mapTracks, hist_track);
-
-	// 20220201
-// 	std::map<int, int> hist_track_new;
-// 	SfM_ZZK::BuildTrackLengthHistogram(mapTracksNew, hist_track_new);
 
 	int n_tracklength_more_than_1 = 0;
 	for (auto iter_n = hist_track.begin(); iter_n != hist_track.end(); ++iter_n)

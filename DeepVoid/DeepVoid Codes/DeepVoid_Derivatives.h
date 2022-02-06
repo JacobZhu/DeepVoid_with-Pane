@@ -369,6 +369,36 @@ void j_f_w_t_w0_t0_d0(double d0,				// ÊäÈë£ºµ±Ç°¸ÃÎïµãÏà¶ÔÓÚÆä²Î¿¼Í¼ÏñµÄÉî¶È¹À¼
 					  double & dx, double & dy	// Êä³ö£ºµ±Ç°¹À¼ÆÏÂµÄÖØÍ¶Ó°²Ğ²î
 					  );
 
+// 20220206£¬¸ø¶¨ÏñËØ×ø±ê¡¢»Ò¶ÈÖµ£¬ÒÔ¼°µ±Ç°µÄ×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı¹À¼Æ{h0,h1,a0,a1,a2,b0,b1,b2}
+// Êä³öµ±Ç°µÄÆ¥ÅäÎó²î f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+// ÒÔ¼° f ¶ÔËùÓĞ 8 ¸öÆ¥Åä²ÎÊıµÄµ¼Êı
+// ÆäÖĞ x' = a0 + a1*x + a2*y
+//      y' = b0 + b1*x + b2*y
+bool j_f_hi_ai_bi(double x, double y,				// ÊäÈë£º¸ø¶¨²Î¿¼Í¼ÏñÖĞµÄÏñËØ×ø±ê
+				  double I,							// ÊäÈë£º²Î¿¼Í¼Ïñ(x,y)µã´¦µÄÍ¼Ïñ»Ò¶ÈÖµ
+				  const Mat & img,					// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
+				  double h0, double h1,				// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  double a0, double a1, double a2,	// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  double b0, double b1, double b2,	// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  double & f,						// Êä³ö£ºf = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+				  Matx<double, 1, 8> & J			// Êä³ö£ºf ¶ÔËùÓĞ 8 ¸öÆ¥Åä²ÎÊıµÄµ¼Êı
+			      );
+
+// 20220206£¬¸ø¶¨ÏñËØ×ø±ê¡¢RGBÖµ£¬ÒÔ¼°µ±Ç°µÄ×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı¹À¼Æ{h0,h1,a0,a1,a2,b0,b1,b2}
+// Êä³öµ±Ç°µÄÆ¥ÅäÎó²î f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+// ÒÔ¼° f ¶ÔËùÓĞ 8 ¸öÆ¥Åä²ÎÊıµÄµ¼Êı
+// ÆäÖĞ x' = a0 + a1*x + a2*y
+//      y' = b0 + b1*x + b2*y
+bool j_f_hi_ai_bi(double x, double y,				// ÊäÈë£º¸ø¶¨²Î¿¼Í¼ÏñÖĞµÄÏñËØ×ø±ê
+				  double R, double G, double B,		// ÊäÈë£º²Î¿¼Í¼Ïñ(x,y)µã´¦µÄRGBÖµ
+				  const Mat & img,					// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
+				  double h0, double h1,				// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  double a0, double a1, double a2,	// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  double b0, double b1, double b2,	// ÊäÈë£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+				  Matx31d & f,						// Êä³ö£ºf = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+				  Matx<double, 3, 8> & J			// Êä³ö£ºf ¶ÔËùÓĞ 8 ¸öÆ¥Åä²ÎÊıµÄµ¼Êı
+			      );
+
 // void j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 // 				  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
 // 				  const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
@@ -1417,7 +1447,8 @@ void FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdP
 
 // 20220201£¬²ÉÓÃĞÂµÄÊı¾İ½á¹¹
 void FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
-						  MultiTracksWithFlags & map_tracks							// output:	all the found tracks
+						  MultiTracksWithFlags & map_tracks,						// output:	all the found tracks
+						  int nFlagImgpt = 1										// input:	ÌØÕ÷¹ì¼£ÖĞµÄÃ¿¸öÏñµãÔ¤Éè¶àÉÙ¸ö±êÖ¾Î»
 						  );
 
 // 2015.10.08, find all tracks based on Carl Olsson's algorithm in <Stable structure from motion for unordered image collections>

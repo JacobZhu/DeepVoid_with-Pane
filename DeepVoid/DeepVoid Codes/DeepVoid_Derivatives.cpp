@@ -2708,6 +2708,152 @@ void derivatives::j_f_w_t_w0_t0_d0(double d0,				// 输入：当前该物点相对于其参考
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 }
 
+// 20220206，给定像素坐标、灰度值，以及当前的最小二乘图像匹配参数估计{h0,h1,a0,a1,a2,b0,b1,b2}
+// 输出当前的匹配误差 f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+// 以及 f 对所有 8 个匹配参数的导数
+// 其中 x' = a0 + a1*x + a2*y
+//      y' = b0 + b1*x + b2*y
+bool derivatives::j_f_hi_ai_bi(double x, double y,				// 输入：给定参考图像中的像素坐标
+							   double I,						// 输入：参考图像(x,y)点处的图像灰度值
+							   const Mat & img,					// 输入：匹配图像
+							   double h0, double h1,			// 输入：最小二乘图像匹配参数
+							   double a0, double a1, double a2,	// 输入：最小二乘图像匹配参数
+							   double b0, double b1, double b2,	// 输入：最小二乘图像匹配参数
+							   double & f,						// 输出：f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+							   Matx<double, 1, 8> & J			// 输出：f 对所有 8 个匹配参数的导数
+						       )
+{
+	// 参考图像坐标经二维 affine 变换至匹配图像坐标
+	double x1 = a0 + a1*x + a2*y;
+	double y1 = b0 + b1*x + b2*y;
+
+	double r, g, b;
+	double rl, gl, bl; // rgb of the I(x-1, y)，左点
+	double rr, gr, br; // rgb of the I(x+1, y)，右点
+	double ru, gu, bu; // rgb of the I(x, y-1)，上点
+	double rb, gb, bb; // rgb of the I(x, y+1)，下点
+
+	if (BilinearInterp(img, x1, y1, r, g, b) &&
+		BilinearInterp(img, x1 - 1, y1, rl, gl, bl) && BilinearInterp(img, x1 + 1, y1, rr, gr, br) &&
+		BilinearInterp(img, x1, y1 - 1, ru, gu, bu) && BilinearInterp(img, x1, y1 + 1, rb, gb, bb))
+	{
+		double I1 = r;
+		double I1_left = rl;
+		double I1_right = rr;
+		double I1_up = ru;
+		double I1_bottom = rb;
+
+		f = h0 + h1*I1 - I;
+
+		double dI1_dx1 = (I1_right - I1_left)*0.5;	// dI/dx = (I(x+1,y)-I(x-1,y))/2
+		double dI1_dy1 = (I1_bottom - I1_up)*0.5;	// dI/dy = (I(x,y+1)-I(x,y-1))/2
+
+		J(0) = 1;			// df/dh0
+		J(1) = I1;			// df/dh1
+
+		J(2) = h1*dI1_dx1;	// df/da0
+		J(3) = J(2)*x;		// df/da1
+		J(4) = J(2)*y;		// df/da2
+
+		J(5) = h1*dI1_dy1;	// df/db0
+		J(6) = J(5)*x;		// df/db1
+		J(7) = J(5)*y;		// df/db2
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// 20220206，给定像素坐标、RGB值，以及当前的最小二乘图像匹配参数估计{h0,h1,a0,a1,a2,b0,b1,b2}
+// 输出当前的匹配误差 f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+// 以及 f 对所有 8 个匹配参数的导数
+// 其中 x' = a0 + a1*x + a2*y
+//      y' = b0 + b1*x + b2*y
+bool derivatives::j_f_hi_ai_bi(double x, double y,				// 输入：给定参考图像中的像素坐标
+							   double R, double G, double B,	// 输入：参考图像(x,y)点处的RGB值
+							   const Mat & img,					// 输入：匹配图像
+							   double h0, double h1,			// 输入：最小二乘图像匹配参数
+							   double a0, double a1, double a2,	// 输入：最小二乘图像匹配参数
+							   double b0, double b1, double b2,	// 输入：最小二乘图像匹配参数
+							   Matx31d & f,						// 输出：f = h0 + h1*I'(x'(a0,a1,a2), y'(b0,b1,b2)) - I
+							   Matx<double, 3, 8> & J			// 输出：f 对所有 8 个匹配参数的导数
+						       )
+{
+	// 参考图像坐标经二维 affine 变换至匹配图像坐标
+	double x1 = a0 + a1*x + a2*y;
+	double y1 = b0 + b1*x + b2*y;
+
+	double r, g, b;
+	double rl, gl, bl; // rgb of the I(x-1, y)，左点
+	double rr, gr, br; // rgb of the I(x+1, y)，右点
+	double ru, gu, bu; // rgb of the I(x, y-1)，上点
+	double rb, gb, bb; // rgb of the I(x, y+1)，下点
+
+	if (BilinearInterp(img, x1, y1, r, g, b) &&
+		BilinearInterp(img, x1 - 1, y1, rl, gl, bl) && BilinearInterp(img, x1 + 1, y1, rr, gr, br) &&
+		BilinearInterp(img, x1, y1 - 1, ru, gu, bu) && BilinearInterp(img, x1, y1 + 1, rb, gb, bb))
+	{
+		//////////////////////////////////////////////////////////////////////////
+		f(0) = h0 + h1*r - R;
+		f(1) = h0 + h1*g - G;
+		f(2) = h0 + h1*b - B;
+
+		//////////////////////////////////////////////////////////////////////////
+		double dr_dx1 = (rr - rl)*0.5;	// dI/dx = (I(x+1,y)-I(x-1,y))/2
+		double dr_dy1 = (rb - ru)*0.5;	// dI/dy = (I(x,y+1)-I(x,y-1))/2
+
+		J(0, 0) = 1;			// df/dh0
+		J(0, 1) = r;			// df/dh1
+
+		J(0, 2) = h1*dr_dx1;	// df/da0
+		J(0, 3) = J(0, 2)*x;	// df/da1
+		J(0, 4) = J(0, 2)*y;	// df/da2
+
+		J(0, 5) = h1*dr_dy1;	// df/db0
+		J(0, 6) = J(0, 5)*x;	// df/db1
+		J(0, 7) = J(0, 5)*y;	// df/db2
+
+		//////////////////////////////////////////////////////////////////////////
+		double dg_dx1 = (gr - gl)*0.5;	// dI/dx = (I(x+1,y)-I(x-1,y))/2
+		double dg_dy1 = (gb - gu)*0.5;	// dI/dy = (I(x,y+1)-I(x,y-1))/2
+
+		J(1, 0) = 1;			// df/dh0
+		J(1, 1) = g;			// df/dh1
+
+		J(1, 2) = h1*dg_dx1;	// df/da0
+		J(1, 3) = J(1, 2)*x;	// df/da1
+		J(1, 4) = J(1, 2)*y;	// df/da2
+
+		J(1, 5) = h1*dg_dy1;	// df/db0
+		J(1, 6) = J(1, 5)*x;	// df/db1
+		J(1, 7) = J(1, 5)*y;	// df/db2
+
+		//////////////////////////////////////////////////////////////////////////
+		double db_dx1 = (br - bl)*0.5;	// dI/dx = (I(x+1,y)-I(x-1,y))/2
+		double db_dy1 = (bb - bu)*0.5;	// dI/dy = (I(x,y+1)-I(x,y-1))/2
+
+		J(2, 0) = 1;			// df/dh0
+		J(2, 1) = b;			// df/dh1
+
+		J(2, 2) = h1*db_dx1;	// df/da0
+		J(2, 3) = J(2, 2)*x;	// df/da1
+		J(2, 4) = J(2, 2)*y;	// df/da2
+
+		J(2, 5) = h1*db_dy1;	// df/db0
+		J(2, 6) = J(2, 5)*x;	// df/db1
+		J(2, 7) = J(2, 5)*y;	// df/db2
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 // void derivatives::j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// 输入：n个空间点XYZW坐标
 // 							   const vector<Matx33d> & Ks,				// 输入：m个图像内参数矩阵
 // 							   const vector<Matx33d> & Rs,				// 输入：m个图像旋转矩阵
@@ -11482,7 +11628,8 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matc
 
 // 20220201，采用新的数据结构
 void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matches_pWrdPts,	// input:	all pairwise fundamental matrix F, matches and projective reconstruction
-								   MultiTracksWithFlags & map_tracks							// output:	all the found tracks
+								   MultiTracksWithFlags & map_tracks,							// output:	all the found tracks
+								   int nFlagImgpt /*= 1*/										// input:	特征轨迹中的每个像点预设多少个标志位
 								   )
 {
 	//	std::map<std::pair<int,int>,int> map_w_IJ; // contains all the weights: collection of {<I,J>, weight}
@@ -11512,7 +11659,7 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matc
 //				OneTrack map_one_track;
 				trackWithFlags map_one_track;
 //				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx, 0)));
-				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx, std::vector<int>(1)))); // 每个像点先安排一个标志位，并初始化其值为0
+				map_one_track.insert(make_pair(I, make_pair(iter_matches_IJ->queryIdx, std::vector<int>(nFlagImgpt)))); // 每个像点先安排 n 个标志位，并初始化其值为0
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
@@ -11526,7 +11673,7 @@ void SfM_ZZK::FindAllTracks_Olsson(const PairWise_F_matches_pWrdPts & map_F_matc
 //				OneTrack map_one_track;
 				trackWithFlags map_one_track;
 //				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx, 0)));
-				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx, std::vector<int>(1)))); // 每个像点先安排一个标志位，并初始化其值为0
+				map_one_track.insert(make_pair(J, make_pair(iter_matches_IJ->trainIdx, std::vector<int>(nFlagImgpt)))); // 每个像点先安排 n 个标志位，并初始化其值为0
 				map_tracks.insert(make_pair(n_features, map_one_track));
 
 				++n_features;
