@@ -2881,10 +2881,7 @@ bool derivatives::H_g_hi_ai_bi(const vector<Point2d> & xys,		// 输入：参考图像中
 	double b2 = x(7);
 
 	// 各输出先清空归零
-	H = Matx<double, 8, 8>::Matx();
 	H = Matx<double, 8, 8>::zeros();
-
-	g = Matx<double, 8, 1>::Matx();
 	g = Matx<double, 8, 1>::zeros();
 
 	F = 0;

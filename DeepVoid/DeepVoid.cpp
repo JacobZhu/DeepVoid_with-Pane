@@ -209,9 +209,9 @@ CDeepVoidApp::CDeepVoidApp()
 	m_threshMeanAngRO = 5.0;				// RO中要用到的物点平均交会角阈值
 	m_nMinInilier = 2;						// 至少得有该个数图像观测到该点才会被输出
 	m_nMaxIter = 64;						// 最大迭代次数
-	m_bRefineImgPts = true;				// 是否优化像点坐标，默认是要进行优化
+	m_bRefineImgPts = true;					// 是否优化像点坐标，默认是要进行优化
 	m_nFlagPerImgPt = 2;					// 一条特征轨迹中每个像点预设多少个标志位，一般至少 1 个标志位用于指明该像点当前是否被判定为内点
-	m_wndSizeImgptRefine = 7;				// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
+	m_wndSizeImgptRefine = 5;				// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
 }
 
 // The one and only CDeepVoidApp object
@@ -2777,44 +2777,51 @@ UINT SfM_incremental(LPVOID param)
 				cam_data & cami = pApp->m_vCams[I_other];
 				Point2f & pti = cami.m_feats.key_points[i_other].pt;
 
-				double x_match = pti.x;
-				double y_match = pti.y;
+				double x_LSM_LM = pti.x;
+				double y_LSM_LM = pti.y;
 
-				std::vector<Matx33d> vKi, vRi;
-				std::vector<Matx31d> vti;
-				std::vector<Mat> vImgi;				
+				double x_LSM_GN = pti.x;
+				double y_LSM_GN = pti.y;
 
-				vKi.push_back(cami.m_K);
-				vRi.push_back(cami.m_R);
-				vti.push_back(cami.m_t);
-				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
-
-				double d_init = d_ref;
-				double hx_init = 0;
-				double hy_init = 0;
-				double score_init = 0;
-				double d_optim, hx_optim, hy_optim, score_optim;
-
-				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
-					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
-
-				Matx31d X_optim = C0 + d_optim*Rtuv1;
-				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
-
-				double x_new = xyi(0) / xyi(2);
-				double y_new = xyi(1) / xyi(2);
-
-				double dx = pti.x - x_new;
-				double dy = pti.y - y_new;
-
-				pti.x = x_new;
-				pti.y = y_new;
+// 				std::vector<Matx33d> vKi, vRi;
+// 				std::vector<Matx31d> vti;
+// 				std::vector<Mat> vImgi;				
+// 
+// 				vKi.push_back(cami.m_K);
+// 				vRi.push_back(cami.m_R);
+// 				vti.push_back(cami.m_t);
+// 				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
+// 
+// 				double d_init = d_ref;
+// 				double hx_init = 0;
+// 				double hy_init = 0;
+// 				double score_init = 0;
+// 				double d_optim, hx_optim, hy_optim, score_optim;
+// 
+// 				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
+// 					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
+// 
+// 				Matx31d X_optim = C0 + d_optim*Rtuv1;
+// 				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
+// 
+// 				double x_new = xyi(0) / xyi(2);
+// 				double y_new = xyi(1) / xyi(2);
+// 
+// 				double dx = pti.x - x_new;
+// 				double dy = pti.y - y_new;
+// 
+// 				pti.x = x_new;
+// 				pti.y = y_new;
 
 				int code;
 
-				bSucRefine = LSM(x_real, y_real, img0, x_match, y_match, pApp->m_imgsOriginal[I_other], wndSize, code);
+//				bSucRefine = LSM(x_real, y_real, img0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], wndSize, code, 0, 0, 30, 128, 1.0E-6);
+				bool bSucRefine = LSM(x_real, y_real, img0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], wndSize, code, 1, 0, 30, 128);
 
-				double xyzw = 100;
+				pti.x = x_LSM_GN;
+				pti.y = y_LSM_GN;
+// 
+// 				double xyzw = 100;
 			}
 		}
 

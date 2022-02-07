@@ -411,8 +411,8 @@ bool DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 								 int & code,							// Êä³ö£ºµü´úÖÕÖ¹Ìõ¼ş: 0:Ìİ¶ÈÊÕÁ²; 1:¸ÄÕıÁ¿´óĞ¡ÊÕÁ²£»2:³¬¹ı×î´óµü´ú´ÎÊı£»3:ÔâÓöÖØ´óÎÊÌâ£¨ÏñËØÔ½½ç£©µ¼ÖÂµü´úÖ±½ÓÖÕÖ¹ÍË³ö
 								 int IRLS /*= 0*/,						// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
 								 double e_Huber /*= 50*/,				// ÊäÈë£ºHuber IRLS µÄãĞÖµ
-								 double tau /*= 1.0E-3*/,				// ÊäÈë£ºThe algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
 								 int maxIter /*= 64*/,					// ÊäÈë£º×î´óµü´ú´ÎÊı
+								 double tau /*= 1.0E-3*/,				// ÊäÈë£ºThe algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
 								 double eps1 /*= 1.0E-8*/,				// ÊäÈë£ºÌİ¶ÈÊÕÁ²ãĞÖµ
 								 double eps2 /*= 1.0E-12*/				// ÊäÈë£º¸ÄÕıÁ¿ÊÕÁ²ãĞÖµ
 								 )
@@ -549,6 +549,49 @@ bool DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 	return true;
 }
 
+// 20220207
+bool DeepVoid::optim_gn_hi_ai_bi(const vector<Point2d> & xys,				// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±ê
+							     const vector<Vec3d> & RGBs,				// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄRBGÖµ£¬doubleĞÍ£¬[0]:R£¬[1]:G£¬[2]:B
+							     const Mat & img,							// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
+							     Matx<double, 8, 1> & x,					// ÊäÈë¼æÊä³ö£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
+							     int IRLS /*= 0*/,							// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
+							     double e_Huber /*= 30*/,					// ÊäÈë£ºHuber IRLS µÄãĞÖµ
+							     int maxIter /*= 128*/,						// input:	max iteration
+							     double xEps /*= 1.0E-12*/,					// input:	threshold
+							     double fEps /*= 1.0E-12*/					// input:	threshold
+							     )
+{
+	Matx<double, 8, 8> H;
+	Matx<double, 8, 1> g, dx;
+	double F;
+	vector<Matx31d> fs;
+	double F_old = 0;
+
+	for (int k = 0; k < maxIter; ++k)
+	{
+		if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x, H, g, F, fs, IRLS, e_Huber))
+		{
+			return false;	// ´ó¸ÅÂÊÊÇÓĞÏñËØÔ½½çÁË£¬Ö±½ÓÍË³ö
+		}
+
+		// ½â·½³Ì (JWJ + uI)*dx = -g µÃµ½ P µÄ¸ÄÕıÁ¿
+		solve(H, -g, dx, DECOMP_CHOLESKY);
+
+		double df2 = F - F_old;
+
+		if ((fabs(df2) < fEps) || (norm(dx) < xEps))
+		{
+			break;
+		}
+
+		F_old = F;
+
+		x += dx;
+	}
+
+	return true;
+}
+
 // 2022027£¬×îĞ¡¶ş³ËÍ¼ÏñÆ¥ÅäÓÅ»¯
 bool DeepVoid::LSM(int x0, int y0,				// ÊäÈë£º²Î¿¼Ïñµã×ø±ê
 				   const Mat & img0,			// ÊäÈë£º²Î¿¼Í¼Ïñ
@@ -556,12 +599,15 @@ bool DeepVoid::LSM(int x0, int y0,				// ÊäÈë£º²Î¿¼Ïñµã×ø±ê
 				   const Mat & img,				// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
 				   int wndSize,					// ÊäÈë£º´°¿Ú´óĞ¡
 				   int & code,					// Êä³ö£ºµü´úÖÕÖ¹Ìõ¼ş: 0:Ìİ¶ÈÊÕÁ²; 1:¸ÄÕıÁ¿´óĞ¡ÊÕÁ²£»2:³¬¹ı×î´óµü´ú´ÎÊı£»3:ÔâÓöÖØ´óÎÊÌâ£¨ÏñËØÔ½½ç£©µ¼ÖÂµü´úÖ±½ÓÖÕÖ¹ÍË³ö
+				   int method /*= 0*/,			// ÊäÈë£º0:LM£»1:GN
 				   int IRLS /*= 0*/,			// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
 				   double e_Huber /*= 50*/,		// ÊäÈë£ºHuber IRLS µÄãĞÖµ
-				   double tau /*= 1.0E-3*/,		// ÊäÈë£ºThe algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
 				   int maxIter /*= 64*/,		// ÊäÈë£º×î´óµü´ú´ÎÊı
+				   double tau /*= 1.0E-3*/,		// ÊäÈë£ºThe algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
 				   double eps1 /*= 1.0E-8*/,	// ÊäÈë£ºÌİ¶ÈÊÕÁ²ãĞÖµ
-				   double eps2 /*= 1.0E-12*/	// ÊäÈë£º¸ÄÕıÁ¿ÊÕÁ²ãĞÖµ
+				   double eps2 /*= 1.0E-12*/,	// ÊäÈë£º¸ÄÕıÁ¿ÊÕÁ²ãĞÖµ
+				   double xEps /*= 1.0E-12*/,	// ÊäÈë£ºGN·¨µü´úÍË³öãĞÖµ
+				   double fEps /*= 1.0E-12*/	// ÊäÈë£ºGN·¨µü´úÍË³öãĞÖµ
 				   )
 {
 	int nc = img0.channels();
@@ -609,26 +655,34 @@ bool DeepVoid::LSM(int x0, int y0,				// ÊäÈë£º²Î¿¼Ïñµã×ø±ê
 		params(6) = 0;		// b1 = 0
 		params(7) = 1;		// b2 = 1
 
-		if (optim_lm_hi_ai_bi(xys, RGBs, img, params, code, IRLS, e_Huber, tau, maxIter, eps1, eps2))
+		if (method == 0)
 		{
-			double a0 = params(2);
-			double a1 = params(3);
-			double a2 = params(4);
-
-			double b0 = params(5);
-			double b1 = params(6);
-			double b2 = params(7);
-
-			// ¸üĞÂÆ¥ÅäÏñµã×ø±ê
-			x = a0 + a1*x0 + a2*y0;
-			y = b0 + b1*x0 + b2*y0;
-
-			return true;
-		}
+			if (!optim_lm_hi_ai_bi(xys, RGBs, img, params, code, IRLS, e_Huber, maxIter, tau, eps1, eps2))
+			{
+				return false;
+			}
+		} 
 		else
 		{
-			return false;
+			if (!optim_gn_hi_ai_bi(xys, RGBs, img, params, IRLS, e_Huber, maxIter, xEps, fEps))
+			{
+				return false;
+			}
 		}
+
+		double a0 = params(2);
+		double a1 = params(3);
+		double a2 = params(4);
+
+		double b0 = params(5);
+		double b1 = params(6);
+		double b2 = params(7);
+
+		// ¸üĞÂÆ¥ÅäÏñµã×ø±ê
+		x = a0 + a1*x0 + a2*y0;
+		y = b0 + b1*x0 + b2*y0;
+
+		return true;		
 	} 
 	else // »Ò¶ÈÍ¼Ïñ
 	{
