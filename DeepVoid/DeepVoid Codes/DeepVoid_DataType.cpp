@@ -404,17 +404,18 @@ bool DeepVoid::BilinearInterp(const Matx33d & mK,			// input:	the camera matrix
 }
 
 // 20220207
-bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考像素的坐标
-						const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
-						const Mat & img,						// 输入：匹配图像
-						Matx<double, 8, 1> & x,					// 输入兼输出：最小二乘图像匹配参数
-						int IRLS /*= 0*/,						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
-						double e_Huber /*= 50*/,				// 输入：Huber IRLS 的阈值
-						double tau /*= 1.0E-3*/,				// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
-						int maxIter /*= 64*/,					// 输入：最大迭代次数
-						double eps1 /*= 1.0E-8*/,				// 输入：梯度收敛阈值
-						double eps2 /*= 1.0E-12*/				// 输入：改正量收敛阈值
-						)
+void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// 输入：参考图像中各参考像素的坐标
+								 const vector<Vec3d> & RGBs,			// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
+								 const Mat & img,						// 输入：匹配图像
+								 Matx<double, 8, 1> & x,				// 输入兼输出：最小二乘图像匹配参数
+								 int & code,							// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+								 int IRLS /*= 0*/,						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+								 double e_Huber /*= 50*/,				// 输入：Huber IRLS 的阈值
+								 double tau /*= 1.0E-3*/,				// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+								 int maxIter /*= 64*/,					// 输入：最大迭代次数
+								 double eps1 /*= 1.0E-8*/,				// 输入：梯度收敛阈值
+								 double eps2 /*= 1.0E-12*/				// 输入：改正量收敛阈值
+								 )
 {
 	int k = 0;			// 迭代次数索引
 	int v = 2;			// 更新 u 时需要用到的一个控制量      
@@ -430,7 +431,7 @@ bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 	double ratio_1_3 = 1.0 / 3.0;
 
 	bool found = false; // 标识是否已经满足迭代收敛条件
-	int code = 2;		// 迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+	code = 2;			// 迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
 
 	Matx<double, 8, 1> g, g_new, x_new;
 	Matx<double, 8, 8> H, H_new;
@@ -439,17 +440,19 @@ bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 
 	if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x, H, g, F, fs, IRLS, e_Huber))
 	{
-		return false;	// 大概率是有像素越界了
+		code = 3;
+		return;	// 大概率是有像素越界了，直接退出
 	}
 	
 	x_norm = norm(x);	// 当前参数向量 2 范数
 	g_norm = norm(g, NORM_INF);	// 目标函数值 F 在当前参数向量处梯度向量的 INF 范数
 
-	// 梯度收敛，说明已在平坦区域
+	// 梯度收敛，说明已在平坦区域，直接退出
 	if (g_norm < eps1)
 	{
 		found = true;
 		code = 0;
+		return;
 	}
 
 
@@ -500,7 +503,8 @@ bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 
 			if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x_new, H_new, g_new, F_new, fs, IRLS, e_Huber))
 			{
-				return false;	// 大概率是有像素越界了
+				code = 3;
+				return;	// 大概率是有像素越界了，直接退出
 			}
 
 			Matx<double, 1, 1> tmp = 0.5*dx.t()*(u*dx - g);
@@ -541,8 +545,6 @@ bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考
 			}
 		}
 	}
-
-	return true;
 }
 
 void DeepVoid::MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
