@@ -404,7 +404,7 @@ bool DeepVoid::BilinearInterp(const Matx33d & mK,			// input:	the camera matrix
 }
 
 // 20220207
-void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±ê
+bool DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±ê
 								 const vector<Vec3d> & RGBs,			// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄRBGÖµ£¬doubleĞÍ£¬[0]:R£¬[1]:G£¬[2]:B
 								 const Mat & img,						// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
 								 Matx<double, 8, 1> & x,				// ÊäÈë¼æÊä³ö£º×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä²ÎÊı
@@ -441,7 +441,7 @@ void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 	if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x, H, g, F, fs, IRLS, e_Huber))
 	{
 		code = 3;
-		return;	// ´ó¸ÅÂÊÊÇÓĞÏñËØÔ½½çÁË£¬Ö±½ÓÍË³ö
+		return false;	// ´ó¸ÅÂÊÊÇÓĞÏñËØÔ½½çÁË£¬Ö±½ÓÍË³ö
 	}
 	
 	x_norm = norm(x);	// µ±Ç°²ÎÊıÏòÁ¿ 2 ·¶Êı
@@ -452,7 +452,7 @@ void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 	{
 		found = true;
 		code = 0;
-		return;
+		return true;
 	}
 
 
@@ -504,7 +504,7 @@ void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 			if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x_new, H_new, g_new, F_new, fs, IRLS, e_Huber))
 			{
 				code = 3;
-				return;	// ´ó¸ÅÂÊÊÇÓĞÏñËØÔ½½çÁË£¬Ö±½ÓÍË³ö
+				return false;	// ´ó¸ÅÂÊÊÇÓĞÏñËØÔ½½çÁË£¬Ö±½ÓÍË³ö
 			}
 
 			Matx<double, 1, 1> tmp = 0.5*dx.t()*(u*dx - g);
@@ -544,6 +544,95 @@ void DeepVoid::optim_lm_hi_ai_bi(const vector<Point2d> & xys,			// ÊäÈë£º²Î¿¼Í¼Ï
 				v *= 2;
 			}
 		}
+	}
+
+	return true;
+}
+
+// 2022027£¬×îĞ¡¶ş³ËÍ¼ÏñÆ¥ÅäÓÅ»¯
+bool DeepVoid::LSM(int x0, int y0,				// ÊäÈë£º²Î¿¼Ïñµã×ø±ê
+				   const Mat & img0,			// ÊäÈë£º²Î¿¼Í¼Ïñ
+				   double & x, double & y,		// ÊäÈë¼æÊä³ö£ºÆ¥ÅäÏñµã×ø±ê
+				   const Mat & img,				// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
+				   int wndSize,					// ÊäÈë£º´°¿Ú´óĞ¡
+				   int & code,					// Êä³ö£ºµü´úÖÕÖ¹Ìõ¼ş: 0:Ìİ¶ÈÊÕÁ²; 1:¸ÄÕıÁ¿´óĞ¡ÊÕÁ²£»2:³¬¹ı×î´óµü´ú´ÎÊı£»3:ÔâÓöÖØ´óÎÊÌâ£¨ÏñËØÔ½½ç£©µ¼ÖÂµü´úÖ±½ÓÖÕÖ¹ÍË³ö
+				   int IRLS /*= 0*/,			// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
+				   double e_Huber /*= 50*/,		// ÊäÈë£ºHuber IRLS µÄãĞÖµ
+				   double tau /*= 1.0E-3*/,		// ÊäÈë£ºThe algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+				   int maxIter /*= 64*/,		// ÊäÈë£º×î´óµü´ú´ÎÊı
+				   double eps1 /*= 1.0E-8*/,	// ÊäÈë£ºÌİ¶ÈÊÕÁ²ãĞÖµ
+				   double eps2 /*= 1.0E-12*/	// ÊäÈë£º¸ÄÕıÁ¿ÊÕÁ²ãĞÖµ
+				   )
+{
+	int nc = img0.channels();
+
+	int hSize = (wndSize - 1)*0.5;
+
+	if (nc == 3) // ²ÊÉ«Í¼Ïñ
+	{
+		vector<Point2d> xys;
+		vector<Vec3d> RGBs;
+
+		for (int i = -hSize; i <= hSize; ++i)
+		{
+			for (int j = -hSize; j <= hSize; ++j)
+			{
+				int xx = x0 + j;
+				int yy = y0 + i;
+
+				Point2d xy;
+				xy.x = xx;
+				xy.y = yy;
+
+				Vec3b pix = img0.at<Vec3b>(yy, xx);
+				uchar B = pix.val[0];
+				uchar G = pix.val[1];
+				uchar R = pix.val[2];
+
+				Vec3d I;
+				I[0] = R;
+				I[1] = G;
+				I[2] = B;
+
+				xys.push_back(xy);
+				RGBs.push_back(I);
+			}
+		}
+
+		Matx<double, 8, 1> params;
+		params(0) = 0;		// h0 = 0
+		params(1) = 1;		// h1 = 1
+		params(2) = x - x0;	// a0 = x' - x
+		params(3) = 1;		// a1 = 1
+		params(4) = 0;		// a2 = 0
+		params(5) = y - y0;	// b0 = y' - y
+		params(6) = 0;		// b1 = 0
+		params(7) = 1;		// b2 = 1
+
+		if (optim_lm_hi_ai_bi(xys, RGBs, img, params, code, IRLS, e_Huber, tau, maxIter, eps1, eps2))
+		{
+			double a0 = params(2);
+			double a1 = params(3);
+			double a2 = params(4);
+
+			double b0 = params(5);
+			double b1 = params(6);
+			double b2 = params(7);
+
+			// ¸üĞÂÆ¥ÅäÏñµã×ø±ê
+			x = a0 + a1*x0 + a2*y0;
+			y = b0 + b1*x0 + b2*y0;
+
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	} 
+	else // »Ò¶ÈÍ¼Ïñ
+	{
+		return false; // Õë¶Ô»Ò¶ÈÍ¼Ïñ»¹Ã»ÊµÏÖ
 	}
 }
 

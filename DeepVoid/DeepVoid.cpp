@@ -2777,6 +2777,9 @@ UINT SfM_incremental(LPVOID param)
 				cam_data & cami = pApp->m_vCams[I_other];
 				Point2f & pti = cami.m_feats.key_points[i_other].pt;
 
+				double x_match = pti.x;
+				double y_match = pti.y;
+
 				std::vector<Matx33d> vKi, vRi;
 				std::vector<Matx31d> vti;
 				std::vector<Mat> vImgi;				
@@ -2806,6 +2809,12 @@ UINT SfM_incremental(LPVOID param)
 
 				pti.x = x_new;
 				pti.y = y_new;
+
+				int code;
+
+				bSucRefine = LSM(x_real, y_real, img0, x_match, y_match, pApp->m_imgsOriginal[I_other], wndSize, code);
+
+				double xyzw = 100;
 			}
 		}
 

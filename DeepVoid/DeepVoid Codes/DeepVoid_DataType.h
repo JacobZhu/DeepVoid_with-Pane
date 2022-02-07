@@ -237,7 +237,7 @@ bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
 					);
 
 // 20220207
-void optim_lm_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图像中各参考像素的坐标
+bool optim_lm_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图像中各参考像素的坐标
 					   const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
 					   const Mat & img,							// 输入：匹配图像
 					   Matx<double, 8, 1> & x,					// 输入兼输出：最小二乘图像匹配参数
@@ -249,6 +249,21 @@ void optim_lm_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图像中各参考
 					   double eps1 = 1.0E-8,					// 输入：梯度收敛阈值
 					   double eps2 = 1.0E-12					// 输入：改正量收敛阈值
 					   );
+
+// 2022027，最小二乘图像匹配优化
+bool LSM(int x0, int y0,				// 输入：参考像点坐标
+		 const Mat & img0,				// 输入：参考图像
+		 double & x, double & y,		// 输入兼输出：匹配像点坐标
+		 const Mat & img,				// 输入：匹配图像
+		 int wndSize,					// 输入：窗口大小
+		 int & code,					// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+		 int IRLS = 0,					// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+		 double e_Huber = 50,			// 输入：Huber IRLS 的阈值
+		 double tau = 1.0E-3,			// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+		 int maxIter = 64,				// 输入：最大迭代次数
+		 double eps1 = 1.0E-8,			// 输入：梯度收敛阈值
+		 double eps2 = 1.0E-12			// 输入：改正量收敛阈值
+		 );
 
 void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect
 	                      int & x_new, int & y_new,	// output:	new center of rect, making sure the new rect with the same size are within border
