@@ -403,79 +403,146 @@ bool DeepVoid::BilinearInterp(const Matx33d & mK,			// input:	the camera matrix
 	return BilinearInterp(img, img_x, img_y, r, g, b);
 }
 
-void DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考像素的坐标
+// 20220207
+bool DeepVoid::shitshit(const vector<Point2d> & xys,			// 输入：参考图像中各参考像素的坐标
 						const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
 						const Mat & img,						// 输入：匹配图像
-						double & h0, double & h1,				// 输入兼输出：最小二乘图像匹配参数
-						double & a0, double & a1, double & a2,	// 输入兼输出：最小二乘图像匹配参数
-						double & b0, double & b1, double & b2,	// 输入兼输出：最小二乘图像匹配参数
+						Matx<double, 8, 1> & x,					// 输入兼输出：最小二乘图像匹配参数
 						int IRLS /*= 0*/,						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
-						double e_Huber /*= 50*/					// 输入：Huber IRLS 的阈值
+						double e_Huber /*= 50*/,				// 输入：Huber IRLS 的阈值
+						double tau /*= 1.0E-3*/,				// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+						int maxIter /*= 64*/,					// 输入：最大迭代次数
+						double eps1 /*= 1.0E-8*/,				// 输入：梯度收敛阈值
+						double eps2 /*= 1.0E-12*/				// 输入：改正量收敛阈值
 						)
 {
-	int k = 0;		// 迭代次数索引
-	int v = 2;		// 更新 u 时需要用到的一个控制量      
-	double u;		// LM 优化算法中最关键的阻尼系数 (J'WJ + uI)h = -J'Wf
-	double r;		// gain ratio, 增益率，用来衡量近似展开式的好坏
-	double g_norm;  // 梯度的模
-	double h_norm;	// 改正量的模
-	double h_thresh;// 改正量收敛判断阈值 eps2*(norm(x)+eps2)
-	double F, F_new;// 目标函数值 0.5*ft*covInv*f 或者 0.5*f'Wf
-	double x_norm, x_norm_new; // 当前待优化参数向量的模，即2范数L2，||x||2
-	double L0_Lh;	// 泰勒展开式的函数值下降量
+	int k = 0;			// 迭代次数索引
+	int v = 2;			// 更新 u 时需要用到的一个控制量      
+	double u;			// LM 优化算法中最关键的阻尼系数 (J'WJ + uI)h = -J'Wf = -g
+	double r;			// gain ratio, 增益率，用来衡量近似展开式的好坏
+	double g_norm;		// 梯度的模
+	double dx_norm;		// 改正量的模
+	double dx_thresh;	// 改正量收敛判断阈值 eps2*(norm(x)+eps2)
+	double F, F_new;	// 目标函数值 0.5*ft*covInv*f 或者 0.5*f'Wf
+	double x_norm;		// 当前待优化参数向量的模，即2范数L2，||x||2
+	double L0_Lh;		// 泰勒展开式的函数值下降量
 
 	double ratio_1_3 = 1.0 / 3.0;
 
 	bool found = false; // 标识是否已经满足迭代收敛条件
-	int code = 2; // termination code
+	int code = 2;		// 迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
 
-	int n = xys.size(); // 参考窗口中的像素总个数
+	Matx<double, 8, 1> g, g_new, x_new;
+	Matx<double, 8, 8> H, H_new;
 
-	// Mat 结构
-// 	Mat g(12 + 3 * n, 1, CV_64FC1, Scalar(0)), g_new(12 + 3 * n, 1, CV_64FC1, Scalar(0));
-// 	Mat h(12 + 3 * n, 1, CV_64FC1, Scalar(0));
-// 	Mat tmp;
+	vector<Matx31d> fs;
 
-	Matx<double, 8, 1> g, g_new, h;
-	Matx<double, 8, 8> JWJ;
-//	Matx<double, 1, 1> fwf;
-
-	F = 0;
-
-// 	Matx33d Wi;
-// 	Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = 1; // 权值矩阵默认为单位阵
-	
-	for (int i = 0; i < n; ++i)
+	if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x, H, g, F, fs, IRLS, e_Huber))
 	{
-		const Point2d & xy = xys[i];
-		const Vec3d & I = RGBs[i];
-
-		double x = xy.x;
-		double y = xy.y;
-
-		double R = I[0];
-		double G = I[1];
-		double B = I[2];
-
-		Matx31d fi;
-		Matx<double, 3, 8> Ji;
-		Matx33d Wi = Matx33d::eye();	// 权值矩阵默认为单位阵
-
-		derivatives::j_f_hi_ai_bi(x, y, R, G, B, img, h0, h1, a0, a1, a2, b0, b1, b2, fi, Ji);
-
-		if (IRLS == 1)
-		{
-			double L2fi = norm(fi);
-			double wi_Huber = derivatives::weight_Huber(L2fi, e_Huber);
-			Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = wi_Huber*wi_Huber;
-		}
-		
-		JWJ += Ji.t()*Wi*Ji;
-		g += Ji.t()*Wi*fi;
-		Matx<double, 1, 1> fiwifi = 0.5*fi.t()*Wi*fi;
-
-		F += fiwifi(0);
+		return false;	// 大概率是有像素越界了
 	}
+	
+	x_norm = norm(x);	// 当前参数向量 2 范数
+	g_norm = norm(g, NORM_INF);	// 目标函数值 F 在当前参数向量处梯度向量的 INF 范数
+
+	// 梯度收敛，说明已在平坦区域
+	if (g_norm < eps1)
+	{
+		found = true;
+		code = 0;
+	}
+
+
+	// 确定一个合理的初始阻尼系数 u ////////////////////////////////////////////
+	vector<double> Aii(8);
+
+	for (int i = 0; i < 8; ++i)
+	{
+		Aii[i] = H(i, i);
+	}
+
+	auto iter = max_element(Aii.begin(), Aii.end());
+	double max_Aii = *iter;
+
+	u = tau * max_Aii; // initial miu
+	//////////////////////////////////////////////////////////////////////////
+
+
+	while (!found && k < maxIter)
+	{
+		++k;
+
+		Matx<double, 8, 8> H_uI = H;
+
+		// 加阻尼系数
+		for (int i = 0; i < 8; ++i)
+		{
+			H_uI(i, i) += u;
+		}
+
+		Matx<double, 8, 1> dx;
+
+		// 解方程 (JWJ + uI)*dx = -g 得到 P 的改正量
+		solve(H_uI, -g, dx, DECOMP_CHOLESKY);
+
+		dx_norm = norm(dx);
+
+		dx_thresh = eps2*(x_norm + eps2);	// 根据当前待优化参数向量的模来确定改正量大小是否满足收敛条件
+
+		if (dx_norm < dx_thresh)
+		{
+			found = true;
+			code = 1;
+		}
+		else
+		{
+			x_new = x + dx;	// 暂时先更新一下，录不录用还得
+
+			if (!derivatives::H_g_hi_ai_bi(xys, RGBs, img, x_new, H_new, g_new, F_new, fs, IRLS, e_Huber))
+			{
+				return false;	// 大概率是有像素越界了
+			}
+
+			Matx<double, 1, 1> tmp = 0.5*dx.t()*(u*dx - g);
+			L0_Lh = tmp(0); // 在当前参数处利用梯度和改正量预估的期望目标函数下降量
+
+			r = (F - F_new) / L0_Lh;
+
+			if (r > 0)
+			{
+				// 采纳新参数
+				x = x_new;
+
+				// 一并采纳新参数处的 Hessian 矩阵和梯度向量
+				H = H_new;
+				g = g_new;
+
+				// 还采纳新参数处的目标函数值
+				F = F_new;
+
+				// 采纳已经计算出来的新参数向量的模
+				x_norm = norm(x);
+				g_norm = norm(g, NORM_INF);
+
+				if (g_norm < eps1) // 梯度收敛，说明抵达平坦区域
+				{
+					found = true;
+					code = 0;
+				}
+
+				double tmp_db = std::max(ratio_1_3, 1 - pow(2 * r - 1, 3));
+				u *= tmp_db;
+				v = 2;
+			}
+			else
+			{
+				u *= v;
+				v *= 2;
+			}
+		}
+	}
+
+	return true;
 }
 
 void DeepVoid::MakeSureNotOutBorder(int x, int y,				// input:	original center of rect

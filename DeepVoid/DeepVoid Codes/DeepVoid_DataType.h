@@ -236,14 +236,17 @@ bool BilinearInterp(const Matx33d & mK,				// input:	the camera matrix
 					double * imgpt_y = NULL
 					);
 
-void shitshit(const vector<Point2d> & xys,				// 输入：参考图像中各参考像素的坐标
+// 20220207
+bool shitshit(const vector<Point2d> & xys,				// 输入：参考图像中各参考像素的坐标
 			  const vector<Vec3d> & RGBs,				// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
 			  const Mat & img,							// 输入：匹配图像
-			  double & h0, double & h1,					// 输入兼输出：最小二乘图像匹配参数
-			  double & a0, double & a1, double & a2,	// 输入兼输出：最小二乘图像匹配参数
-			  double & b0, double & b1, double & b2,	// 输入兼输出：最小二乘图像匹配参数
+			  Matx<double, 8, 1> & x,					// 输入兼输出：最小二乘图像匹配参数
 			  int IRLS = 0,								// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
-			  double e_Huber = 50						// 输入：Huber IRLS 的阈值
+			  double e_Huber = 50,						// 输入：Huber IRLS 的阈值
+			  double tau = 1.0E-3,						// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+			  int maxIter = 64,							// 输入：最大迭代次数
+			  double eps1 = 1.0E-8,						// 输入：梯度收敛阈值
+			  double eps2 = 1.0E-12						// 输入：改正量收敛阈值
 		      );
 
 void MakeSureNotOutBorder(int x, int y,				// input:	original center of rect

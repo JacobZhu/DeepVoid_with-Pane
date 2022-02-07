@@ -2854,6 +2854,85 @@ bool derivatives::j_f_hi_ai_bi(double x, double y,				// ÊäÈë£º¸ø¶¨²Î¿¼Í¼ÏñÖĞµÄÏ
 	}
 }
 
+// 20220207£¬×îĞ¡¶ş³ËÍ¼ÏñÆ¥ÅäÓÅ»¯ÖĞ¼ÆËã Hessian ¾ØÕó H ºÍ²ÎÊıÌİ¶ÈÏòÁ¿ g
+bool derivatives::H_g_hi_ai_bi(const vector<Point2d> & xys,		// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±ê
+							   const vector<Vec3d> & RGBs,		// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄRBGÖµ£¬doubleĞÍ£¬[0]:R£¬[1]:G£¬[2]:B
+							   const Mat & img,					// ÊäÈë£ºÆ¥ÅäÍ¼Ïñ
+							   const Matx<double, 8, 1> & x,	// ÊäÈë£ºµ±Ç°×îĞ¡¶ş³ËÍ¼ÏñÆ¥Åä 8 ¸ö²ÎÊı¹À¼Æ£ºh0,h1,a0,a1,a2,b0,b1,b2
+							   Matx<double, 8, 8> & H,			// Êä³ö£ºHessian ¾ØÕó H = J'WJ
+							   Matx<double, 8, 1> & g,			// Êä³ö£ºËùÓĞ 8 ¸ö²ÎÊıµÄÌİ¶ÈÏòÁ¿ g = J'Wf
+							   double & F,						// Êä³ö£º×ÜÄ¿±êº¯ÊıÖµ F = 0.5*f'Wf
+							   vector<Matx31d> & fs,			// Êä³ö£º²Î¿¼Í¼ÏñÖĞÃ¿¸ö²Î¿¼ÏñËØµÄÔ¤²âÎó²î
+							   int IRLS /*= 0*/,				// ÊäÈë£ºÊÇ·ñ½øĞĞµü´úÖØ¼ÓÈ¨ 0£º·ñ£»1£ºHuber£»2£º...
+							   double e_Huber /*= 50*/			// ÊäÈë£ºHuber IRLS µÄãĞÖµ
+						       )
+{
+	int n = xys.size(); // ²Î¿¼´°¿ÚÖĞ²Î¿¼ÏñËØ×Ü¸öÊı
+
+	double h0 = x(0);
+	double h1 = x(1);
+
+	double a0 = x(2);
+	double a1 = x(3);
+	double a2 = x(4);
+
+	double b0 = x(5);
+	double b1 = x(6);
+	double b2 = x(7);
+
+	// ¸÷Êä³öÏÈÇå¿Õ¹éÁã
+	H = Matx<double, 8, 8>::Matx();
+	H = Matx<double, 8, 8>::zeros();
+
+	g = Matx<double, 8, 1>::Matx();
+	g = Matx<double, 8, 1>::zeros();
+
+	F = 0;
+
+	fs.clear();
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2d & xy = xys[i];
+		const Vec3d & I = RGBs[i];
+
+		double x = xy.x;
+		double y = xy.y;
+
+		double R = I[0];
+		double G = I[1];
+		double B = I[2];
+
+		Matx31d fi;
+		Matx<double, 3, 8> Ji;
+		Matx33d Wi = Matx33d::eye();	// È¨Öµ¾ØÕóÄ¬ÈÏÎªµ¥Î»Õó
+
+		if (derivatives::j_f_hi_ai_bi(x, y, R, G, B, img, h0, h1, a0, a1, a2, b0, b1, b2, fi, Ji))
+		{
+			if (IRLS == 1)
+			{
+				double L2fi = norm(fi);
+				double wi_Huber = derivatives::weight_Huber(L2fi, e_Huber);
+				Wi(0, 0) = Wi(1, 1) = Wi(2, 2) = wi_Huber*wi_Huber;
+			}
+
+			H += Ji.t()*Wi*Ji;
+			g += Ji.t()*Wi*fi;
+			Matx<double, 1, 1> fiWifi = 0.5*fi.t()*Wi*fi;
+
+			F += fiWifi(0);
+
+			fs.push_back(fi);
+		} 
+		else
+		{
+			return false;	// ËµÃ÷ÓĞÄÄ¸ö²Î¿¼ÏñËØ´ó¸ÅÂÊÊÇÔ½½çÁË
+		}		
+	}
+
+	return true;
+}
+
 // void derivatives::j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 // 							   const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
 // 							   const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó
