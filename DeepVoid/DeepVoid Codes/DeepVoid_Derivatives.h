@@ -412,6 +412,15 @@ bool H_g_hi_ai_bi(const vector<Point2d> & xys,		// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×
 				  double e_Huber = 50				// ÊäÈë£ºHuber IRLS µÄãĞÖµ
 			      );
 
+// 20220208£¬¸ø¶¨Ò»×éÏñµã×ø±ê¶ÔÓ¦£¬ÏßĞÔÇó½â 2D ·ÂÉä±ä»»²ÎÊı a0,a1,a2,b0,b1,b2
+// x1 = a0 + a1x0 + a2y0
+// y1 = b0 + b1x0 + b2y0
+void compute_affine_2D(const vector<Point2d> & xys0,			// ÊäÈë£ºËùÓĞ²Î¿¼´°¿ÚÖĞµÄÏñËØ×ø±ê
+					   const vector<Point2d> & xys1,			// ÊäÈë£º²Î¿¼´°¿ÚÖĞËùÓĞÏñËØÓÚÆ¥ÅäÍ¼ÏñÖĞµÄÍ¶Ó°ÏñËØµÄ×ø±ê
+					   double & a0, double & a1, double & a2,	// Êä³ö£ºÇó½â³öÀ´µÄ 2D ·ÂÉä±ä»»²ÎÊı
+					   double & b0, double & b1, double & b2	// Êä³ö£ºÇó½â³öÀ´µÄ 2D ·ÂÉä±ä»»²ÎÊı
+					   );
+
 // void j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// ÊäÈë£ºn¸ö¿Õ¼äµãXYZW×ø±ê
 // 				  const vector<Matx33d> & Ks,				// ÊäÈë£ºm¸öÍ¼ÏñÄÚ²ÎÊı¾ØÕó
 // 				  const vector<Matx33d> & Rs,				// ÊäÈë£ºm¸öÍ¼ÏñĞı×ª¾ØÕó

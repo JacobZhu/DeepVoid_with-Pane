@@ -2780,46 +2780,49 @@ UINT SfM_incremental(LPVOID param)
 				double x_LSM_LM = pti.x;
 				double y_LSM_LM = pti.y;
 
-				double x_LSM_GN = pti.x;
-				double y_LSM_GN = pti.y;
-
-				std::vector<Matx33d> vKi, vRi;
-				std::vector<Matx31d> vti;
-				std::vector<Mat> vImgi;				
-
-				vKi.push_back(cami.m_K);
-				vRi.push_back(cami.m_R);
-				vti.push_back(cami.m_t);
-				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
-
-				double d_init = d_ref;
-				double hx_init = 0;
-				double hy_init = 0;
-				double score_init = 0;
-				double d_optim, hx_optim, hy_optim, score_optim;
-
-				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
-					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
-
-				Matx31d X_optim = C0 + d_optim*Rtuv1;
-				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
-
-				double x_new = xyi(0) / xyi(2);
-				double y_new = xyi(1) / xyi(2);
-
-				double dx = pti.x - x_new;
-				double dy = pti.y - y_new;
-
-				pti.x = x_new;
-				pti.y = y_new;
+// 				double x_LSM_GN = pti.x;
+// 				double y_LSM_GN = pti.y;
+// 
+// 				std::vector<Matx33d> vKi, vRi;
+// 				std::vector<Matx31d> vti;
+// 				std::vector<Mat> vImgi;				
+// 
+// 				vKi.push_back(cami.m_K);
+// 				vRi.push_back(cami.m_R);
+// 				vti.push_back(cami.m_t);
+// 				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
+// 
+// 				double d_init = d_ref;
+// 				double hx_init = 0;
+// 				double hy_init = 0;
+// 				double score_init = 0;
+// 				double d_optim, hx_optim, hy_optim, score_optim;
+// 
+// 				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
+// 					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
+// 
+// 				Matx31d X_optim = C0 + d_optim*Rtuv1;
+// 				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
+// 
+// 				double x_new = xyi(0) / xyi(2);
+// 				double y_new = xyi(1) / xyi(2);
+// 
+// 				double dx = pti.x - x_new;
+// 				double dy = pti.y - y_new;
+// 
+// 				pti.x = x_new;
+// 				pti.y = y_new;
 
 				int code;
 
-				bSucRefine = LSM(x_real, y_real, img0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], wndSize, code, 0, 1, 30, 128, 1.0E-6);
-				bSucRefine = LSM(x_real, y_real, img0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], wndSize, code, 1, 1, 30, 128);
+// 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], wndSize, code, 0, 1, 30, 128, 1.0E-6);
+// 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], wndSize, code, 1, 1, 30, 128);
 
-				pti.x = x_LSM_GN;
-				pti.y = y_LSM_GN;
+				bool bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 0, 1, 1, 128, 1.0E-6);
+//				bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 1, 0, 30, 128);
+
+				pti.x = x_LSM_LM;
+				pti.y = y_LSM_LM;
 // 
 // 				double xyzw = 100;
 			}

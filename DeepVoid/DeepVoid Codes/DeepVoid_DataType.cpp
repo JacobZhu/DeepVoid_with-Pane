@@ -592,7 +592,7 @@ bool DeepVoid::optim_gn_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图
 	return true;
 }
 
-// 2022027，最小二乘图像匹配优化
+// 20220207，最小二乘图像匹配优化
 bool DeepVoid::LSM(int x0, int y0,				// 输入：参考像点坐标
 				   const Mat & img0,			// 输入：参考图像
 				   double & x, double & y,		// 输入兼输出：匹配像点坐标
@@ -684,6 +684,170 @@ bool DeepVoid::LSM(int x0, int y0,				// 输入：参考像点坐标
 
 		return true;		
 	} 
+	else // 灰度图像
+	{
+		return false; // 针对灰度图像还没实现
+	}
+}
+
+// 20220208，最小二乘图像匹配优化
+bool DeepVoid::LSM(int x0, int y0,				// 输入：参考像点坐标
+				   const Mat & img0,			// 输入：参考图像
+				   const Matx33d & K0,			// 输入：参考图像的内参数矩阵
+				   const Matx33d & R0,			// 输入：参考图像的旋转矩阵
+				   const Matx31d & t0,			// 输入：参考图像的平移向量
+				   double & x1, double & y1,	// 输入兼输出：匹配像点坐标
+				   const Mat & img1,			// 输入：匹配图像
+				   const Matx33d & K1,			// 输入：参考图像的内参数矩阵
+				   const Matx33d & R1,			// 输入：参考图像的旋转矩阵
+				   const Matx31d & t1,			// 输入：参考图像的平移向量
+				   int wndSize,					// 输入：窗口大小
+				   int & code,					// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+				   int method /*= 0*/,			// 输入：0:LM；1:GN
+				   int IRLS /*= 0*/,			// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+				   double e_Huber /*= 50*/,		// 输入：Huber IRLS 的阈值
+				   int maxIter /*= 64*/,		// 输入：最大迭代次数
+				   double tau /*= 1.0E-3*/,		// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+				   double eps1 /*= 1.0E-8*/,	// 输入：梯度收敛阈值
+				   double eps2 /*= 1.0E-12*/,	// 输入：改正量收敛阈值
+				   double xEps /*= 1.0E-12*/,	// 输入：GN法迭代退出阈值
+				   double fEps /*= 1.0E-12*/	// 输入：GN法迭代退出阈值
+				   )
+{
+	// 先利用参考像点和初始匹配像点前向交会出物点坐标 /////////////////////////////////////////////////
+	double d;
+	double hx = 0;
+	double hy = 0;
+
+	Matx31d C0;	// 参考图像光心坐标
+
+	{
+		vector<Point2d> imgpts0, imgpts1, errs;
+		vector<Point3d> wrdpts;
+		Point2d pt0, pt1;
+		pt0.x = x0;
+		pt0.y = y0;
+		pt1.x = x1;
+		pt1.y = y1;
+		imgpts0.push_back(pt0);
+		imgpts1.push_back(pt1);
+
+		double rpj_err = Triangulate_Optimal(imgpts0, K0, R0, t0, imgpts1, K1, R1, t1, wrdpts, errs);
+
+		Point3d pt3d = wrdpts[0];
+
+		Matx31d X;
+		X(0) = pt3d.x;
+		X(1) = pt3d.y;
+		X(2) = pt3d.z;
+
+		C0 = -R0.t()*t0;
+
+		Matx31d X_C = R0*X + t0;	// 物点在参考图像中的坐标
+		d = X_C(2);			// 物点相对于参考图像的深度值
+	}
+	///////////////////////////////////////////////////////////////////////////////////////////////
+
+
+	int nc = img0.channels();
+
+	int hSize = (wndSize - 1)*0.5;
+
+	if (nc == 3) // 彩色图像
+	{
+		vector<Point2d> pts0, pts1;
+		vector<Vec3d> RGBs;
+
+		Matx33d R0tK0Inv = R0.t()*K0.inv();
+		Matx33d K1R1 = K1*R1;
+		Matx31d K1t1 = K1*t1;
+
+		for (int i = -hSize; i <= hSize; ++i)
+		{
+			for (int j = -hSize; j <= hSize; ++j)
+			{
+				int xx = x0 + j;
+				int yy = y0 + i;
+
+				Point2d pt0;
+				pt0.x = xx;
+				pt0.y = yy;
+
+				Vec3b pix = img0.at<Vec3b>(yy, xx);
+				uchar B = pix.val[0];
+				uchar G = pix.val[1];
+				uchar R = pix.val[2];
+
+				Vec3d I;
+				I[0] = R;
+				I[1] = G;
+				I[2] = B;
+
+				pts0.push_back(pt0);
+				RGBs.push_back(I);
+
+				Matx31d xy1;
+				xy1(0) = xx;
+				xy1(1) = yy;
+				xy1(2) = 1;
+
+				Matx31d dir = R0tK0Inv*xy1;
+
+				Matx31d X = C0 + (d + hx*j + hy*i) * dir;
+
+				Matx31d xyw = K1R1*X + K1t1;
+
+				Point2d pt1;
+				pt1.x = xyw(0) / xyw(2);
+				pt1.y = xyw(1) / xyw(2);
+
+				pts1.push_back(pt1);
+			}
+		}
+
+		double a0, a1, a2, b0, b1, b2;
+
+		derivatives::compute_affine_2D(pts0, pts1, a0, a1, a2, b0, b1, b2);
+
+		Matx<double, 8, 1> params;
+		params(0) = 0;		// h0 = 0
+		params(1) = 1;		// h1 = 1
+		params(2) = a0/*x - x0*/;	// a0 = x' - x
+		params(3) = a1/*1*/;		// a1 = 1
+		params(4) = a2/*0*/;		// a2 = 0
+		params(5) = b0/*y - y0*/;	// b0 = y' - y
+		params(6) = b1/*0*/;		// b1 = 0
+		params(7) = b2/*1*/;		// b2 = 1
+
+		if (method == 0)
+		{
+			if (!optim_lm_hi_ai_bi(pts0, RGBs, img1, params, code, IRLS, e_Huber, maxIter, tau, eps1, eps2))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			if (!optim_gn_hi_ai_bi(pts0, RGBs, img1, params, IRLS, e_Huber, maxIter, xEps, fEps))
+			{
+				return false;
+			}
+		}
+
+		a0 = params(2);
+		a1 = params(3);
+		a2 = params(4);
+
+		b0 = params(5);
+		b1 = params(6);
+		b2 = params(7);
+
+		// 更新匹配像点坐标
+		x1 = a0 + a1*x0 + a2*y0;
+		y1 = b0 + b1*x0 + b2*y0;
+
+		return true;
+	}
 	else // 灰度图像
 	{
 		return false; // 针对灰度图像还没实现

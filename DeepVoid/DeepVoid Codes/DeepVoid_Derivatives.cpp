@@ -2930,6 +2930,48 @@ bool derivatives::H_g_hi_ai_bi(const vector<Point2d> & xys,		// 输入：参考图像中
 	return true;
 }
 
+// 20220208，给定一组像点坐标对应，线性求解 2D 仿射变换参数 a0,a1,a2,b0,b1,b2
+// x1 = a0 + a1x0 + a2y0
+// y1 = b0 + b1x0 + b2y0
+void derivatives::compute_affine_2D(const vector<Point2d> & xys0,			// 输入：所有参考窗口中的像素坐标
+								    const vector<Point2d> & xys1,			// 输入：参考窗口中所有像素于匹配图像中的投影像素的坐标
+								    double & a0, double & a1, double & a2,	// 输出：求解出来的 2D 仿射变换参数
+								    double & b0, double & b1, double & b2	// 输出：求解出来的 2D 仿射变换参数
+								    )
+{
+	Matx<double, 6, 6> H;
+	Matx<double, 6, 1> g, x;
+	Matx<double, 2, 6> Ai;
+	Matx<double, 2, 1> bi;
+
+	Ai(0, 0) = Ai(1, 3) = 1;
+
+	for (int i = 0; i < xys0.size(); ++i)
+	{
+		const Point2d & xy0 = xys0[i];
+		const Point2d & xy1 = xys1[i];
+
+		Ai(0, 1) = Ai(1, 4) = xy0.x;
+		Ai(0, 2) = Ai(1, 5) = xy0.y;
+
+		bi(0) = xy1.x;
+		bi(1) = xy1.y;
+
+		H += Ai.t()*Ai;
+		g += Ai.t()*bi;
+	}
+
+	// 解方程 AtA*x = Atb
+	solve(H, g, x, DECOMP_CHOLESKY);
+
+	a0 = x(0);
+	a1 = x(1);
+	a2 = x(2);
+	b0 = x(3);
+	b1 = x(4);
+	b2 = x(5);
+}
+
 // void derivatives::j_f_w_t_XYZW(const vector<Point4d> & XYZWs,			// 输入：n个空间点XYZW坐标
 // 							   const vector<Matx33d> & Ks,				// 输入：m个图像内参数矩阵
 // 							   const vector<Matx33d> & Rs,				// 输入：m个图像旋转矩阵
