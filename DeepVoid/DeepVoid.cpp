@@ -2650,8 +2650,29 @@ UINT SfM_incremental(LPVOID param)
 
 		typedef std::pair<int, std::pair<int, Matx31d>> pair_I_i_C; // 20220203，先定义一个下面要用到的数据结构，<I，i，C> 存储当前像点的图像索引号、像点索引号、图像光心坐标
 
+		int k = 0;
+		int nObjPts = pointCloud.size();
+
+		int rateOld = -100;
+
 		for (auto iterObjPt = pointCloud.begin(); iterObjPt != pointCloud.end(); ++iterObjPt)
 		{
+			++k;
+
+			int rate = int((k / (double)nObjPts)*100);
+
+			if (rate % 10 == 0)
+			{
+				if (rate != rateOld)
+				{
+					strInfo.Format("%d%% completed", rate);
+
+					pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+					rateOld = rate;
+				}				
+			}
+
 			const int & ID = iterObjPt->first; // 先取出点的全局 ID 号
 
 			const DeepVoid::CloudPoint & objpt = iterObjPt->second;
@@ -2739,12 +2760,21 @@ UINT SfM_incremental(LPVOID param)
 			int x0 = FTOI(pt0.x);
 			int y0 = FTOI(pt0.y);
 
+			const int & wndSizeMin = pApp->m_wndSizeImgptRefine; // 20220209，人为设置的窗口大小只是一个最小的窗口大小
+
+			int wndSize = int(cam0.m_feats.key_points[i_ref].size*0.5) * 2 + 1; // 20220209，实际窗口大小按照特征大小来定，确保该值为奇数
+
+			if (wndSize < wndSizeMin)
+			{
+				wndSize = wndSizeMin;
+			}
+
 			Matx31d C0 = -mR0.t()*mt0;
 
 			Matx31d X_C = mR0*X + mt0; // 物点在参考图像中的坐标
 			double d_ref = X_C(2); // 物点相对于参考图像的深度值
 
-			const int & wndSize = pApp->m_wndSizeImgptRefine;
+//			const int & wndSize = pApp->m_wndSizeImgptRefine;
 			int hWndSize = (wndSize - 1)*0.5; // half patch width
 
 			int y_real, x_real;
@@ -2818,7 +2848,7 @@ UINT SfM_incremental(LPVOID param)
 // 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], wndSize, code, 0, 1, 30, 128, 1.0E-6);
 // 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], wndSize, code, 1, 1, 30, 128);
 
-				bool bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 0, 1, 1, 128, 1.0E-6);
+				bool bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 0, 1, 50, 128, 1.0E-6);
 //				bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 1, 0, 30, 128);
 
 				pti.x = x_LSM_LM;
