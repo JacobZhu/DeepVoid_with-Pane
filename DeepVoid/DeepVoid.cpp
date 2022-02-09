@@ -200,7 +200,7 @@ CDeepVoidApp::CDeepVoidApp()
 	m_threshRpjErrRO = 1.0;					// 相对定向时要用到的重投影残差阈值
 	m_optsLM[0] = 1.0E-6;					// levmar 优化方法中要用到的参数 u 的初始尺度因子，默认为 1.0E-3
 	m_optsLM[1] = 1.0E-8;					// 当目标函数对各待优化参数的最大导数小于等于该值时优化结束，默认为 1.0E-12
-	m_optsLM[2] = 1.0E-8;					// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
+	m_optsLM[2] = 1.0E-12;					// 当待优化参数 2 范数的变化量小于该阈值时优化结束，默认为 1.0E-12
 	m_optsLM[3] = 1.0E-12;					// 当误差矢量的 2 范数小于该阈值时优化结束，默认为 1.0E-12
 	m_optsLM[4] = 0;						// 当误差矢量的 2 范数的相对变化量小于该阈值时优化结束，默认为 0
 	m_threshRpjErrInlier = 1.5;				// EO和BA中用于判断是否内点的重投影残差阈值
@@ -208,10 +208,12 @@ CDeepVoidApp::CDeepVoidApp()
 	m_methodRO = 0;							// 指定RO方法类型。0:PIRO; 1:extract [R|t] from essential matrix, just like recoverPose() from opencv
 	m_threshMeanAngRO = 5.0;				// RO中要用到的物点平均交会角阈值
 	m_nMinInilier = 2;						// 至少得有该个数图像观测到该点才会被输出
-	m_nMaxIter = 64;						// 最大迭代次数
+	m_nMaxIter = 128;						// 最大迭代次数
 	m_bRefineImgPts = true;					// 是否优化像点坐标，默认是要进行优化
 	m_nFlagPerImgPt = 2;					// 一条特征轨迹中每个像点预设多少个标志位，一般至少 1 个标志位用于指明该像点当前是否被判定为内点
 	m_wndSizeImgptRefine = 5;				// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
+	m_xEpsMPGC = 1.0E-8;					// input: threshold
+	m_fEpsMPGC = 1.0E-6;					// input: threshold
 }
 
 // The one and only CDeepVoidApp object
@@ -2648,254 +2650,7 @@ UINT SfM_incremental(LPVOID param)
 	{
 		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("Image matching refinement starts");
 
-		typedef std::pair<int, std::pair<int, Matx31d>> pair_I_i_C; // 20220203，先定义一个下面要用到的数据结构，<I，i，C> 存储当前像点的图像索引号、像点索引号、图像光心坐标
-
-		int k = 0;
-		int nObjPts = pointCloud.size();
-
-		int rateOld = -100;
-
-		for (auto iterObjPt = pointCloud.begin(); iterObjPt != pointCloud.end(); ++iterObjPt)
-		{
-			++k;
-
-			int rate = int((k / (double)nObjPts)*100);
-
-			if (rate % 10 == 0)
-			{
-				if (rate != rateOld)
-				{
-					strInfo.Format("%d%% completed", rate);
-
-					pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
-
-					rateOld = rate;
-				}				
-			}
-
-			const int & ID = iterObjPt->first; // 先取出点的全局 ID 号
-
-			const DeepVoid::CloudPoint & objpt = iterObjPt->second;
-
-			Matx31d X;
-			X(0) = objpt.m_pt.x;
-			X(1) = objpt.m_pt.y;
-			X(2) = objpt.m_pt.z;
-
-			auto track = tracks.find(ID); // 再把该点对应的特征轨迹 track 给取出来
-
-			std::vector<pair_I_i_C> pIiCs;
-
-			// 这个循环就是把相关的特征信息给取出来
-			for (auto iterImgPt = track->second.begin(); iterImgPt != track->second.end(); ++iterImgPt)
-			{
-				const int & I = iterImgPt->first;					// 取出特征轨迹中每个像点的图像索引号
-				const int & i = iterImgPt->second.first;			// 取出特征轨迹中每个像点于其图像中的像点索引号
-				const int & bInlier = iterImgPt->second.second[0];	// 该像点当前是否被判定为内点
-
-				if (!bInlier)	// 如果不是内点就直接 next 了
-				{
-					continue;
-				}
-
-				const cam_data & cam = pApp->m_vCams[I];
-
-				Matx31d C = -cam.m_R.t()*cam.m_t; // 取出像点所在图像的光心坐标
-
-				pIiCs.push_back(make_pair(I, make_pair(i, C)));
-			}
-
-			// 20220204，虽然我直觉感觉一个物点既然都已经被交会出三维坐标了，那肯定会有至少 1 个内点吧（按说是2个吧，在BA过程中可能有那么1个点残差过大被判定为外点）
-			// 但我确实遇到过所有像点都被判定为 outliers 的情况，尤其是这段代码在 final SBA 之前时
-			// 按说在 Triangulation_AddOneImg() 之后我应该是把每个可能的物点三维坐标对应的支撑内点集的标志位都置为 1 才对吧？
-			// 我进 Triangulation_AddOneImg() 中看了，确实没有刻意置标志位为 1 的操作，也是有它道理的，因为判断内点的工作完全应由 SBA 环节来裁定
-			// 其它任何环节也就是提名坐标初值的作用，因此每次 Triangulation_AddOneImg() 之后就应该来一次 SBA 才行，否则很多点的内点标志位是不可信的
-			// 我把 image matching refinement 环节挪到 final SBA 之后是完全正确的。
-			if (pIiCs.empty())
-			{
-				continue;
-			}
-
-			int nValid = pIiCs.size(); // 到这里 nValid 是有可能为 1 的
-
-			std::vector<std::pair<int, double>> vsumd2;
-
-			for (int i = 0; i < nValid; ++i)
-			{
-				double sum2 = 0;
-
-				for (int j = 0; j < nValid; ++j)
-				{
-					if (i == j)
-					{
-						continue;
-					}
-
-					Matx31d dC = pIiCs[i].second.second - pIiCs[j].second.second; // 光心之间的距离
-
-					double d = norm(dC);
-
-					sum2 += d*d;
-				}
-
-				vsumd2.push_back(make_pair(i, sum2));
-			}
-
-			sort(vsumd2.begin(), vsumd2.end(),
-				[](const std::pair<int, double> & a, const std::pair<int, double> & b) {return a.second < b.second; });
-
-			// 把参考像点所在图像索引号和像点索引号取出来
-			const int & I_ref = pIiCs[vsumd2[0].first].first;
-			const int & i_ref = pIiCs[vsumd2[0].first].second.first;
-
-			auto iterImgPt = track->second.find(I_ref);
-			iterImgPt->second.second[1] = 1; // 将参考像点的相关标志位置 1 表明其身份为像点匹配优化环节中的参考像点
-
-			cam_data & cam0 = pApp->m_vCams[I_ref];
-			const Matx33d & mK0 = cam0.m_K;
-			const Matx33d & mR0 = cam0.m_R;
-			const Matx31d & mt0 = cam0.m_t;
-			const Mat & img0 = pApp->m_imgsOriginal[I_ref];
-			Point2f & pt0 = cam0.m_feats.key_points[i_ref].pt;
-			int x0 = FTOI(pt0.x);
-			int y0 = FTOI(pt0.y);
-
-			const int & wndSizeMin = pApp->m_wndSizeImgptRefine; // 20220209，人为设置的窗口大小只是一个最小的窗口大小
-
-			int wndSize = int(cam0.m_feats.key_points[i_ref].size*0.5) * 2 + 1; // 20220209，实际窗口大小按照特征大小来定，确保该值为奇数
-
-			if (wndSize < wndSizeMin)
-			{
-				wndSize = wndSizeMin;
-			}
-
-			Matx31d C0 = -mR0.t()*mt0;
-
-			Matx31d X_C = mR0*X + mt0; // 物点在参考图像中的坐标
-			double d_ref = X_C(2); // 物点相对于参考图像的深度值
-
-//			const int & wndSize = pApp->m_wndSizeImgptRefine;
-			int hWndSize = (wndSize - 1)*0.5; // half patch width
-
-			int y_real, x_real;
-			MakeSureNotOutBorder(x0, y0, x_real, y_real, hWndSize, img0.cols, img0.rows);
-
-			pt0.x = x_real;
-			pt0.y = y_real;
-
-			Matx31d xy1;
-			xy1(0) = x_real;
-			xy1(1) = y_real;
-			xy1(2) = 1;
-
-			Matx31d Rtuv1 = mR0.t()*mK0.inv()*xy1;
-
-			Mat mMask(wndSize, wndSize, CV_8UC1, Scalar(1));
-
-			std::vector<Matx33d> vKi, vRi;
-			std::vector<Matx31d> vti;
-			std::vector<Mat> vImgi;
-			std::vector<Mat> vMaski;
-			std::vector<int> vNumi;
-
-// 			vMaski.push_back(mMask);
-// 			vNumi.push_back(wndSize*wndSize);
-
-			// 从排行第 2 个开始就是非参考匹配像点了
-			for (int i = 1; i < nValid; ++i)
-			{
-				const int & I_other = pIiCs[vsumd2[i].first].first;
-				const int & i_other = pIiCs[vsumd2[i].first].second.first;
-
-				cam_data & cami = pApp->m_vCams[I_other];
-				Point2f & pti = cami.m_feats.key_points[i_other].pt;
-
-// 				double x_LSM_LM = pti.x;
-// 				double y_LSM_LM = pti.y;
-// 
-// 				double x_LSM_GN = pti.x;
-// 				double y_LSM_GN = pti.y;
-
-// 				std::vector<Matx33d> vKi, vRi;
-// 				std::vector<Matx31d> vti;
-// 				std::vector<Mat> vImgi;				
-
-				vKi.push_back(cami.m_K);
-				vRi.push_back(cami.m_R);
-				vti.push_back(cami.m_t);
-				vImgi.push_back(pApp->m_imgsOriginal[I_other]);
-				vMaski.push_back(mMask);
-				vNumi.push_back(wndSize*wndSize);
-
-// 				double d_init = d_ref;
-// 				double hx_init = 0;
-// 				double hy_init = 0;
-// 				double score_init = 0;
-// 				double d_optim, hx_optim, hy_optim, score_optim;
-// 
-// 				bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
-// 					d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
-// 
-// 				Matx31d X_optim = C0 + d_optim*Rtuv1;
-// 				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
-// 
-// 				double x_new = xyi(0) / xyi(2);
-// 				double y_new = xyi(1) / xyi(2);
-// 
-// 				double dx = pti.x - x_new;
-// 				double dy = pti.y - y_new;
-// 
-// 				pti.x = x_new;
-// 				pti.y = y_new;
-
-
-//				int code;
-//
-// 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], wndSize, code, 0, 1, 30, 128, 1.0E-6);
-// 				bSucRefine = LSM(x_real, y_real, img0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], wndSize, code, 1, 1, 30, 128);
-//
-//				bool bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_LM, y_LSM_LM, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 0, 1, 50, 128, 1.0E-6);
-//				bSucRefine = LSM(x_real, y_real, img0, mK0, mR0, mt0, x_LSM_GN, y_LSM_GN, pApp->m_imgsOriginal[I_other], cami.m_K, cami.m_R, cami.m_t, wndSize, code, 1, 0, 30, 128);
-//
-//				pti.x = x_LSM_LM;
-//				pti.y = y_LSM_LM;
-			}
-
-			// 20220209，所有非参考像点一起来进行优化
-			double d_init = d_ref;
-			double hx_init = 0;
-			double hy_init = 0;
-			double score_init = 0;
-			double d_optim, hx_optim, hy_optim, score_optim;
-
-			bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x_real, y_real, wndSize, wndSize,
-				d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim);
-
-			// 成功的话就更新全部匹配像点坐标
-			if (bSucRefine)
-			{
-				for (int i = 1; i < nValid; ++i)
-				{
-					const int & I_other = pIiCs[vsumd2[i].first].first;
-					const int & i_other = pIiCs[vsumd2[i].first].second.first;
-
-					cam_data & cami = pApp->m_vCams[I_other];
-					Point2f & pti = cami.m_feats.key_points[i_other].pt;
-	
-					Matx31d X_optim = C0 + d_optim*Rtuv1;
-					Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
-					 
-					double x_new = xyi(0) / xyi(2);
-					double y_new = xyi(1) / xyi(2);
-					
-					double dx = pti.x - x_new;
-					double dy = pti.y - y_new;
-					 
-					pti.x = x_new;
-					pti.y = y_new;
-				}
-			}
-		}
+		DeepVoid::RefineMatchingAccuracy(pointCloud, tracks, pApp->m_vCams, pApp->m_imgsOriginal, pApp->m_wndSizeImgptRefine, pApp->m_nMaxIter, pApp->m_xEpsMPGC, pApp->m_fEpsMPGC);
 
 		pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo("Image matching refinement ends");
 

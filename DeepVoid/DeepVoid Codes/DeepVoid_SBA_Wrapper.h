@@ -311,6 +311,17 @@ int  optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud & map_poin
 																						// info[9]，# number of linear systems solved，求解线性方程组的个数
 												  );
 
+// 20220209，优化像点匹配精度
+void RefineMatchingAccuracy(const SfM_ZZK::PointCloud & map_pointcloud,		// 输入：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+							SfM_ZZK::MultiTracksWithFlags & map_tracks,		// 输入兼输出：所有的特征轨迹
+							vector<cam_data> & cams,						// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+							const vector<Mat> & imgs,						// 输入：所有图像
+							int wndSizeMin = 5,								// 输入：所允许的最小参考图像窗口尺寸
+							int maxIter = 128,								// input: max iteration
+							double xEps = 1.0E-8,							// input: threshold
+							double fEps = 1.0E-6							// input: threshold
+							);
+
 // iteratively run sba multiple times, until no outliers are detected
 /*int optim_sba_levmar_XYZ_ext_rotvec_iterative(vector<CloudPoint> & cloudPts,		// 输入兼输出：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
 											  vector<cam_data> & cams,			// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新

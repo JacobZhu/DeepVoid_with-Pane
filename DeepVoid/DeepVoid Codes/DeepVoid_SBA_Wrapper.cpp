@@ -1,5 +1,8 @@
 #include "stdafx.h"
 
+#include "DeepVoid.h"
+#include "MainFrm.h"
+
 // 该函数在优化用欧拉角和平移向量表示的视图外参数以及各物点世界坐标时用来计算第 i 个物点在第 j 幅视图上的重投影像点坐标，以供 sba 的函数调用
 void DeepVoid::proj_ext_euler_str(int j,			// 当前视图的编号
 								  int i,			// 当前点的编号
@@ -2247,6 +2250,229 @@ int  DeepVoid::optim_sba_levmar_f_XYZ_ext_rotvec_IRLS_Huber(SfM_ZZK::PointCloud 
 // 	double rms_sigmaObjPt = std::sqrt(sum2_sigmaObjPt / n);
 
 	return l;
+}
+
+// 20220209，优化像点匹配精度
+void DeepVoid::RefineMatchingAccuracy(const SfM_ZZK::PointCloud & map_pointcloud,	// 输入：存放所有标志点的空间坐标，平差之后里面的点坐标将被更新
+									  SfM_ZZK::MultiTracksWithFlags & map_tracks,	// 输入兼输出：所有的特征轨迹
+									  vector<cam_data> & cams,						// 输入兼输出：存放所有视图的信息，其中包括视图的内参数，外参数，像差系数以及所观测到的标志点像点坐标，平差之后里面能优化的视图外参数将得到更新
+									  const vector<Mat> & imgs,						// 输入：所有图像
+									  int wndSizeMin /*= 5*/,						// 输入：所允许的最小参考图像窗口尺寸
+									  int maxIter /*= 128*/,						// input: max iteration
+									  double xEps /*= 1.0E-8*/,						// input: threshold
+									  double fEps /*= 1.0E-6*/						// input: threshold
+									  )
+{
+	typedef std::pair<int, std::pair<int, Matx31d>> pair_I_i_C; // 20220203，先定义一个下面要用到的数据结构，<I，i，C> 存储当前像点的图像索引号、像点索引号、图像光心坐标
+
+	CString strInfo;
+
+	int k = 0;
+	int nObjPts = map_pointcloud.size();
+
+	int rateOld = -100;
+
+	for (auto iterObjPt = map_pointcloud.begin(); iterObjPt != map_pointcloud.end(); ++iterObjPt)
+	{
+		++k;
+
+		int rate = int((k / (double)nObjPts) * 100);
+
+		if (rate % 10 == 0)
+		{
+			if (rate != rateOld)
+			{
+				strInfo.Format("%d%% completed", rate);
+
+				theApp.m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
+
+				rateOld = rate;
+			}
+		}
+
+		const int & ID = iterObjPt->first; // 先取出点的全局 ID 号
+
+		const DeepVoid::CloudPoint & objpt = iterObjPt->second;
+
+		Matx31d X;
+		X(0) = objpt.m_pt.x;
+		X(1) = objpt.m_pt.y;
+		X(2) = objpt.m_pt.z;
+
+		auto track = map_tracks.find(ID); // 再把该点对应的特征轨迹 track 给取出来
+
+		std::vector<pair_I_i_C> pIiCs;
+
+		// 这个循环就是把相关的特征信息给取出来
+		for (auto iterImgPt = track->second.begin(); iterImgPt != track->second.end(); ++iterImgPt)
+		{
+			const int & I = iterImgPt->first;					// 取出特征轨迹中每个像点的图像索引号
+			const int & i = iterImgPt->second.first;			// 取出特征轨迹中每个像点于其图像中的像点索引号
+			const int & bInlier = iterImgPt->second.second[0];	// 该像点当前是否被判定为内点
+
+			if (!bInlier)	// 如果不是内点就直接 next 了
+			{
+				continue;
+			}
+
+			const cam_data & cam = cams[I];
+
+			Matx31d C = -cam.m_R.t()*cam.m_t; // 取出像点所在图像的光心坐标
+
+			pIiCs.push_back(make_pair(I, make_pair(i, C)));
+		}
+
+		// 20220204，虽然我直觉感觉一个物点既然都已经被交会出三维坐标了，那肯定会有至少 1 个内点吧（按说是2个吧，在BA过程中可能有那么1个点残差过大被判定为外点）
+		// 但我确实遇到过所有像点都被判定为 outliers 的情况，尤其是这段代码在 final SBA 之前时
+		// 按说在 Triangulation_AddOneImg() 之后我应该是把每个可能的物点三维坐标对应的支撑内点集的标志位都置为 1 才对吧？
+		// 我进 Triangulation_AddOneImg() 中看了，确实没有刻意置标志位为 1 的操作，也是有它道理的，因为判断内点的工作完全应由 SBA 环节来裁定
+		// 其它任何环节也就是提名坐标初值的作用，因此每次 Triangulation_AddOneImg() 之后就应该来一次 SBA 才行，否则很多点的内点标志位是不可信的
+		// 我把 image matching refinement 环节挪到 final SBA 之后是完全正确的。
+		if (pIiCs.empty())
+		{
+			continue;
+		}
+
+		int nValid = pIiCs.size(); // 到这里 nValid 是有可能为 1 的
+
+		std::vector<std::pair<int, double>> vsumd2;
+
+		for (int i = 0; i < nValid; ++i)
+		{
+			double sum2 = 0;
+
+			for (int j = 0; j < nValid; ++j)
+			{
+				if (i == j)
+				{
+					continue;
+				}
+
+				Matx31d dC = pIiCs[i].second.second - pIiCs[j].second.second; // 光心之间的距离
+
+				double d = norm(dC);
+
+				sum2 += d*d;
+			}
+
+			vsumd2.push_back(make_pair(i, sum2));
+		}
+
+		sort(vsumd2.begin(), vsumd2.end(),
+			[](const std::pair<int, double> & a, const std::pair<int, double> & b) {return a.second < b.second; });
+
+		// 把参考像点所在图像索引号和像点索引号取出来
+		const int & I_ref = pIiCs[vsumd2[0].first].first;
+		const int & i_ref = pIiCs[vsumd2[0].first].second.first;
+
+		auto iterImgPt = track->second.find(I_ref);
+		iterImgPt->second.second[1] = 1; // 将参考像点的相关标志位置 1 表明其身份为像点匹配优化环节中的参考像点
+
+		cam_data & cam0 = cams[I_ref];
+		const Matx33d & mK0 = cam0.m_K;
+		const Matx33d & mR0 = cam0.m_R;
+		const Matx31d & mt0 = cam0.m_t;
+		const Mat & img0 = imgs[I_ref];
+		cv::KeyPoint & feat0 = cam0.m_feats.key_points[i_ref];
+		Point2f & pt0 = feat0.pt;
+		int x0 = FTOI(pt0.x);	// 但凡参考像点，都取成整像素
+		int y0 = FTOI(pt0.y);
+
+		int wndSize = int(feat0.size*0.5) * 2 + 1; // 20220209，实际窗口大小按照特征大小来定，确保该值为奇数
+
+		if (wndSize < wndSizeMin)
+		{
+			wndSize = wndSizeMin;
+		}
+
+		Matx31d C0 = -mR0.t()*mt0;
+
+		Matx31d X_C = mR0*X + mt0; // 物点在参考图像中的坐标
+		double d_ref = X_C(2); // 物点相对于参考图像的深度值
+
+		int hWndSize = (wndSize - 1)*0.5; // half patch width
+
+		int x0_real, y0_real;
+		MakeSureNotOutBorder(x0, y0, x0_real, y0_real, hWndSize, img0.cols, img0.rows);	// 确保参考像点不越界
+
+		pt0.x = x0_real;	// 更新参考像点坐标
+		pt0.y = y0_real;
+
+		Matx31d xy1;
+		xy1(0) = x0_real;
+		xy1(1) = y0_real;
+		xy1(2) = 1;
+
+		Matx31d Rtuv1 = mR0.t()*mK0.inv()*xy1;
+
+		Mat mMask(wndSize, wndSize, CV_8UC1, Scalar(1));
+
+		std::vector<Matx33d> vKi, vRi;
+		std::vector<Matx31d> vti;
+		std::vector<Mat> vImgi;
+		std::vector<Mat> vMaski;
+		std::vector<int> vNumi;
+
+		// 从排行第 2 个开始就是非参考匹配像点了
+		for (int i = 1; i < nValid; ++i)
+		{
+			const int & I_other = pIiCs[vsumd2[i].first].first;
+			const cam_data & cami = cams[I_other];		
+
+			vKi.push_back(cami.m_K);
+			vRi.push_back(cami.m_R);
+			vti.push_back(cami.m_t);
+			vImgi.push_back(imgs[I_other]);
+			vMaski.push_back(mMask);
+			vNumi.push_back(wndSize*wndSize);
+		}
+
+		// 20220209，所有非参考像点一起来进行优化
+		double d_init = d_ref;
+		double hx_init = 0;
+		double hy_init = 0;
+		double score_init = 0;
+		double d_optim, hx_optim, hy_optim, score_optim;
+
+		bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x0_real, y0_real, wndSize, wndSize,
+			d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim, maxIter, xEps, fEps);
+
+		// 成功的话就更新物点坐标和全部匹配像点坐标
+		if (bSucRefine)
+		{
+			// 先更新物点坐标
+			Matx31d X_optim = C0 + d_optim*Rtuv1;
+
+			// 20220209，晚23:05，最终还是决定不更新物点坐标，而只更新匹配像点坐标
+			// 尽管更新完物点坐标后，所有点重投影残差立马降到0.05-0.07个像素这么恐怖的程度（SBA经12次迭代后就收敛退出了，残差维持那么多）
+			// 但我也发现，更新完物点坐标后的物点平均被观测次数反而降低了一丁点，不确定度也会降低一丁点，
+			// 甚至于不知道是不是心理作用，我看着显示的三维点云好像也不及没更新物点坐标时的结果。。。
+			// 所以虽然不更新物点坐标仅更新匹配像点坐标时收敛的残差普遍在0.12-0.16个像素的水平，我还是决定不更新物点坐标了，就靠接着的SBA去优化，反正精度肯定是完全够的
+// 			objpt.m_pt.x = X_optim(0);
+// 			objpt.m_pt.y = X_optim(1);
+// 			objpt.m_pt.z = X_optim(2);
+
+			for (int i = 1; i < nValid; ++i)
+			{
+				const int & I_other = pIiCs[vsumd2[i].first].first;
+				const int & i_other = pIiCs[vsumd2[i].first].second.first;
+
+				cam_data & cami = cams[I_other];
+				Point2f & pti = cami.m_feats.key_points[i_other].pt;
+
+				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
+
+				double x_new = xyi(0) / xyi(2);
+				double y_new = xyi(1) / xyi(2);
+
+				double dx = pti.x - x_new;
+				double dy = pti.y - y_new;
+
+				pti.x = x_new;
+				pti.y = y_new;
+			}
+		}
+	}
 }
 
 // iteratively run sba multiple times, until no outliers are detected

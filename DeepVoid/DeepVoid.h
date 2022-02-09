@@ -139,6 +139,8 @@ public:
 	bool m_bRefineImgPts;				// 是否优化像点坐标
 	int m_nFlagPerImgPt;				// 一条特征轨迹中每个像点预设多少个标志位，一般至少 1 个标志位用于指明该像点当前是否被判定为内点
 	int m_wndSizeImgptRefine;			// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
+	double m_xEpsMPGC; 					// input: threshold
+	double m_fEpsMPGC; 					// input: threshold
 
 // operations
 public:
