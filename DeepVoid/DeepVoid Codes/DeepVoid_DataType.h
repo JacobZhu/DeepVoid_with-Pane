@@ -262,6 +262,23 @@ bool optim_gn_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图像中各参考
 					   double fEps = 1.0E-12					// input:	threshold
 					   );
 
+// 20220209
+// bool optim_lm_d_hx_hy_ck(const vector<Point2d> & xys0,		// 输入：参考图像中各参考像素的坐标
+// 					     const vector<Vec3d> & RGBs0,		// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
+// 					     const vector<Mat> & imgs1,			// 输入：匹配图像
+// 						 double & d,						// 输入兼输出：物点相对于参考图像的深度值
+// 						 double & hx,						// 输入兼输出：深度沿参考图像 x 轴向梯度
+// 						 double & hy,						// 输入兼输出：深度沿参考图像 y 轴向梯度
+// 					     vector<double> & ck,				// 输入兼输出：匹配图像 patch 相对于参考图像 patch 的辐射比例
+// 					     int & code,						// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+// 					     int IRLS = 0,						// 输入：是否进行迭代重加权 0：否；1：Huber；2：...
+// 					     double e_Huber = 30,				// 输入：Huber IRLS 的阈值
+// 					     int maxIter = 64,					// 输入：最大迭代次数
+// 					     double tau = 1.0E-3,				// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+// 					     double eps1 = 1.0E-8,				// 输入：梯度收敛阈值
+// 					     double eps2 = 1.0E-12				// 输入：改正量收敛阈值
+// 					     );
+
 // 20220207，最小二乘图像匹配优化
 bool LSM(int x0, int y0,				// 输入：参考像点坐标
 		 const Mat & img0,				// 输入：参考图像
