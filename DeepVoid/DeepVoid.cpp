@@ -90,6 +90,8 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_3SFM_INCREMENTALSFM, &CDeepVoidApp::On3sfmIncrementalsfm)
 	ON_UPDATE_COMMAND_UI(ID_3SFM_INCREMENTALSFM, &CDeepVoidApp::OnUpdate3sfmIncrementalsfm)
 	ON_UPDATE_COMMAND_UI(ID_3SFM_GLOBALSFM, &CDeepVoidApp::OnUpdate3sfmGlobalsfm)
+	ON_COMMAND(ID_TEST_SBAANDDBSBACOMPARISON, &CDeepVoidApp::OnTestSbaanddbsbacomparison)
+	ON_UPDATE_COMMAND_UI(ID_TEST_SBAANDDBSBACOMPARISON, &CDeepVoidApp::OnUpdateTestSbaanddbsbacomparison)
 END_MESSAGE_MAP()
 
 
@@ -214,6 +216,7 @@ CDeepVoidApp::CDeepVoidApp()
 	m_wndSizeImgptRefine = 5;				// 进行像点匹配优化时采用的窗口大小，一般为奇数哈
 	m_xEpsMPGC = 1.0E-8;					// input: threshold
 	m_fEpsMPGC = 1.0E-6;					// input: threshold
+	m_idxRefImg = -100;						// SfM、SBA过程中的参考坐标系图像
 }
 
 // The one and only CDeepVoidApp object
@@ -2455,6 +2458,8 @@ UINT SfM_incremental(LPVOID param)
 			cam_j.m_bOriented = true;
 
 			idx_refimg = i;
+
+			pApp->m_idxRefImg = idx_refimg;	// 告诉全局变量哪个是参考坐标系图像
 
 			// 将所有重建出来的像点暂时赋上都为内点
 			for (auto iter_wrdpt = pointCloud.begin(); iter_wrdpt != pointCloud.end(); ++iter_wrdpt)
@@ -12769,4 +12774,326 @@ void CDeepVoidApp::OnUpdate3sfmGlobalsfm(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
 	pCmdUI->Enable(m_bTracksReady);
+}
+
+
+UINT SBA_DbSBA_compare_realdata(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	// 把要用的全局变量引用过来 ////////////////////////////////////////////////
+	const vector<cam_data> & cams = pApp->m_vCams;
+	const SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
+	const SfM_ZZK::MultiTracksWithFlags & tracks = pApp->m_mapTracks; // 20220202，新数据结构
+	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
+	const CString & dirOut = pApp->m_pathDirOut; // 结果输出文件夹路径
+	const std::vector<CString> & vImgNames = pApp->m_vNameImgs; // 所有图像的纯名称（不含路径和尾缀）
+	const int & idxRefImg = pApp->m_idxRefImg;
+	//////////////////////////////////////////////////////////////////////////
+
+	int nCam = cams.size();	// 图像总数量
+
+	CString strInfo;
+	
+	// 20220128，在重建图像所在目录下新建结果输出文件夹（如果事先不存在的话）///
+//	int code = mkdir(dirOut); // code=0 说明成功新建；code=-1 说明文件夹已存在
+
+	double info[5];
+
+
+	// 1. 先把所有真值读进来 ///////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+
+	// 2. 把当前物点、像点坐标，图像外参数初值摘过来 /////////////////////////////////////////////
+	vector<Point3d> vObjPts;			// n 个物点坐标
+	vector<Matx33d> vRs;				// m 幅图像的旋转矩阵初值
+	vector<Matx31d> vts;				// m 幅图像的平移向量初值
+	vector<Matx<double, 5, 1>> vDists;	// 输入：m个图像像差系数
+	vector<int> vDistTypes;				// 输入：m个图像的像差系数类型
+	vector<Point2d> vImgPts;			// l 个观测像点坐标，最多为 m*n
+	vector<Matx22d> vCovInvs;			// 输入：l个所有像点坐标协方差矩阵的逆矩阵
+	vector<uchar> j_fixed;				// 输入：m维向量，哪些图像的参数是固定的（j_fixed[j]=1），如果图像 j 参数固定，那么 Aij = 0 对于任何其中的观测点 i 都成立
+	vector<uchar> i_fixed;				// 输入：n维向量，哪些空间点坐标是固定的（i_fixed[i]=1），如果点 i 坐标固定，那么 Bij = 0 对于任何观测到该点的图像 j 都成立
+	SparseMat ptrMat;					// 输入：带一维存储索引的可视矩阵，ptrMat(i,j)存的是像点xij在xys向量中存储的位置索引，以及Aij，Bij和eij在各自向量中存储的位置索引
+	vector<Matx31d> nxys;				// 输入：n个物点关联的于其参考图像系中的观测视线方向，也即去像差归一化像点坐标
+	vector<int> ri_j;					// 输入：n个物点关联的参考图像的索引，一个 i 仅对应一个 j
+
+	// 而至于参与平差的视图数目就不一定了，能参与平差的视图肯定是外参数已经标定出初值的视图
+	// 能通过标志点后方交会得到视图外参数初值就说明视图至少是能观测到 3 个空间坐标已知的标志点
+	// 而空间坐标已知的标志点肯定都包含在 pts 中，因此不用再去判断有外参初值的视图是否能至少观测到
+	// 3 个 pts 中的点了，因为有外参数初值本身就说明满足了该条件
+	vector<int> vIdxCams;	// 用来存放参与光束法平差的视图在数组 cams 中的索引
+
+	// 这样做是为了保证参考图排在第一位
+	{
+		const cam_data & cam = cams[idxRefImg];
+		vIdxCams.push_back(idxRefImg);
+//		Ks.push_back(cam_ref.m_K);
+		vRs.push_back(cam.m_R);
+		vts.push_back(cam.m_t);
+		vDists.push_back(cam.m_dist);
+		vDistTypes.push_back(cam.dist_type);
+	}	
+
+	for (int i = 0; i < cams.size(); ++i)
+	{
+		if (!cams[i].m_bOriented || i == idxRefImg)
+		{
+			continue;
+		}
+
+		const cam_data & cam = cams[i];
+		vIdxCams.push_back(i);
+//		Ks.push_back(cam.m_K);
+		vRs.push_back(cam.m_R);
+		vts.push_back(cam.m_t);
+		vDists.push_back(cam.m_dist);
+		vDistTypes.push_back(cam.dist_type);
+	}
+
+	int m = vRs.size();  // 参与光束法平差的真正视图数目
+
+	for (auto iterObjPt = pointCloud.begin(); iterObjPt != pointCloud.end(); ++iterObjPt)
+	{
+		const int & ID = iterObjPt->first; // 先取出点的全局 ID 号
+
+		const DeepVoid::CloudPoint & objpt = iterObjPt->second;
+
+		auto track = tracks.find(ID); // 再把该点对应的特征轨迹 track 给取出来
+
+		std::vector<pair_I_i_C> pIiCs;
+
+		// 这个循环就是把相关的特征信息给取出来
+		for (auto iterImgPt = track->second.begin(); iterImgPt != track->second.end(); ++iterImgPt)
+		{
+			const int & I = iterImgPt->first;					// 取出特征轨迹中每个像点的图像索引号
+			const int & i = iterImgPt->second.first;			// 取出特征轨迹中每个像点于其图像中的像点索引号
+			const int & bInlier = iterImgPt->second.second[0];	// 该像点当前是否被判定为内点
+
+			if (!bInlier)	// 如果不是内点就直接 next 了
+			{
+				continue;
+			}
+
+			const cam_data & cam = cams[I];
+
+			Matx31d C = -cam.m_R.t()*cam.m_t; // 取出像点所在图像的光心坐标
+
+			pIiCs.push_back(make_pair(I, make_pair(i, C)));
+		}
+
+		// 20220204，虽然我直觉感觉一个物点既然都已经被交会出三维坐标了，那肯定会有至少 1 个内点吧（按说是2个吧，在BA过程中可能有那么1个点残差过大被判定为外点）
+		// 但我确实遇到过所有像点都被判定为 outliers 的情况，尤其是这段代码在 final SBA 之前时
+		// 按说在 Triangulation_AddOneImg() 之后我应该是把每个可能的物点三维坐标对应的支撑内点集的标志位都置为 1 才对吧？
+		// 我进 Triangulation_AddOneImg() 中看了，确实没有刻意置标志位为 1 的操作，也是有它道理的，因为判断内点的工作完全应由 SBA 环节来裁定
+		// 其它任何环节也就是提名坐标初值的作用，因此每次 Triangulation_AddOneImg() 之后就应该来一次 SBA 才行，否则很多点的内点标志位是不可信的
+		// 我把 image matching refinement 环节挪到 final SBA 之后是完全正确的。
+		if (pIiCs.empty())
+		{
+			continue;
+		}
+
+		int nValid = pIiCs.size(); // 到这里 nValid 是有可能为 1 的
+
+		std::vector<std::pair<int, double>> vsumd2;
+
+		for (int i = 0; i < nValid; ++i)
+		{
+			double sum2 = 0;
+
+			for (int j = 0; j < nValid; ++j)
+			{
+				if (i == j)
+				{
+					continue;
+				}
+
+				Matx31d dC = pIiCs[i].second.second - pIiCs[j].second.second; // 光心之间的距离
+
+				double d = norm(dC);
+
+				sum2 += d*d;
+			}
+
+			vsumd2.push_back(make_pair(i, sum2));
+		}
+
+		sort(vsumd2.begin(), vsumd2.end(),
+			[](const std::pair<int, double> & a, const std::pair<int, double> & b) {return a.second < b.second; });
+
+		// 把参考像点所在图像索引号和像点索引号取出来
+		const int & I_ref = pIiCs[vsumd2[0].first].first;
+		const int & i_ref = pIiCs[vsumd2[0].first].second.first;
+
+		auto iterImgPt = track->second.find(I_ref);
+		iterImgPt->second.second[1] = 1; // 将参考像点的相关标志位置 1 表明其身份为像点匹配优化环节中的参考像点
+
+		cam_data & cam0 = cams[I_ref];
+		const Matx33d & mK0 = cam0.m_K;
+		const Matx33d & mR0 = cam0.m_R;
+		const Matx31d & mt0 = cam0.m_t;
+		const Mat & img0 = imgs[I_ref];
+		cv::KeyPoint & feat0 = cam0.m_feats.key_points[i_ref];
+		Point2f & pt0 = feat0.pt;
+		int x0 = FTOI(pt0.x);	// 但凡参考像点，都取成整像素
+		int y0 = FTOI(pt0.y);
+
+		int wndSize = int(feat0.size*0.5) * 2 + 1; // 20220209，实际窗口大小按照特征大小来定，确保该值为奇数
+
+		if (wndSize < wndSizeMin)
+		{
+			wndSize = wndSizeMin;
+		}
+
+		Matx31d C0 = -mR0.t()*mt0;
+
+		Matx31d X_C = mR0*X + mt0; // 物点在参考图像中的坐标
+		double d_ref = X_C(2); // 物点相对于参考图像的深度值
+
+		int hWndSize = (wndSize - 1)*0.5; // half patch width
+
+		int x0_real, y0_real;
+		MakeSureNotOutBorder(x0, y0, x0_real, y0_real, hWndSize, img0.cols, img0.rows);	// 确保参考像点不越界
+
+		pt0.x = x0_real;	// 更新参考像点坐标
+		pt0.y = y0_real;
+
+		Matx31d xy1;
+		xy1(0) = x0_real;
+		xy1(1) = y0_real;
+		xy1(2) = 1;
+
+		Matx31d Rtuv1 = mR0.t()*mK0.inv()*xy1;
+
+		Mat mMask(wndSize, wndSize, CV_8UC1, Scalar(1));
+
+		std::vector<Matx33d> vKi, vRi;
+		std::vector<Matx31d> vti;
+		std::vector<Mat> vImgi;
+		std::vector<Mat> vMaski;
+		std::vector<int> vNumi;
+
+		// 从排行第 2 个开始就是非参考匹配像点了
+		for (int i = 1; i < nValid; ++i)
+		{
+			const int & I_other = pIiCs[vsumd2[i].first].first;
+			const cam_data & cami = cams[I_other];
+
+			vKi.push_back(cami.m_K);
+			vRi.push_back(cami.m_R);
+			vti.push_back(cami.m_t);
+			vImgi.push_back(imgs[I_other]);
+			vMaski.push_back(mMask);
+			vNumi.push_back(wndSize*wndSize);
+		}
+
+		// 20220209，所有非参考像点一起来进行优化
+		double d_init = d_ref;
+		double hx_init = 0;
+		double hy_init = 0;
+		double score_init = 0;
+		double d_optim, hx_optim, hy_optim, score_optim;
+
+		bool bSucRefine = optim_gn_drhxhyck_NCCcontrolled_masks(mK0, mR0, mt0, img0, vKi, vRi, vti, vImgi, vMaski, vNumi, x0_real, y0_real, wndSize, wndSize,
+			d_init, hx_init, hy_init, score_init, d_optim, hx_optim, hy_optim, score_optim, maxIter, xEps, fEps);
+
+		// 成功的话就更新物点坐标和全部匹配像点坐标
+		if (bSucRefine)
+		{
+			// 先更新物点坐标
+			Matx31d X_optim = C0 + d_optim*Rtuv1;
+
+			// 20220209，晚23:05，最终还是决定不更新物点坐标，而只更新匹配像点坐标
+			// 尽管更新完物点坐标后，所有点重投影残差立马降到0.05-0.07个像素这么恐怖的程度（SBA经12次迭代后就收敛退出了，残差维持那么多）
+			// 但我也发现，更新完物点坐标后的物点平均被观测次数反而降低了一丁点，不确定度也会降低一丁点，
+			// 甚至于不知道是不是心理作用，我看着显示的三维点云好像也不及没更新物点坐标时的结果。。。
+			// 所以虽然不更新物点坐标仅更新匹配像点坐标时收敛的残差普遍在0.12-0.16个像素的水平，我还是决定不更新物点坐标了，就靠接着的SBA去优化，反正精度肯定是完全够的
+			// 			objpt.m_pt.x = X_optim(0);
+			// 			objpt.m_pt.y = X_optim(1);
+			// 			objpt.m_pt.z = X_optim(2);
+
+			for (int i = 1; i < nValid; ++i)
+			{
+				const int & I_other = pIiCs[vsumd2[i].first].first;
+				const int & i_other = pIiCs[vsumd2[i].first].second.first;
+
+				cam_data & cami = cams[I_other];
+				Point2f & pti = cami.m_feats.key_points[i_other].pt;
+
+				Matx31d xyi = cami.m_K*(cami.m_R*X_optim + cami.m_t);
+
+				double x_new = xyi(0) / xyi(2);
+				double y_new = xyi(1) / xyi(2);
+
+				double dx = pti.x - x_new;
+				double dy = pti.y - y_new;
+
+				pti.x = x_new;
+				pti.y = y_new;
+			}
+		}
+	}
+	///////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+
+	// 3. run SBA first ///////////////////////////////////////////////////////////////////////
+	vector<Point3d> objPts_SBA = vObjPts;
+	vector<Matx33d> Rs_SBA = vRs;
+	vector<Matx31d> ts_SBA = vts;
+
+	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA, Ks, Rs_SBA, ts_SBA, vDists, vDistTypes, vImgPts, vCovInvs, j_fixed, i_fixed, ptrMat, info);
+
+// 	vector<double> drads_SBA, drads_DSBA;
+// 	for (int j = 0; j < nImg; ++j)
+// 	{
+// 		Matx33d dR = Rs_SBA[j].t()*Rs[j];
+// 		Matx31d rov = calib::converse_R_rotvec(dR);
+// 		double drad = norm(rov);
+// 		drads_SBA.push_back(drad*calib::R2D);
+// 
+// 		SBA[j].push_back(drad*calib::R2D);
+// 	}
+	///////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+
+	// 4. then run DSBA ///////////////////////////////////////////////////////////////////////
+	vector<Point3d> objPts_DSBA = vObjPts;
+	vector<Matx33d> Rs_DSBA = vRs;
+	vector<Matx31d> ts_DSBA = vts;
+
+	SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA, Ks, Rs_DSBA, ts_DSBA, vDists, vDistTypes, vImgPts, vCovInvs, nxys, ri_j, j_fixed, i_fixed, ptrMat, info);
+
+// 	for (int j = 0; j < nImg; ++j)
+// 	{
+// 		Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+// 		Matx31d rov = calib::converse_R_rotvec(dR);
+// 		double drad = norm(rov);
+// 		drads_DSBA.push_back(drad*calib::R2D);
+// 
+// 		DSBA[j].push_back(drad*calib::R2D);
+// 	}
+	///////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+
+	return TRUE;
+}
+
+
+void CDeepVoidApp::OnTestSbaanddbsbacomparison()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(SBA_DbSBA_compare_realdata, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnUpdateTestSbaanddbsbacomparison(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(m_b3DReady_sparse);
 }
