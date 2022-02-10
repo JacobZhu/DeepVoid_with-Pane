@@ -12798,45 +12798,31 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 
 	double info[5];
 
+	// 必须所有图像都成功完成定向，都参与后续的 BA
+	int m = cams.size();
+
 	// 1. 先把所有真值读进来 ///////////////////////////////////////////////////////////////////
-	char * pDir = (char *)pApp->m_pMainFrame->m_wndImgThumbnailPane.m_wndImgListCtrl.GetItemData(0);
+	vector<Matx33d> vKs_true, vRs_true;
+	vector<Matx31d> vts_true;
 
-	strInfo.Format(_T("%s"), pDir);
-	strInfo.Trim();
-
-	Matx33d K_true;	// 真值标定矩阵
-
-	FILE * fileCalib = fopen(GetFolderPath(strInfo) + "calibration.txt", "r");
-
-	if (fileCalib)
+	for (int i = 0; i < m; ++i)
 	{
-		double fx, fy, cx, cy, s, k0, k1, k2, k3, k4;
+		Matx33d K, R;
+		Matx31d t, dist;
 
-		fscanf(fileCalib, "%lf", &fx);	fscanf(fileCalib, "%lf", &fy);
-		fscanf(fileCalib, "%lf", &cx);	fscanf(fileCalib, "%lf", &cy);
-		fscanf(fileCalib, "%lf", &s);
+		ReadinEPFLCamera(pApp->m_vPathImgs[i] + ".camera", K, dist, R, t);
 
-		fscanf(fileCalib, "%lf", &k0);	fscanf(fileCalib, "%lf", &k1);
-		fscanf(fileCalib, "%lf", &k2);	fscanf(fileCalib, "%lf", &k3);
-		fscanf(fileCalib, "%lf", &k4);
-
-		K_true(0, 0) = fx;
-		K_true(1, 1) = fy;
-		K_true(0, 2) = cx;
-		K_true(1, 2) = cy;
-		K_true(0, 1) = s;
-		K_true(2, 2) = 1;
-
-		fclose(fileCalib);
+		vKs_true.push_back(K);
+		vRs_true.push_back(R);
+		vts_true.push_back(t);
 	}
-
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
 
 
 	// 2. 把当前物点、像点坐标，图像外参数初值摘过来 /////////////////////////////////////////////
 	vector<Point3d> vObjPts;			// n 个物点坐标
-	vector<Matx33d> vKs;				// m 幅图像的标定矩阵，应为测试图像给定的
+//	vector<Matx33d> vKs;				// m 幅图像的标定矩阵，应为测试图像给定的
 	vector<Matx33d> vRs;				// m 幅图像的旋转矩阵初值
 	vector<Matx31d> vts;				// m 幅图像的平移向量初值
 	vector<Matx<double, 5, 1>> vDists;	// 输入：m个图像像差系数
@@ -12849,13 +12835,10 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	vector<Matx31d> nxys;				// 输入：n个物点关联的于其参考图像系中的观测视线方向，也即去像差归一化像点坐标
 	vector<int> ri_j;					// 输入：n个物点关联的参考图像的索引，一个 i 仅对应一个 j
 
-	// 必须所有图像都成功完成定向，都参与后续的 BA
-	int m = cams.size();
-
 	for (int i = 0; i < m; ++i)
 	{
 		const cam_data & cam = cams[i];
-		vKs.push_back(K_true);
+//		vKs.push_back(K_true);
 		vRs.push_back(cam.m_R);
 		vts.push_back(cam.m_t);
 		vDists.push_back(cam.m_dist);
@@ -12896,7 +12879,7 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 			}
 		}
 
-		if (nInliers < 2 || !bFoundRef) // 2个及以上有效观测，且于其中找到指定的参考像点坐标才行
+		if (nInliers < 2 || !bFoundRef) // 2 个及以上有效观测，且于其中找到指定的参考像点坐标才行
 		{
 			continue;
 		}
@@ -12939,6 +12922,14 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 
 			// 找到了指定图像
 			const int & bInlier = iter_found_img->second.second[0];	// 该像点当前是否被判定为内点
+
+			// 经过上面那一大步骤已经可以确保所有物点均有至少 2 个有效（inlier）观测像点了，且其中一个肯定为参考像点
+			// 所以这里只要把 outliers 像点排除出去即可，所有 inliers 都应是该纳入 SBA 的有效观测像点，且其中定有参考像点
+			if (!bInlier)
+			{
+				continue;
+			}
+
 			const int & bRef = iter_found_img->second.second[1];	// 该像点是否为参考像点
 			const KeyPoint & feat = cams[j].m_feats.key_points[iter_found_img->second.first];
 
@@ -12949,19 +12940,41 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 
 			ptrMat.ref<int>(i_tmp, j) = vImgPts.size() - 1;
 
+			// 20220210，在这里检查一下是否存在重投影残差明显过大的点 ///////////////////
+// 			{
+// 				Matx31d X;
+// 				X(0) = iter_objpt->second.m_pt.x;
+// 				X(1) = iter_objpt->second.m_pt.y;
+// 				X(2) = iter_objpt->second.m_pt.z;
+// 				Matx31d X_C = vKs_true[j] * (vRs[j] * X + vts[j]);
+// 				double x_rpj = X_C(0) / X_C(2);
+// 				double y_rpj = X_C(1) / X_C(2);
+// 
+// 				double dx = x_rpj - imgpt.x;
+// 				double dy = y_rpj - imgpt.y;
+// 
+// 				double d = sqrt(dx*dx + dy*dy);
+// 
+// 				if (d > pApp->m_threshRpjErrInlier)
+// 				{
+// 					double shit = 100;
+// 					double shithappens = 10000;
+// 				}
+// 			}
+			//////////////////////////////////////////////////////////////////////////
+
 			if (bRef)
 			{
-				const Matx33d & K = vKs[j];
+				const Matx33d & K = vKs_true[j];
 
 				Matx31d xy1;
 				xy1(0) = imgpt.x;
 				xy1(1) = imgpt.y;
 				xy1(2) = 1;
 
-				Matx31d uv11 = calib::invK(K)*xy1;
-				Matx31d uv12 = K.inv()*xy1;
-
 				nxys.push_back(K.inv()*xy1);
+
+				ri_j.push_back(j);
 			}
 		}
 
@@ -12979,13 +12992,22 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
 
+	double tau = 1.0E-6;
+	int nMaxIter = 128;
+	double eps1 = 1.0E-12;
+	double eps2 = 1.0E-12;
 
 	// 3. run SBA first ///////////////////////////////////////////////////////////////////////
 	vector<Point3d> objPts_SBA = vObjPts;
 	vector<Matx33d> Rs_SBA = vRs;
 	vector<Matx31d> ts_SBA = vts;
 
-	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA, vKs, Rs_SBA, ts_SBA, vDists, vDistTypes, vImgPts, vCovInvs, j_fixed, i_fixed, ptrMat, info);
+	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA, vKs_true, Rs_SBA, ts_SBA, vDists, vDistTypes, vImgPts, vCovInvs, j_fixed, i_fixed, ptrMat, info, tau, nMaxIter, eps1, eps2);
+
+	strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
+		vObjPts.size(), info[0], info[1], info[3], info[4]);
+
+	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 // 	vector<double> drads_SBA, drads_DSBA;
 // 	for (int j = 0; j < nImg; ++j)
@@ -13006,7 +13028,12 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	vector<Matx33d> Rs_DSBA = vRs;
 	vector<Matx31d> ts_DSBA = vts;
 
-	SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA, vKs, Rs_DSBA, ts_DSBA, vDists, vDistTypes, vImgPts, vCovInvs, nxys, ri_j, j_fixed, i_fixed, ptrMat, info);
+	SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA, vKs_true, Rs_DSBA, ts_DSBA, vDists, vDistTypes, vImgPts, vCovInvs, nxys, ri_j, j_fixed, i_fixed, ptrMat, info, tau, nMaxIter, eps1, eps2);
+
+	strInfo.Format("DbSBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
+		vObjPts.size(), info[0], info[1], info[3], info[4]);
+
+	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
 // 	for (int j = 0; j < nImg; ++j)
 // 	{

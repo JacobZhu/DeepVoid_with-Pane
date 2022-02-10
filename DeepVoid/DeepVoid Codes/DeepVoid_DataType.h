@@ -466,6 +466,8 @@ CString GetFileNameOnly(CString filePath);
 // 20220128，返回文件所在文件夹路径
 CString GetFolderPath(CString filePath);
 
+bool ReadinEPFLCamera(CString filePath, Matx33d & K, Matx31d & dist, Matx33d & R, Matx31d & t);
+
 // 20220128，返回不带尾缀的纯文件名
 CString GetFileNameNoSuffix(CString filePath);
 

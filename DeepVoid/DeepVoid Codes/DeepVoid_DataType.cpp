@@ -84,6 +84,42 @@ CString DeepVoid::GetFolderPath(CString filePath)
 	return pathFolder;
 }
 
+bool DeepVoid::ReadinEPFLCamera(CString filePath, Matx33d & K, Matx31d & dist, Matx33d & R, Matx31d & t)
+{
+	FILE * file = fopen(filePath, "r");
+
+	if (file)
+	{
+		K = Matx33d::zeros();
+		R = Matx33d::zeros();
+		t = Matx31d::zeros();
+		dist = Matx31d::zeros();
+
+		fscanf(file, "%lf", &K(0, 0)); fscanf(file, "%lf", &K(0, 1)); fscanf(file, "%lf", &K(0, 2));
+		fscanf(file, "%lf", &K(1, 0)); fscanf(file, "%lf", &K(1, 1)); fscanf(file, "%lf", &K(1, 2));
+		fscanf(file, "%lf", &K(2, 0)); fscanf(file, "%lf", &K(2, 1)); fscanf(file, "%lf", &K(2, 2));
+
+		fscanf(file, "%lf", &dist(0)); fscanf(file, "%lf", &dist(1)); fscanf(file, "%lf", &dist(2));
+
+		fscanf(file, "%lf", &R(0, 0)); fscanf(file, "%lf", &R(0, 1)); fscanf(file, "%lf", &R(0, 2));
+		fscanf(file, "%lf", &R(1, 0)); fscanf(file, "%lf", &R(1, 1)); fscanf(file, "%lf", &R(1, 2));
+		fscanf(file, "%lf", &R(2, 0)); fscanf(file, "%lf", &R(2, 1)); fscanf(file, "%lf", &R(2, 2));
+
+		fscanf(file, "%lf", &t(0)); fscanf(file, "%lf", &t(1)); fscanf(file, "%lf", &t(2));
+
+		R = R.t();
+		t = -R*t;
+
+		fclose(file);
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 CString DeepVoid::GetFileNameNoSuffix(CString filePath)
 {
 	// 先把带尾缀的文件名给提取出来
