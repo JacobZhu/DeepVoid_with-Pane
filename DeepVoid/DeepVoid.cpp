@@ -12802,7 +12802,7 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	int m = cams.size();
 
 	// 1. 先把所有真值读进来 ///////////////////////////////////////////////////////////////////
-	vector<Matx33d> vKs_true, vRs_true;
+	vector<Matx33d> vKs_true, vRs_true/*, vRitRj_true*/;
 	vector<Matx31d> vts_true;
 
 	for (int i = 0; i < m; ++i)
@@ -12816,6 +12816,35 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 		vRs_true.push_back(R);
 		vts_true.push_back(t);
 	}
+
+	// 以 SfM 中确定的参考图像坐标系为基准
+//	{
+//		// 先把 R 和 t 全部转至参考图像坐标系
+// 		const Matx33d & R_ref_t = vRs_true[idxRefImg].t();
+// 		const Matx31d & t_ref = vts_true[idxRefImg];
+// 		const Matx31d & C_ref = -R_ref_t*t_ref;
+// 
+// 		for (int i = 0; i < m; ++i)
+// 		{
+// 			Matx33d Ri = vRs_true[i];
+// 			Matx31d ti = vts_true[i];
+// 
+// 			vRs_true[i] = Ri*R_ref_t;
+// 			vts_true[i] = Ri*C_ref + ti;
+// 		}
+//
+// 		for (int i = 0; i < m; ++i)
+// 		{
+// 			const Matx33d & Rit = vRs_true[i].t();
+// 
+// 			for (int j = i + 1; j < m; ++j)
+// 			{
+// 				const Matx33d & Rj = vRs_true[j];
+// 
+// 				vRitRj_true.push_back(Rit*Rj);
+// 			}
+// 		}
+//	}
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -13009,16 +13038,35 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 
 	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
-// 	vector<double> drads_SBA, drads_DSBA;
-// 	for (int j = 0; j < nImg; ++j)
+	vector<double> drads_SBA, drads_DSBA;
+
+// 	for (int j = 0; j < m; ++j)
 // 	{
-// 		Matx33d dR = Rs_SBA[j].t()*Rs[j];
+// 		Matx33d dR = Rs_SBA[j].t()*vRs_true[j];
 // 		Matx31d rov = calib::converse_R_rotvec(dR);
 // 		double drad = norm(rov);
 // 		drads_SBA.push_back(drad*calib::R2D);
-// 
-// 		SBA[j].push_back(drad*calib::R2D);
 // 	}
+
+	for (int i = 0; i < m; ++i)
+	{
+		const Matx33d & Rit = Rs_SBA[i].t();
+		const Matx33d & Rit_true = vRs_true[i].t();
+
+		for (int j = i + 1; j < m; ++j)
+		{
+			const Matx33d & Rj = Rs_SBA[j];
+			const Matx33d & Rj_true = vRs_true[j];
+
+			Matx33d RitRj = Rit*Rj;
+			Matx33d RitRj_true = Rit_true*Rj_true;
+
+			Matx33d dR = RitRj.t()*RitRj_true;
+			Matx31d rov = calib::converse_R_rotvec(dR);
+			double drad = norm(rov);
+			drads_SBA.push_back(drad*calib::R2D);
+		}
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -13035,17 +13083,61 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 
 	pApp->m_pMainFrame->m_wndShowInfoPane.m_wndShowInfoListCtrl.AddOneInfo(strInfo);
 
-// 	for (int j = 0; j < nImg; ++j)
+// 	for (int j = 0; j < m; ++j)
 // 	{
-// 		Matx33d dR = Rs_DSBA[j].t()*Rs[j];
+// 		Matx33d dR = Rs_DSBA[j].t()*vRs_true[j];
 // 		Matx31d rov = calib::converse_R_rotvec(dR);
 // 		double drad = norm(rov);
 // 		drads_DSBA.push_back(drad*calib::R2D);
-// 
-// 		DSBA[j].push_back(drad*calib::R2D);
 // 	}
+
+	for (int i = 0; i < m; ++i)
+	{
+		const Matx33d & Rit = Rs_DSBA[i].t();
+		const Matx33d & Rit_true = vRs_true[i].t();
+
+		for (int j = i + 1; j < m; ++j)
+		{
+			const Matx33d & Rj = Rs_DSBA[j];
+			const Matx33d & Rj_true = vRs_true[j];
+
+			Matx33d RitRj = Rit*Rj;
+			Matx33d RitRj_true = Rit_true*Rj_true;
+
+			Matx33d dR = RitRj.t()*RitRj_true;
+			Matx31d rov = calib::converse_R_rotvec(dR);
+			double drad = norm(rov);
+			drads_DSBA.push_back(drad*calib::R2D);
+		}
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
+
+
+	// 5. 结果输出 ////////////////////////////////////////////////////////////////////////////
+	{
+		FILE * file = fopen(dirOut + "SBA_DbSBA_compare.txt", "w");
+
+		if (file)
+		{
+			int nSample = drads_SBA.size();
+
+			for (int i = 0; i < nSample; ++i)
+			{
+				fprintf(file, "%lf	", drads_SBA[i]);
+			}
+			fprintf(file, "\n");
+
+			for (int i = 0; i < nSample; ++i)
+			{
+				fprintf(file, "%lf	", drads_DSBA[i]);
+			}
+
+			fclose(file);
+		}
+	}	
+	//////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////
 
 
 	return TRUE;
@@ -13062,5 +13154,5 @@ void CDeepVoidApp::OnTestSbaanddbsbacomparison()
 void CDeepVoidApp::OnUpdateTestSbaanddbsbacomparison(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
-	pCmdUI->Enable(m_b3DReady_sparse);
+//	pCmdUI->Enable(m_b3DReady_sparse);
 }
