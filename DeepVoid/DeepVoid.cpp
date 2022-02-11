@@ -12818,21 +12818,21 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	}
 
 	// 以 SfM 中确定的参考图像坐标系为基准
-//	{
-//		// 先把 R 和 t 全部转至参考图像坐标系
-// 		const Matx33d & R_ref_t = vRs_true[idxRefImg].t();
-// 		const Matx31d & t_ref = vts_true[idxRefImg];
-// 		const Matx31d & C_ref = -R_ref_t*t_ref;
-// 
-// 		for (int i = 0; i < m; ++i)
-// 		{
-// 			Matx33d Ri = vRs_true[i];
-// 			Matx31d ti = vts_true[i];
-// 
-// 			vRs_true[i] = Ri*R_ref_t;
-// 			vts_true[i] = Ri*C_ref + ti;
-// 		}
-//
+	{
+		// 先把 R 和 t 全部转至参考图像坐标系
+		const Matx33d & R_ref_t = vRs_true[idxRefImg].t();
+		const Matx31d & t_ref = vts_true[idxRefImg];
+		const Matx31d & C_ref = -R_ref_t*t_ref;
+
+		for (int i = 0; i < m; ++i)
+		{
+			Matx33d Ri = vRs_true[i];
+			Matx31d ti = vts_true[i];
+
+			vRs_true[i] = Ri*R_ref_t;
+			vts_true[i] = Ri*C_ref + ti;
+		}
+
 // 		for (int i = 0; i < m; ++i)
 // 		{
 // 			const Matx33d & Rit = vRs_true[i].t();
@@ -12844,7 +12844,7 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 // 				vRitRj_true.push_back(Rit*Rj);
 // 			}
 // 		}
-//	}
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -13031,7 +13031,12 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	vector<Matx33d> Rs_SBA = vRs;
 	vector<Matx31d> ts_SBA = vts;
 
+	tic();
+
 	SBA_ZZK::optim_sparse_lm_wj_tj_XiYiZi(objPts_SBA, vKs_true, Rs_SBA, ts_SBA, vDists, vDistTypes, vImgPts, vCovInvs, j_fixed, i_fixed, ptrMat, info, tau, nMaxIter, eps1, eps2);
+
+	double t_SBA = 1000 * toc();			// 单位：毫秒
+	double t_SBA_perIter = t_SBA / info[3];	// 单次迭代耗时
 
 	strInfo.Format("SBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
 		vObjPts.size(), info[0], info[1], info[3], info[4]);
@@ -13076,7 +13081,12 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 	vector<Matx33d> Rs_DSBA = vRs;
 	vector<Matx31d> ts_DSBA = vts;
 
+	tic();
+
 	SBA_ZZK::optim_sparse_lm_wj_tj_di(objPts_DSBA, vKs_true, Rs_DSBA, ts_DSBA, vDists, vDistTypes, vImgPts, vCovInvs, nxys, ri_j, j_fixed, i_fixed, ptrMat, info, tau, nMaxIter, eps1, eps2);
+
+	double t_DSBA = 1000 * toc();				// 单位：毫秒
+	double t_DSBA_perIter = t_DSBA / info[3];	// 单次迭代耗时
 
 	strInfo.Format("DbSBA ends, point cloud size: %d, initial err: %lf, final err: %lf, iter: %04.0f, code: %01.0f",
 		vObjPts.size(), info[0], info[1], info[3], info[4]);
@@ -13122,16 +13132,26 @@ UINT SBA_DbSBA_compare_realdata(LPVOID param)
 		{
 			int nSample = drads_SBA.size();
 
-			for (int i = 0; i < nSample; ++i)
-			{
-				fprintf(file, "%lf	", drads_SBA[i]);
-			}
-			fprintf(file, "\n");
+			fprintf(file, "SBA	DbSBA\n");
 
 			for (int i = 0; i < nSample; ++i)
 			{
-				fprintf(file, "%lf	", drads_DSBA[i]);
+				fprintf(file, "%lf	", drads_SBA[i]);
+				fprintf(file, "%lf\n", drads_DSBA[i]);
 			}
+
+			fprintf(file, "%lf	", t_SBA);
+			fprintf(file, "%lf\n", t_DSBA);
+
+			fprintf(file, "%lf	", t_SBA_perIter);
+			fprintf(file, "%lf\n", t_DSBA_perIter);
+
+// 			fprintf(file, "\n");
+// 
+// 			for (int i = 0; i < nSample; ++i)
+// 			{
+// 				fprintf(file, "%lf	", drads_DSBA[i]);
+// 			}
 
 			fclose(file);
 		}
@@ -13154,5 +13174,5 @@ void CDeepVoidApp::OnTestSbaanddbsbacomparison()
 void CDeepVoidApp::OnUpdateTestSbaanddbsbacomparison(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
-//	pCmdUI->Enable(m_b3DReady_sparse);
+	pCmdUI->Enable(m_b3DReady_sparse);
 }
