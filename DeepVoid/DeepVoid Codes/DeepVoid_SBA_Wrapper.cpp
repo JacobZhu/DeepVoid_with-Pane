@@ -2368,6 +2368,11 @@ void DeepVoid::RefineMatchingAccuracy(const SfM_ZZK::PointCloud & map_pointcloud
 		auto iterImgPt = track->second.find(I_ref);
 		iterImgPt->second.second[1] = 1; // 将参考像点的相关标志位置 1 表明其身份为像点匹配优化环节中的参考像点
 
+		// 20220212，临时加的
+		// 相当于只为每个物点指定 1 个参考像点
+		// 不再更新参考像点坐标以及任何匹配像点坐标
+//		continue;
+
 		cam_data & cam0 = cams[I_ref];
 		const Matx33d & mK0 = cam0.m_K;
 		const Matx33d & mR0 = cam0.m_R;

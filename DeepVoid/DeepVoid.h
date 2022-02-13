@@ -216,6 +216,13 @@ public:
 	afx_msg void OnUpdate3sfmGlobalsfm(CCmdUI *pCmdUI);
 	afx_msg void OnTestSbaanddbsbacomparison();
 	afx_msg void OnUpdateTestSbaanddbsbacomparison(CCmdUI *pCmdUI);
+	afx_msg void OnTestSimuImgnoise();
+	afx_msg void OnTestSimuFNoise();
+	afx_msg void OnTestSimuCxNoise();
+	afx_msg void OnTestSimuCyNoise();
+	afx_msg void OnTestSimuN();
+	afx_msg void OnTestSimuM();
+	afx_msg void OnTestSimuK();
 };
 
 extern CDeepVoidApp theApp;
