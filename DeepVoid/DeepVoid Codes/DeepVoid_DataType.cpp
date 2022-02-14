@@ -628,6 +628,190 @@ bool DeepVoid::optim_gn_hi_ai_bi(const vector<Point2d> & xys,				// 输入：参考图
 	return true;
 }
 
+// 20220207
+void DeepVoid::optim_lm_a_w_t(const vector<Point3d> & pt3d0s,		// 输入：参考图像中各参考像素的坐标
+							  const vector<Point3d> & pt3d1s,		// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B
+							  double & a,
+							  Matx33d & R,
+							  Matx31d & t,
+							  double * info /*= NULL*/,				//int & code,	// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出										// int & code,// 输出：迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+							  int maxIter /*= 128*/,				// 输入：最大迭代次数
+							  double tau /*= 1.0E-6*/,				// 输入：The algorithm is not very sensitive to the choice of tau, but as a rule of thumb, one should use a small value, eg tau=1E-6 if x0 is believed to be a good approximation to real value, otherwise, use tau=1E-3 or even tau=1
+							  double eps1 /*= 1.0E-8*/,				// 输入：梯度收敛阈值
+							  double eps2 /*= 1.0E-12*/				// 输入：改正量收敛阈值
+						      )
+{
+	int n = pt3d0s.size();
+
+	int k = 0;			// 迭代次数索引
+	int v = 2;			// 更新 u 时需要用到的一个控制量      
+	double u;			// LM 优化算法中最关键的阻尼系数 (J'WJ + uI)h = -J'Wf = -g
+	double r;			// gain ratio, 增益率，用来衡量近似展开式的好坏
+	double g_norm;		// 梯度的模
+	double dx_norm;		// 改正量的模
+//	double dx_thresh;	// 改正量收敛判断阈值 eps2*(norm(x)+eps2)
+	double F, F_new;	// 目标函数值 0.5*ft*covInv*f 或者 0.5*f'Wf
+//	double x_norm;		// 当前待优化参数向量的模，即2范数L2，||x||2
+	double L0_Lh;		// 泰勒展开式的函数值下降量
+
+	double ratio_1_3 = 1.0 / 3.0;
+
+	bool found = false; // 标识是否已经满足迭代收敛条件
+	int code = 2;			// 迭代终止条件: 0:梯度收敛; 1:改正量大小收敛；2:超过最大迭代次数；3:遭遇重大问题（像素越界）导致迭代直接终止退出
+
+	Matx<double, 7, 1> g, g_new, x_new;
+	Matx<double, 7, 7> H, H_new;
+
+	vector<Matx31d> fs;
+
+	vector<Matx31d> X0s, X1s;
+	for (int i = 0; i < n; ++i)
+	{
+		Point3d pt0 = pt3d0s[i];
+		Point3d pt1 = pt3d1s[i];
+
+		Matx31d X0, X1;
+
+		X0(0) = pt0.x;
+		X0(1) = pt0.y;
+		X0(2) = pt0.z;
+
+		X1(0) = pt1.x;
+		X1(1) = pt1.y;
+		X1(2) = pt1.z;
+
+		X0s.push_back(X0);
+		X1s.push_back(X1);
+	}
+
+	derivatives::H_g_a_w_t(X0s, X1s, a, R, t, H, g, F, fs);
+
+	double err_rpj_init = sqrt(2 * F / n);
+
+	g_norm = norm(g, NORM_INF);	// 目标函数值 F 在当前参数向量处梯度向量的 INF 范数
+
+	// 梯度收敛，说明已在平坦区域，直接退出
+	if (g_norm < eps1)
+	{
+		found = true;
+		code = 0;
+	}
+
+	// 确定一个合理的初始阻尼系数 u ////////////////////////////////////////////
+	vector<double> Aii(7);
+
+	for (int i = 0; i < 7; ++i)
+	{
+		Aii[i] = H(i, i);
+	}
+
+	auto iter = max_element(Aii.begin(), Aii.end());
+	double max_Aii = *iter;
+
+	u = tau * max_Aii; // initial miu
+	//////////////////////////////////////////////////////////////////////////
+
+
+	while (!found && k < maxIter)
+	{
+		++k;
+
+		Matx<double, 7, 7> H_uI = H;
+
+		// 加阻尼系数
+		for (int i = 0; i < 7; ++i)
+		{
+			H_uI(i, i) += u;
+		}
+
+		Matx<double, 7, 1> dx;
+
+		// 解方程 (JWJ + uI)*dx = -g 得到 P 的改正量
+		solve(H_uI, -g, dx, DECOMP_CHOLESKY);
+
+		dx_norm = norm(dx);
+
+		if (dx_norm < eps2)
+		{
+			found = true;
+			code = 1;
+		}
+		else
+		{
+			double da = dx(0);
+			double dw0 = dx(1);
+			double dw1 = dx(2);
+			double dw2 = dx(3);
+			double dtX = dx(4);
+			double dtY = dx(5);
+			double dtZ = dx(6);
+
+			double a_new = a + da;
+
+			Matx33d dR = calib::converse_rotvec_R(dw0, dw1, dw2);
+
+			Matx33d R_new = dR*R;
+
+			Matx31d t_new;
+
+			t_new(0) = t(0) + dtX;
+			t_new(1) = t(1) + dtY;
+			t_new(2) = t(2) + dtZ;
+
+			derivatives::H_g_a_w_t(X0s, X1s, a_new, R_new, t_new, H_new, g_new, F_new, fs);
+
+			Matx<double, 1, 1> tmp = 0.5*dx.t()*(u*dx - g);
+			L0_Lh = tmp(0); // 在当前参数处利用梯度和改正量预估的期望目标函数下降量
+
+			r = (F - F_new) / L0_Lh;
+
+			if (r > 0)
+			{
+				// 采纳新参数
+				a = a_new;
+				R = R_new;
+				t = t_new;
+
+				// 一并采纳新参数处的 Hessian 矩阵和梯度向量
+				H = H_new;
+				g = g_new;
+
+				// 还采纳新参数处的目标函数值
+				F = F_new;
+
+				// 采纳已经计算出来的新参数向量的模
+				g_norm = norm(g, NORM_INF);
+
+				if (g_norm < eps1) // 梯度收敛，说明抵达平坦区域
+				{
+					found = true;
+					code = 0;
+				}
+
+				double tmp_db = std::max(ratio_1_3, 1 - pow(2 * r - 1, 3));
+				u *= tmp_db;
+				v = 2;
+			}
+			else
+			{
+				u *= v;
+				v *= 2;
+			}
+		}
+	}
+
+	double err_rpj_final = sqrt(2 * F / n);
+
+	if (info)
+	{
+		info[0] = err_rpj_init;
+		info[1] = err_rpj_final;
+		info[2] = g_norm;
+		info[3] = k;
+		info[4] = code;
+	}
+}
+
 // 20220207，最小二乘图像匹配优化
 bool DeepVoid::LSM(int x0, int y0,				// 输入：参考像点坐标
 				   const Mat & img0,			// 输入：参考图像

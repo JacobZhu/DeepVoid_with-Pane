@@ -399,6 +399,34 @@ bool j_f_hi_ai_bi(double x, double y,				// 输入：给定参考图像中的像素坐标
 				  Matx<double, 3, 8> & J			// 输出：f 对所有 8 个匹配参数的导数
 			      );
 
+// 20220214
+// 给定当前刚体变换参数 a（缩放比例）, R, t，X1 = aR*X0 + t
+// 评估当前的刚体变换残差 f = aR*X0 + t - X1
+// 给出当前残差向量对变换参数的 Jacobian 矩阵
+void j_f_a_w_t(const Matx31d & X0,					// 输入：X1 = aRX0 + t
+			   const Matx31d & X1,					// 输入：X1 = aRX0 + t
+			   double a,							// 输入：当前尺度估计 // const Matx<double, 7, 1> & params,	// 输入：当前刚体变换参数 a（缩放比例）, angX, angY, angZ, tx, ty, tz
+			   const Matx33d & R,					// 输入：当前旋转矩阵估计
+			   const Matx31d & t,					// 输入：当前平移向量估计
+			   Matx31d & f,							// 输出：f = aRX0 + t - X1
+			   Matx<double, 3, 7> & J				// 输出：df/dparams
+			   );
+
+// 20220214
+// 给定当前刚体变换参数 a（缩放比例）, R, t，X1 = aR*X0 + t
+// 评估当前的刚体变换残差 f = aR*X0 + t - X1
+// 给出当前残差向量对变换参数的 Jacobian 矩阵
+void H_g_a_w_t(const vector<Matx31d> & X0s,			// 输入：X1 = aRX0 + t
+			   const vector<Matx31d> & X1s,			// 输入：X1 = aRX0 + t
+			   double a,							// 输入：当前尺度估计 // const Matx<double, 7, 1> & params,	// 输入：当前刚体变换参数 a（缩放比例）, angX, angY, angZ, tx, ty, tz
+			   const Matx33d & R,					// 输入：当前旋转矩阵估计
+			   const Matx31d & t,					// 输入：当前平移向量估计
+			   Matx<double, 7, 7> & H,				// 输出：Hessian 矩阵 H = J'WJ
+			   Matx<double, 7, 1> & g,				// 输出：所有 8 个参数的梯度向量 g = J'Wf
+			   double & F,							// 输出：总目标函数值 F = 0.5*f'Wf
+			   vector<Matx31d> & fs					// 输出：f = aRX0 + t - X1
+			   );
+
 // 20220207，最小二乘图像匹配优化中计算 Hessian 矩阵 H 和参数梯度向量 g
 bool H_g_hi_ai_bi(const vector<Point2d> & xys,		// 输入：参考图像中各参考像素的坐标
 				  const vector<Vec3d> & RGBs,		// 输入：参考图像中各参考像素的RBG值，double型，[0]:R，[1]:G，[2]:B

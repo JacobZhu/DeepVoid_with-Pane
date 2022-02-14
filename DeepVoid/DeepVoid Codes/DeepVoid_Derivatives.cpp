@@ -2854,6 +2854,97 @@ bool derivatives::j_f_hi_ai_bi(double x, double y,				// ÊäÈë£º¸ø¶¨²Î¿¼Í¼ÏñÖĞµÄÏ
 	}
 }
 
+// 20220214
+// ¸ø¶¨µ±Ç°¸ÕÌå±ä»»²ÎÊı a£¨Ëõ·Å±ÈÀı£©, R, t£¬X1 = aR*X0 + t
+// ÆÀ¹Àµ±Ç°µÄ¸ÕÌå±ä»»²Ğ²î f = aR*X0 + t - X1
+// ¸ø³öµ±Ç°²Ğ²îÏòÁ¿¶Ô±ä»»²ÎÊıµÄ Jacobian ¾ØÕó
+void derivatives::j_f_a_w_t(const Matx31d & X0,			// ÊäÈë£ºX1 = aRX0 + t
+						    const Matx31d & X1,			// ÊäÈë£ºX1 = aRX0 + t
+						    double a,					// ÊäÈë£ºµ±Ç°³ß¶È¹À¼Æ // const Matx<double, 7, 1> & params,	// ÊäÈë£ºµ±Ç°¸ÕÌå±ä»»²ÎÊı a£¨Ëõ·Å±ÈÀı£©, angX, angY, angZ, tx, ty, tz
+						    const Matx33d & R,			// ÊäÈë£ºµ±Ç°Ğı×ª¾ØÕó¹À¼Æ
+						    const Matx31d & t,			// ÊäÈë£ºµ±Ç°Æ½ÒÆÏòÁ¿¹À¼Æ
+						    Matx31d & f,				// Êä³ö£ºf = aRX0 + t - X1
+						    Matx<double, 3, 7> & J		// Êä³ö£ºdf/dparams
+						    )
+{
+	Matx31d X1_rpj = a*R*X0 + t;
+
+	f = X1_rpj - X1;
+
+	Matx31d der_f_a = R*X0;
+//	Matx33d der_f_t = Matx33d::eye();
+
+	Matx<double, 3, 9> der_f_R;
+
+	double aX0 = a*X0(0);
+	double aY0 = a*X0(1);
+	double aZ0 = a*X0(2);
+
+	der_f_R(0, 0) = der_f_R(1, 3) = der_f_R(2, 6) = aX0;
+	der_f_R(0, 1) = der_f_R(1, 4) = der_f_R(2, 7) = aY0;
+	der_f_R(0, 2) = der_f_R(1, 5) = der_f_R(2, 8) = aZ0;
+
+	Matx<double, 9, 3> d_R_w = derivatives::der_R_w(R);
+
+	Matx33d der_f_w = der_f_R*d_R_w;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		J(i, 0) = der_f_a(i);
+		J(i, 1) = der_f_w(i, 0);
+		J(i, 2) = der_f_w(i, 1);
+		J(i, 3) = der_f_w(i, 2);
+	}
+
+	J(0, 4) = J(1, 5) = J(2, 6) = 1; // der_f_t ¸³½øÈ¥
+}
+
+// 20220214
+// ¸ø¶¨µ±Ç°¸ÕÌå±ä»»²ÎÊı a£¨Ëõ·Å±ÈÀı£©, R, t£¬X1 = aR*X0 + t
+// ÆÀ¹Àµ±Ç°µÄ¸ÕÌå±ä»»²Ğ²î f = aR*X0 + t - X1
+// ¸ø³öµ±Ç°²Ğ²îÏòÁ¿¶Ô±ä»»²ÎÊıµÄ Jacobian ¾ØÕó
+void derivatives::H_g_a_w_t(const vector<Matx31d> & X0s,		// ÊäÈë£ºX1 = aRX0 + t
+							const vector<Matx31d> & X1s,		// ÊäÈë£ºX1 = aRX0 + t
+							double a,							// ÊäÈë£ºµ±Ç°³ß¶È¹À¼Æ // const Matx<double, 7, 1> & params,	// ÊäÈë£ºµ±Ç°¸ÕÌå±ä»»²ÎÊı a£¨Ëõ·Å±ÈÀı£©, angX, angY, angZ, tx, ty, tz
+							const Matx33d & R,					// ÊäÈë£ºµ±Ç°Ğı×ª¾ØÕó¹À¼Æ
+							const Matx31d & t,					// ÊäÈë£ºµ±Ç°Æ½ÒÆÏòÁ¿¹À¼Æ
+							Matx<double, 7, 7> & H,				// Êä³ö£ºHessian ¾ØÕó H = J'WJ
+							Matx<double, 7, 1> & g,				// Êä³ö£ºËùÓĞ 8 ¸ö²ÎÊıµÄÌİ¶ÈÏòÁ¿ g = J'Wf
+							double & F,							// Êä³ö£º×ÜÄ¿±êº¯ÊıÖµ F = 0.5*f'Wf
+							vector<Matx31d> & fs				// Êä³ö£ºf = aRX0 + t - X1
+							)
+{
+	int n = X0s.size();
+
+	// ¸÷Êä³öÏÈÇå¿Õ¹éÁã
+	H = Matx<double, 7, 7>::zeros();
+	g = Matx<double, 7, 1>::zeros();
+
+	F = 0;
+
+	fs.clear();
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Matx31d & X0 = X0s[i];
+		const Matx31d & X1 = X1s[i];
+
+		Matx31d fi;
+		Matx<double, 3, 7> Ji;
+		Matx33d Wi = Matx33d::eye();
+
+		derivatives::j_f_a_w_t(X0, X1, a, R, t, fi, Ji);
+
+		H += Ji.t()*Wi*Ji;
+		g += Ji.t()*Wi*fi;
+		Matx<double, 1, 1> fiWifi = 0.5*fi.t()*Wi*fi;
+
+		F += fiWifi(0);
+
+		fs.push_back(fi);
+	}
+}
+
 // 20220207£¬×îĞ¡¶ş³ËÍ¼ÏñÆ¥ÅäÓÅ»¯ÖĞ¼ÆËã Hessian ¾ØÕó H ºÍ²ÎÊıÌİ¶ÈÏòÁ¿ g
 bool derivatives::H_g_hi_ai_bi(const vector<Point2d> & xys,		// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄ×ø±ê
 							   const vector<Vec3d> & RGBs,		// ÊäÈë£º²Î¿¼Í¼ÏñÖĞ¸÷²Î¿¼ÏñËØµÄRBGÖµ£¬doubleĞÍ£¬[0]:R£¬[1]:G£¬[2]:B

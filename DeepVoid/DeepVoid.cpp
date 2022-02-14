@@ -8873,14 +8873,14 @@ UINT DSBA_Simu_increaseImgPtNoise(LPVOID param)
 	FILE * file_DSBA = fopen("E:\\all\\DbSBA simu results\\error_DSBA_sigma.txt", "w");
 
 	// 20220213，这里先把两图像光心真值距离给出来，用来标定后续 BA 后的尺度 //////
-	double C1C0_true = 0;
-	{
-		Matx31d C0 = -Rs[0].t()*ts[0];
-		Matx31d C1 = -Rs[1].t()*ts[1];
-
-//		double C1C0_true = norm(ts[1]);
-		C1C0_true = norm(C1 - C0);
-	}	
+// 	double C1C0_true = 0;
+// 	{
+// 		Matx31d C0 = -Rs[0].t()*ts[0];
+// 		Matx31d C1 = -Rs[1].t()*ts[1];
+// 
+// //		double C1C0_true = norm(ts[1]);
+// 		C1C0_true = norm(C1 - C0);
+// 	}	
 	//////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////
 
@@ -8944,7 +8944,7 @@ UINT DSBA_Simu_increaseImgPtNoise(LPVOID param)
 					{
 						// reference image point has random noise
 // 						pt2d.x = x_d_e;
-// 						pt2d.y = y_d_e;
+//						pt2d.y = y_d_e;
 
 						// reference image point has no random noise
 						vImgPts_dist_err.push_back(pt2d);
@@ -8996,30 +8996,37 @@ UINT DSBA_Simu_increaseImgPtNoise(LPVOID param)
 
 			// 20220213，看看物点重建误差 //////////////////////////////////////////////////////////////
 			{
+				double info_align[5];
+				double a_align = 1;
+				Matx33d R_align = Matx33d::eye();
+				Matx31d t_align;
+				DeepVoid::optim_lm_a_w_t(vObjPts, objPts_SBA, a_align, R_align, t_align, info_align);
+				wrdptRMSE_SBA.push_back(info_align[1]);
+
 				// 先定下重建尺度
-				Matx31d C0 = -Rs_SBA[0].t()*ts_SBA[0];
-				Matx31d C1 = -Rs_SBA[1].t()*ts_SBA[1];
-
-				double C1C0_SBA = norm(C1 - C0);
-//				double C1C0_SBA = norm(ts_SBA[1]);
-
-				double scaleSBA_1 = C1C0_true / C1C0_SBA;
-				double sum_d2 = 0;
-				// 再遍历每个物点，统计误差
-				for (int i = 0; i < nObj; ++i)
-				{
-					Point3d pt3dSBA = objPts_SBA[i];
-					Point3d pt3dTrue = vObjPts[i];
-
-					double dX = pt3dSBA.x*scaleSBA_1 - pt3dTrue.x;
-					double dY = pt3dSBA.y*scaleSBA_1 - pt3dTrue.y;
-					double dZ = pt3dSBA.z*scaleSBA_1 - pt3dTrue.z;
-
-// 					double ddd = sqrt(dX*dX + dY*dY + dZ*dZ);
-// 					sum_d2 += ddd*ddd;
-					sum_d2 += (dX*dX + dY*dY + dZ*dZ);
-				}
-				wrdptRMSE_SBA.push_back(sqrt(sum_d2 / nObj));
+// 				Matx31d C0 = -Rs_SBA[0].t()*ts_SBA[0];
+// 				Matx31d C1 = -Rs_SBA[1].t()*ts_SBA[1];
+// 
+// 				double C1C0_SBA = norm(C1 - C0);
+// //				double C1C0_SBA = norm(ts_SBA[1]);
+// 
+// 				double scaleSBA_1 = C1C0_true / C1C0_SBA;
+// 				double sum_d2 = 0;
+// 				// 再遍历每个物点，统计误差
+// 				for (int i = 0; i < nObj; ++i)
+// 				{
+// 					Point3d pt3dSBA = objPts_SBA[i];
+// 					Point3d pt3dTrue = vObjPts[i];
+// 
+// 					double dX = pt3dSBA.x*scaleSBA_1 - pt3dTrue.x;
+// 					double dY = pt3dSBA.y*scaleSBA_1 - pt3dTrue.y;
+// 					double dZ = pt3dSBA.z*scaleSBA_1 - pt3dTrue.z;
+// 
+// // 					double ddd = sqrt(dX*dX + dY*dY + dZ*dZ);
+// // 					sum_d2 += ddd*ddd;
+// 					sum_d2 += (dX*dX + dY*dY + dZ*dZ);
+// 				}
+// 				wrdptRMSE_SBA.push_back(sqrt(sum_d2 / nObj));
 			}			
 			///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -9043,30 +9050,37 @@ UINT DSBA_Simu_increaseImgPtNoise(LPVOID param)
 
 			// 20220213，看看物点重建误差 //////////////////////////////////////////////////////////////
 			{
+				double info_align[5];
+				double a_align = 1;
+				Matx33d R_align = Matx33d::eye();
+				Matx31d t_align;
+				DeepVoid::optim_lm_a_w_t(vObjPts, objPts_DSBA, a_align, R_align, t_align, info_align);
+				wrdptRMSE_DSBA.push_back(info_align[1]);
+
 				// 先定下重建尺度
-				Matx31d C0 = -Rs_DSBA[0].t()*ts_DSBA[0];
-				Matx31d C1 = -Rs_DSBA[1].t()*ts_DSBA[1];
-
-				double C1C0_DSBA = norm(C1 - C0);
-//				double C1C0_DSBA = norm(ts_DSBA[1]);
-
-				double scaleDSBA_1 = C1C0_true / C1C0_DSBA;
-				double sum_d2 = 0;
-				// 再遍历每个物点，统计误差
-				for (int i = 0; i < nObj; ++i)
-				{
-					Point3d pt3dDSBA = objPts_DSBA[i];
-					Point3d pt3dTrue = vObjPts[i];
-
-					double dX = pt3dDSBA.x*scaleDSBA_1 - pt3dTrue.x;
-					double dY = pt3dDSBA.y*scaleDSBA_1 - pt3dTrue.y;
-					double dZ = pt3dDSBA.z*scaleDSBA_1 - pt3dTrue.z;
-
-// 					double ddd = sqrt(dX*dX + dY*dY + dZ*dZ);
-// 					sum_d2 += ddd*ddd;
-					sum_d2 += (dX*dX + dY*dY + dZ*dZ);
-				}
-				wrdptRMSE_DSBA.push_back(sqrt(sum_d2 / nObj));
+// 				Matx31d C0 = -Rs_DSBA[0].t()*ts_DSBA[0];
+// 				Matx31d C1 = -Rs_DSBA[1].t()*ts_DSBA[1];
+// 
+// 				double C1C0_DSBA = norm(C1 - C0);
+// //				double C1C0_DSBA = norm(ts_DSBA[1]);
+// 
+// 				double scaleDSBA_1 = C1C0_true / C1C0_DSBA;
+// 				double sum_d2 = 0;
+// 				// 再遍历每个物点，统计误差
+// 				for (int i = 0; i < nObj; ++i)
+// 				{
+// 					Point3d pt3dDSBA = objPts_DSBA[i];
+// 					Point3d pt3dTrue = vObjPts[i];
+// 
+// 					double dX = pt3dDSBA.x*scaleDSBA_1 - pt3dTrue.x;
+// 					double dY = pt3dDSBA.y*scaleDSBA_1 - pt3dTrue.y;
+// 					double dZ = pt3dDSBA.z*scaleDSBA_1 - pt3dTrue.z;
+// 
+// // 					double ddd = sqrt(dX*dX + dY*dY + dZ*dZ);
+// // 					sum_d2 += ddd*ddd;
+// 					sum_d2 += (dX*dX + dY*dY + dZ*dZ);
+// 				}
+// 				wrdptRMSE_DSBA.push_back(sqrt(sum_d2 / nObj));
 			}			
 			///////////////////////////////////////////////////////////////////////////////////////////
 		}
