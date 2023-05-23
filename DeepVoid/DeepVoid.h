@@ -223,6 +223,8 @@ public:
 	afx_msg void OnTestSimuN();
 	afx_msg void OnTestSimuM();
 	afx_msg void OnTestSimuK();
+	afx_msg void OnTestFeatureorientationanglecompare();
+	afx_msg void OnUpdateTestFeatureorientationanglecompare(CCmdUI *pCmdUI);
 };
 
 extern CDeepVoidApp theApp;

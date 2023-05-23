@@ -99,6 +99,8 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_TEST_SIMU_N, &CDeepVoidApp::OnTestSimuN)
 	ON_COMMAND(ID_TEST_SIMU_M, &CDeepVoidApp::OnTestSimuM)
 	ON_COMMAND(ID_TEST_SIMU_K, &CDeepVoidApp::OnTestSimuK)
+	ON_COMMAND(ID_TEST_FEATUREORIENTATIONANGLECOMPARE, &CDeepVoidApp::OnTestFeatureorientationanglecompare)
+	ON_UPDATE_COMMAND_UI(ID_TEST_FEATUREORIENTATIONANGLECOMPARE, &CDeepVoidApp::OnUpdateTestFeatureorientationanglecompare)
 END_MESSAGE_MAP()
 
 
@@ -14617,6 +14619,108 @@ UINT DSBA_Simu_changeCy(LPVOID param)
 	return TRUE;
 }
 
+UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+
+	// 把要用的全局变量引用过来 ////////////////////////////////////////////////
+	vector<cam_data> & cams = pApp->m_vCams;
+	const vector<cv::Mat> & imgs = pApp->m_imgsOriginal;
+	const SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
+	const SfM_ZZK::MultiTracksWithFlags & tracks = pApp->m_mapTracks; // 20220202，新数据结构
+	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
+	const CString & dirOut = pApp->m_pathDirOut; // 结果输出文件夹路径
+	const std::vector<CString> & vImgNames = pApp->m_vNameImgs; // 所有图像的纯名称（不含路径和尾缀）
+	const int & idxRefImg = pApp->m_idxRefImg;	// 该变量指明 SfM 和 SBA 中哪个图像坐标系代表了参考坐标系
+
+	int nImg = cams.size();
+	CString strInfo;
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 先从图像名（NNN）确定哪副图像是原图，其它图像就是人为旋转过指定角度的图像了，并把它们的旋转角度真值从文件名中解析出来
+	int idxRef;
+	vector<int> vAngsReal;
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cam_data & cam = cams[i];
+		const cv::Mat & img = imgs[i];
+		const CString & imgName = vImgNames[i];
+		int angReal = atoi(imgName);
+
+		vAngsReal.push_back(angReal);
+
+		if (!angReal)
+		{
+			idxRef = i;
+		}		
+
+		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+	}
+
+	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
+	int nSift0 = sift0.key_points.size();
+	int H = imgs[idxRef].rows;
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 再遍历一遍所有图像，跟参考图像做对比
+	for (int i = 0; i < nImg; ++i)
+	{
+		if (i == idxRef)
+		{
+			continue;
+		}
+
+		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
+		int nSifti = sifti.key_points.size();
+		double angReal = (double)vAngsReal[i];
+
+		Matx22d R = DeepVoid::GenR2D_Angle(angReal);
+		Matx21d t;
+		t(0) = H*sind(angReal);
+		
+		for (int j = 0; j < nSifti; ++j) // 遍历旋转图像中提取到的每个特征点
+		{
+			const cv::KeyPoint & keypti = sifti.key_points[j];
+			double xi = keypti.pt.x;
+			double yi = keypti.pt.y;
+
+			Matx21d xyi,xy0;
+			xyi(0) = xi;
+			xyi(1) = yi;
+
+			xy0 = R.t()*(xyi - t);
+			double x00 = xy0(0);
+			double y00 = xy0(1);
+
+			for (int ii = 0; ii < nSift0; ++ii)
+			{
+				const cv::KeyPoint & keypt0 = sift0.key_points[ii];
+				double x0 = keypt0.pt.x;
+				double y0 = keypt0.pt.y;
+				
+				double dx = x0 - x00;
+				double dy = y0 - y00;
+
+				double d = sqrt(dx*dx + dy*dy);
+
+				if (d < 1.0)
+				{
+					double dScale = keypti.size - keypt0.size;
+					double dAngle = keypti.angle - keypt0.angle;
+				}
+			}
+		}
+	}
+	//////////////////////////////////////////////////////////////////////////
+	
+
+	return TRUE;
+}
+
 void CDeepVoidApp::OnTestSimuFNoise()
 {
 	// TODO: Add your command handler code here
@@ -14656,4 +14760,18 @@ void CDeepVoidApp::OnTestSimuK()
 {
 	// TODO: Add your command handler code here
 	AfxBeginThread(DSBA_Simu_increaseObservations, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnTestFeatureorientationanglecompare()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(Scale_Orientation_changeOrientationAngle, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnUpdateTestFeatureorientationanglecompare(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
 }
