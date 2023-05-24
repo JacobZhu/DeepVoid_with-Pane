@@ -14709,6 +14709,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 	}
 
 	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
+	const DeepVoid::Features & my0 = cams[idxRef].m_featsManual;
 	int nSift0 = sift0.key_points.size();
 	int H = imgs[idxRef].rows;
 	//////////////////////////////////////////////////////////////////////////
@@ -14723,6 +14724,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		}
 
 		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
+		const DeepVoid::Features & myi = cams[i].m_featsManual;
 		int nSifti = sifti.key_points.size();
 		double angReal = (double)vAngsReal[i];
 
@@ -14733,6 +14735,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		for (int j = 0; j < nSifti; ++j) // 遍历旋转图像中提取到的每个特征点
 		{
 			const cv::KeyPoint & keypti = sifti.key_points[j];
+			const cv::KeyPoint & mypti = myi.key_points[j];
 			double xi = keypti.pt.x;
 			double yi = keypti.pt.y;
 
@@ -14748,6 +14751,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			for (int ii = 0; ii < nSift0; ++ii)
 			{
 				const cv::KeyPoint & keypt0 = sift0.key_points[ii];
+				const cv::KeyPoint & mypt0 = my0.key_points[ii];
 				double x0 = keypt0.pt.x;
 				double y0 = keypt0.pt.y;
 				
@@ -14758,8 +14762,13 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 				if (d < 1.0)
 				{
-					double dScale = keypti.size - keypt0.size;
-					double dAngle = keypti.angle - keypt0.angle;
+					double dScaleSift = keypti.size - keypt0.size;
+					double dAngleSift = keypti.angle - keypt0.angle;
+					double errorAngSift = dAngleSift - angReal;
+
+					double dScaleMy = mypti.size - mypt0.size;
+					double dAngleMy = mypti.angle - mypt0.angle;
+					double errorAngMy = dAngleMy - angReal;
 				}
 			}
 		}
