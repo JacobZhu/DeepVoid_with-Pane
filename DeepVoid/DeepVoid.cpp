@@ -14639,6 +14639,11 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 	//////////////////////////////////////////////////////////////////////////
 
 
+	double sigma_I = 5.0;
+	double thresh_sigmaAng = 1.0;
+	int r_max = 100;
+
+
 	// 先从图像名（NNN）确定哪副图像是原图，其它图像就是人为旋转过指定角度的图像了，并把它们的旋转角度真值从文件名中解析出来
 	int idxRef;
 	vector<int> vAngsReal;
@@ -14650,6 +14655,19 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		const CString & imgName = vImgNames[i];
 		int angReal = atoi(imgName);
 
+		cv::Mat im_gray;
+
+		int nChannel = img.channels();
+
+		if (nChannel == 1) // 本身就是灰度图
+		{
+			im_gray = img;
+		}
+		else // 彩图
+		{
+			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+		}
+
 		vAngsReal.push_back(angReal);
 
 		if (!angReal)
@@ -14657,7 +14675,37 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			idxRef = i;
 		}		
 
+		// 先提取sift特征点
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+
+		const DeepVoid::Features & sift = cam.m_featsBlob;
+		int nSift = sift.key_points.size();
+
+		DeepVoid::Features & myFeatSift = cam.m_featsManual;
+
+		// 再于每个sift特征点处提取本文方法估计的特征方向和尺度
+		for (int j = 0; j < nSift; ++j)
+		{
+			cv::KeyPoint keypt = sift.key_points[j];
+			double x = keypt.pt.x;
+			double y = keypt.pt.y;
+
+			int r;
+			double angle;
+
+			if (FeatureRadiusAngle_sigmaAng(im_gray, x, y, r, angle, sigma_I, thresh_sigmaAng, r_max))
+			{
+				keypt.size = (2 * r + 1); // keypoint::size 表征特征的直径 diameter
+				keypt.angle = angle;
+			}
+			else
+			{
+				keypt.size = -1;
+				keypt.angle = -1;
+			}
+
+			myFeatSift.key_points.push_back(keypt);
+		}
 	}
 
 	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
@@ -14688,7 +14736,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			double xi = keypti.pt.x;
 			double yi = keypti.pt.y;
 
-			Matx21d xyi,xy0;
+			Matx21d xyi, xy0;
 			xyi(0) = xi;
 			xyi(1) = yi;
 
@@ -14696,6 +14744,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			double x00 = xy0(0);
 			double y00 = xy0(1);
 
+			// 针对旋转图像中的每个特征点，遍历原图中的每个特征点，以确定对应关系
 			for (int ii = 0; ii < nSift0; ++ii)
 			{
 				const cv::KeyPoint & keypt0 = sift0.key_points[ii];
