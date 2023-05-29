@@ -14635,7 +14635,10 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 	const int & idxRefImg = pApp->m_idxRefImg;	// 该变量指明 SfM 和 SBA 中哪个图像坐标系代表了参考坐标系
 
 	int nImg = cams.size();
-	CString strInfo;
+	CString strInfo, strFile;
+
+	// 在输入图像所在目录下新建结果输出文件夹（如果事先不存在的话）
+	int code = mkdir(dirOut); // code=0 说明成功新建；code=-1 说明文件夹已存在
 	//////////////////////////////////////////////////////////////////////////
 
 
@@ -14723,6 +14726,10 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			continue;
 		}
 
+		// 先打开结果文件
+		strFile = dirOut + vImgNames[i] + ".txt";
+		FILE * file = fopen(strFile, "w");
+
 		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
 		const DeepVoid::Features & myi = cams[i].m_featsManual;
 		int nSifti = sifti.key_points.size();
@@ -14763,15 +14770,84 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 				if (d < 1.0)
 				{
 					double dScaleSift = keypti.size - keypt0.size;
-					double dAngleSift = keypti.angle - keypt0.angle;
+					double dAngleSift = keypti.angle - keypt0.angle; // 先直接相减
+					if (dAngleSift > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+					{
+						dAngleSift -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+					}
+					else
+					{
+						if (dAngleSift < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+						{
+							dAngleSift += 360; // da = da+360; 肯定为正值，且其值定小于180°
+						}
+					}
+
 					double errorAngSift = dAngleSift - angReal;
 
+					double absErrAngSift = fabs(errorAngSift); // 特征方向角误差绝对值
+// 					if (absErrAngSift > 180) // 限制误差不超过180°
+// 					{
+// 						absErrAngSift = 360 - absErrAngSift;
+// 					}
+
+// 					double limitErrAngSift = errorAngSift;
+// 					if (limitErrAngSift > 180)
+// 					{
+// 						limitErrAngSift -= 360;
+// 					}
+// 					else
+// 					{
+// 						if (limitErrAngSift < -180)
+// 						{
+// 							limitErrAngSift += 360;
+// 						}
+// 					}					
+
+					
 					double dScaleMy = mypti.size - mypt0.size;
-					double dAngleMy = mypti.angle - mypt0.angle;
+					double dAngleMy = mypti.angle - mypt0.angle; // 先直接相减
+					if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+					{
+						dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+					}
+					else
+					{
+						if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+						{
+							dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+						}
+					}
+
 					double errorAngMy = dAngleMy - angReal;
+
+					double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值
+// 					if (absErrAngMy > 180) // 限制误差不超过180°
+// 					{
+// 						absErrAngMy = 360 - absErrAngMy;
+// 					}
+
+// 					double limitErrAngMy = errorAngMy;
+// 					if (limitErrAngMy > 180)
+// 					{
+// 						limitErrAngMy -= 360;
+// 					} 
+// 					else
+// 					{
+// 						if (limitErrAngMy < -180)
+// 						{
+// 							limitErrAngMy += 360;
+// 						}
+// 					}					
+
+					fprintf(file, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+						angReal, keypt0.size, dScaleSift, keypt0.angle, dAngleSift, errorAngSift, absErrAngSift,
+								  mypt0.size, dScaleMy,	  mypt0.angle,	dAngleMy,	errorAngMy,	  absErrAngMy);
 				}
 			}
 		}
+
+		fclose(file);
 	}
 	//////////////////////////////////////////////////////////////////////////
 	
