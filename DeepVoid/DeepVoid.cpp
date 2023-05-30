@@ -14623,6 +14623,59 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
 
+	// trytry
+// 	double radian = 45*D2R;
+// 	double sina = std::sin(radian);
+// 	double cosa = std::cos(radian);
+// 
+// 	Matx22d R, R_est;
+// 	Matx21d t, t_est;
+// 
+// 	R(0, 0) = R(1, 1) = cosa;
+// 	R(0, 1) = -sina;
+// 	R(1, 0) = sina;
+// 	t(0) = 15;
+// 	t(1) = 25;
+// 
+// 	vector<Point2d> imgpts1, imgpts2;
+// 	Point2d imgpt1, imgpt2;
+// 	Matx21d x1, x2;
+// 
+// 	x1(0) = 150;
+// 	x1(1) = 300;
+// 	x2 = R*x1 + t;
+// 
+// 	imgpt1.x = x1(0);
+// 	imgpt1.y = x1(1);
+// 	imgpt2.x = x2(0);
+// 	imgpt2.y = x2(1);
+// 	imgpts1.push_back(imgpt1);
+// 	imgpts2.push_back(imgpt2);
+// 	
+// 	x1(0) = 225;
+// 	x1(1) = 130;
+// 	x2 = R*x1 + t;
+// 
+// 	imgpt1.x = x1(0);
+// 	imgpt1.y = x1(1);
+// 	imgpt2.x = x2(0);
+// 	imgpt2.y = x2(1);
+// 	imgpts1.push_back(imgpt1);
+// 	imgpts2.push_back(imgpt2);
+// 
+// 	x1(0) = 560;
+// 	x1(1) = 266;
+// 	x2 = R*x1 + t;
+// 
+// 	imgpt1.x = x1(0);
+// 	imgpt1.y = x1(1);
+// 	imgpt2.x = x2(0);
+// 	imgpt2.y = x2(1);
+// 	imgpts1.push_back(imgpt1);
+// 	imgpts2.push_back(imgpt2);
+// 
+// 	DeepVoid::get_R_t_2D(imgpts1, imgpts2, R_est, t_est);
+
 
 	// 把要用的全局变量引用过来 ////////////////////////////////////////////////
 	vector<cam_data> & cams = pApp->m_vCams;

@@ -2622,7 +2622,53 @@ void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在
 						  Matx21d & t									// output:估计得到的平移向量
 						  )
 {
+	int n = imgPts1.size();
 
+	cv::Mat A(2 * n, 4, CV_64FC1, Scalar(0)); // Ax=b
+	cv::Mat b(2 * n, 1, CV_64FC1, Scalar(0)); // Ax=b
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2d & imgpt1 = imgPts1[i];
+		const Point2d & imgpt2 = imgPts2[i];
+		double x1 = imgpt1.x;
+		double y1 = imgpt1.y;
+		double x2 = imgpt2.x;
+		double y2 = imgpt2.y;
+
+		int i2 = 2 * i;
+
+		A.at<double>(i2, 0) = -y1;
+		A.at<double>(i2, 1) = x1;
+		A.at<double>(i2, 2) = 1;
+		A.at<double>(i2 + 1, 0) = x1;
+		A.at<double>(i2 + 1, 1) = y1;
+		A.at<double>(i2 + 1, 3) = 1;
+
+		b.at<double>(i2) = x2;
+		b.at<double>(i2 + 1) = y2;
+	}
+
+	cv::Mat mA = A.t() * A;
+	cv::Mat mb = A.t() * b;
+	cv::Mat mx;
+
+	solve(mA, mb, mx, DECOMP_CHOLESKY);
+
+	double sina = mx.at<double>(0);
+	double cosa = mx.at<double>(1);
+	t(0) = mx.at<double>(2);
+	t(1) = mx.at<double>(3);
+
+	double radian = std::atan2(sina, cosa); // [-π; +π]
+
+	sina = std::sin(radian);
+	cosa = std::cos(radian);
+
+	R(0, 0) = cosa;
+	R(0, 1) = -sina;
+	R(1, 0) = sina;
+	R(1, 1) = cosa;
 }
 
 // 20151016, zhaokunz
