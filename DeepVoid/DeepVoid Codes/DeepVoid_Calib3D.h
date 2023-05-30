@@ -276,6 +276,13 @@ bool ManualFeatureMatching(const Features & feats0,				// input:	n1 features ext
 						   double thresh_minInlierRatio = 0.5	// input:	the allowed minimum ratio of inliers
 						   );
 
+// 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+void get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
+				const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
+				Matx22d & R,									// output:估计得到的二维旋转矩阵
+				Matx21d & t										// output:估计得到的平移向量
+				);
+
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
 			   vector<DMatch> & matches,						// output:	matches that have past the ratio test

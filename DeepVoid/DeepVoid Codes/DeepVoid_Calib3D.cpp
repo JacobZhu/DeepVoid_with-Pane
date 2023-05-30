@@ -2615,6 +2615,16 @@ bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & f
 
 }
 
+// 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
+						  const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
+						  Matx22d & R,									// output:估计得到的二维旋转矩阵
+						  Matx21d & t									// output:估计得到的平移向量
+						  )
+{
+
+}
+
 // 20151016, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get initial fundamental matrix using RANSAC
