@@ -2671,6 +2671,48 @@ void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在
 	R(1, 1) = cosa;
 }
 
+// 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
+							     const vector<Point2d> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
+							     vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+							     Matx22d & R,						// output:估计得到的二维旋转矩阵
+							     Matx21d & t,						// output:估计得到的平移向量
+							     double thresh_t /*= 3.0*/,			// input: 点-点距离阈值，用于判断点对是否为inlier
+							     double thresh_p /*= 0.99*/			// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+							     )
+{
+	int N = 1000; // 最多抽取样本数
+	int count = 0; // 当前已抽取样本数
+	RNG rng(0xffffffff); // Initializes a random number generator state
+
+	int n = imgPts1.size();
+
+	status = vector<uchar>(n);
+
+	while (count < N)
+	{
+		// 均匀抽取 2 个随机数
+		int i = rng.uniform(0, n - 1);
+		int j = rng.uniform(0, n - 1);
+
+		while (j == i)
+		{
+			j = rng.uniform(0, n - 1);
+		}
+
+		vector<Point2d> imgpts1_samples, imgpts2_samples;
+
+		imgpts1_samples.push_back(imgPts1[i]);
+		imgpts1_samples.push_back(imgPts1[j]);
+		imgpts2_samples.push_back(imgPts2[i]);
+		imgpts2_samples.push_back(imgPts2[j]);
+
+		get_R_t_2D(imgpts1_samples, imgpts2_samples, R, t);
+
+		count++;
+	}
+}
+
 // 20151016, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get initial fundamental matrix using RANSAC

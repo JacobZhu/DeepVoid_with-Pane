@@ -283,6 +283,16 @@ void get_R_t_2D(const vector<Point2d> & imgPts1,				// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµ
 				Matx21d & t										// output:¹À¼ÆµÃµ½µÄÆ½ÒÆÏòÁ¿
 				);
 
+// 20230530£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿¶şÎ¬Ğı×ª¾ØÕóRÒÔ¼°Æ½ÒÆÏòÁ¿t£¬µ±È»ÁË£¬ÊÊÓÃ³¡¾°µ±È»ÊÇÁ½ÊÓÍ¼¼äÕæµÄÖ»·¢ÉúÁË¸ÕÌå¶şÎ¬Ğı×ªºÍÆ½ÒÆÔË¶¯£¬ÎŞ³ß¶ÈËõ·Å
+void get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,				// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					   const vector<Point2d> & imgPts2,				// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					   vector<uchar> & status,						// output:Ö¸Ã÷×îÖÕÄÄĞ©µã¶ÔÊÇinliers£¬1£ºinliers£¬0£ºoutliers
+					   Matx22d & R,									// output:¹À¼ÆµÃµ½µÄ¶şÎ¬Ğı×ª¾ØÕó
+					   Matx21d & t,									// output:¹À¼ÆµÃµ½µÄÆ½ÒÆÏòÁ¿
+					   double thresh_t = 3.0,						// input: µã-µã¾àÀëãĞÖµ£¬ÓÃÓÚÅĞ¶Ïµã¶ÔÊÇ·ñÎªinlier
+					   double thresh_p = 0.99						// input: ËùÓĞ³éÑù×éÖĞÖÁÉÙÓĞ 1 ×é³éÑùÍêÈ«ÓÉÄÚµã¹¹³ÉµÄ¸ÅÂÊ
+					   );
+
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
 			   vector<DMatch> & matches,						// output:	matches that have past the ratio test
