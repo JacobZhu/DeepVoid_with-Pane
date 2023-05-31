@@ -294,6 +294,17 @@ void get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,				// input: 点对应在 1s
 					   double thresh_p = 0.99						// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
 					   );
 
+// 20230531，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
+void get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
+					   const vector<Point2f> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
+					   vector<uchar> & status,						// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+					   Matx22d & R,									// output:估计得到的二维旋转矩阵
+					   Matx21d & t,									// output:估计得到的平移向量
+					   double thresh_t = 3.0,						// input: 点-点距离阈值，用于判断点对是否为inlier
+					   double thresh_p = 0.99						// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+					   );
+
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
 			   vector<DMatch> & matches,						// output:	matches that have past the ratio test

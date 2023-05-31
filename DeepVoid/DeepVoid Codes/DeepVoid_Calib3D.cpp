@@ -2099,6 +2099,11 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 //	Matx33d fundamental_matrix = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
 	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
 
+	// 20230531, try ransac estimate 2D [R|t]
+	Matx22d R_;
+	Matx21d t_;
+	get_R_t_2D_RANSAC(points0, points1, status, R_, t_);
+
 	vector<DMatch> matches_RANSAC;
 	vector<Point2d> vImgPts0, vImgPts1;
 
@@ -2687,9 +2692,16 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 	int nMin = 2; // 求解模型的最小配置数
 	RNG rng(0xffffffff); // Initializes a random number generator state
 
+	typedef std::pair<std::pair<int, double>, std::pair<Matx22d, Matx21d>> pair_n_e_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、以及R|t自身
+
+	vector<pair_n_e_R_t> vSamples;
+
 	int n = imgPts1.size();
 
 	status = vector<uchar>(n);
+
+	Matx22d R_; // tmp
+	Matx21d t_; // tmp
 
 	Matx21d X1, X1_, X2, X2_;
 
@@ -2715,7 +2727,9 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 		imgpts2_samples.push_back(imgPts2[i]);
 		imgpts2_samples.push_back(imgPts2[j]);
 
-		get_R_t_2D(imgpts1_samples, imgpts2_samples, R, t);
+		get_R_t_2D(imgpts1_samples, imgpts2_samples, R_, t_);
+
+		double sum2 = 0;
 
 		// 考察每一组点对是否为 [R|t] 的inlier
 		for (int k = 0; k < n; ++k)
@@ -2731,20 +2745,22 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 			X1(0) = pt1.x; X1(1) = pt1.y;
 			X2(0) = pt2.x; X2(1) = pt2.y;
 
-			X2_ = R*X1 + t;
-			X1_ = R.t()*(X2 - t);
+			X2_ = R_*X1 + t_;
+			X1_ = R_.t()*(X2 - t_);
 
 			double dx1 = X1_(0) - X1(0);
 			double dy1 = X1_(1) - X1(1);
 			double dx2 = X2_(0) - X2(0);
 			double dy2 = X2_(1) - X2(1);
 
-			double d = sqrt(dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+			double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+			double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
 
 			if (d < thresh_t)
 			{
 				nInliers++;
-				status[k] = 1;
+				sum2 += d2;
+				status[k] = 1;		
 			} 
 			else
 			{
@@ -2752,12 +2768,124 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 			}
 		}
 
+		double rms_d = sqrt(sum2 / nInliers); // 内点均方根误差
+
 		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
 
 		N = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
 
 		count++;
+
+		vSamples.push_back(std::make_pair(std::make_pair(nInliers, rms_d), std::make_pair(R_, t_)));
 	}
+
+	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_R_t & a, const pair_n_e_R_t & b) {return a.first.first > b.first.first; });
+}
+
+// 20230531，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
+void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
+							     const vector<Point2f> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
+							     vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+							     Matx22d & R,						// output:估计得到的二维旋转矩阵
+							     Matx21d & t,						// output:估计得到的平移向量
+							     double thresh_t /*= 3.0*/,			// input: 点-点距离阈值，用于判断点对是否为inlier
+							     double thresh_p /*= 0.99*/			// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+							     )
+{
+	int N = 1000; // 最多抽取样本数
+	int count = 0; // 当前已抽取样本数
+	int nMin = 2; // 求解模型的最小配置数
+	RNG rng(0xffffffff); // Initializes a random number generator state
+
+	typedef std::pair<std::pair<int, double>, std::pair<Matx22d, Matx21d>> pair_n_e_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、以及R|t自身
+
+	vector<pair_n_e_R_t> vSamples;
+
+	int n = imgPts1.size();
+
+	status = vector<uchar>(n);
+
+	Matx22d R_; // tmp
+	Matx21d t_; // tmp
+
+	Matx21d X1, X1_, X2, X2_;
+
+	while (count < N)
+	{
+		// 均匀抽取 2 个随机数
+		int i = rng.uniform(0, n - 1);
+		int j = rng.uniform(0, n - 1);
+
+		while (j == i)
+		{
+			j = rng.uniform(0, n - 1);
+		}
+
+		status[i] = status[j] = 1; // 这俩被抽中了那肯定是内点了
+
+		int nInliers = 2;
+
+		vector<Point2d> imgpts1_samples, imgpts2_samples;
+
+		imgpts1_samples.push_back(imgPts1[i]);
+		imgpts1_samples.push_back(imgPts1[j]);
+		imgpts2_samples.push_back(imgPts2[i]);
+		imgpts2_samples.push_back(imgPts2[j]);
+
+		get_R_t_2D(imgpts1_samples, imgpts2_samples, R_, t_);
+
+		double sum2 = 0;
+
+		// 考察每一组点对是否为 [R|t] 的inlier
+		for (int k = 0; k < n; ++k)
+		{
+			if (k == i || k == j)
+			{
+				continue;
+			}
+
+			const Point2f & pt1 = imgPts1[k];
+			const Point2f & pt2 = imgPts2[k];
+
+			X1(0) = pt1.x; X1(1) = pt1.y;
+			X2(0) = pt2.x; X2(1) = pt2.y;
+
+			X2_ = R_*X1 + t_;
+			X1_ = R_.t()*(X2 - t_);
+
+			double dx1 = X1_(0) - X1(0);
+			double dy1 = X1_(1) - X1(1);
+			double dx2 = X2_(0) - X2(0);
+			double dy2 = X2_(1) - X2(1);
+
+			double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+			double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+
+			if (d < thresh_t)
+			{
+				nInliers++;
+				sum2 += d2;
+				status[k] = 1;		
+			} 
+			else
+			{
+				status[k] = 0;
+			}
+		}
+
+		double rms_d = sqrt(sum2 / nInliers); // 内点均方根误差
+
+		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
+
+		N = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+
+		count++;
+
+		vSamples.push_back(std::make_pair(std::make_pair(nInliers, rms_d), std::make_pair(R_, t_)));
+	}
+
+	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_R_t & a, const pair_n_e_R_t & b) {return a.first.first > b.first.first; });
 }
 
 // 20151016, zhaokunz
