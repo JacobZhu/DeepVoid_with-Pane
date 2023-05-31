@@ -2672,6 +2672,7 @@ void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在
 }
 
 // 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
 void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
 							     const vector<Point2d> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
 							     vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
@@ -2683,11 +2684,14 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 {
 	int N = 1000; // 最多抽取样本数
 	int count = 0; // 当前已抽取样本数
+	int nMin = 2; // 求解模型的最小配置数
 	RNG rng(0xffffffff); // Initializes a random number generator state
 
 	int n = imgPts1.size();
 
 	status = vector<uchar>(n);
+
+	Matx21d X1, X1_, X2, X2_;
 
 	while (count < N)
 	{
@@ -2700,6 +2704,10 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 			j = rng.uniform(0, n - 1);
 		}
 
+		status[i] = status[j] = 1; // 这俩被抽中了那肯定是内点了
+
+		int nInliers = 2;
+
 		vector<Point2d> imgpts1_samples, imgpts2_samples;
 
 		imgpts1_samples.push_back(imgPts1[i]);
@@ -2708,6 +2716,45 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 		imgpts2_samples.push_back(imgPts2[j]);
 
 		get_R_t_2D(imgpts1_samples, imgpts2_samples, R, t);
+
+		// 考察每一组点对是否为 [R|t] 的inlier
+		for (int k = 0; k < n; ++k)
+		{
+			if (k == i || k == j)
+			{
+				continue;
+			}
+
+			const Point2d & pt1 = imgPts1[k];
+			const Point2d & pt2 = imgPts2[k];
+
+			X1(0) = pt1.x; X1(1) = pt1.y;
+			X2(0) = pt2.x; X2(1) = pt2.y;
+
+			X2_ = R*X1 + t;
+			X1_ = R.t()*(X2 - t);
+
+			double dx1 = X1_(0) - X1(0);
+			double dy1 = X1_(1) - X1(1);
+			double dx2 = X2_(0) - X2(0);
+			double dy2 = X2_(1) - X2(1);
+
+			double d = sqrt(dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+
+			if (d < thresh_t)
+			{
+				nInliers++;
+				status[k] = 1;
+			} 
+			else
+			{
+				status[k] = 0;
+			}
+		}
+
+		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
+
+		N = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
 
 		count++;
 	}

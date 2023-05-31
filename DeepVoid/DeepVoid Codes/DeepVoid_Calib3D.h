@@ -284,6 +284,7 @@ void get_R_t_2D(const vector<Point2d> & imgPts1,				// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµ
 				);
 
 // 20230530£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿¶şÎ¬Ğı×ª¾ØÕóRÒÔ¼°Æ½ÒÆÏòÁ¿t£¬µ±È»ÁË£¬ÊÊÓÃ³¡¾°µ±È»ÊÇÁ½ÊÓÍ¼¼äÕæµÄÖ»·¢ÉúÁË¸ÕÌå¶şÎ¬Ğı×ªºÍÆ½ÒÆÔË¶¯£¬ÎŞ³ß¶ÈËõ·Å
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
 void get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,				// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
 					   const vector<Point2d> & imgPts2,				// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
 					   vector<uchar> & status,						// output:Ö¸Ã÷×îÖÕÄÄĞ©µã¶ÔÊÇinliers£¬1£ºinliers£¬0£ºoutliers
