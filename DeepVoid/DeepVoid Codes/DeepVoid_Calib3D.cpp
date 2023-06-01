@@ -2798,13 +2798,13 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 	int nMin = 2; // 求解模型的最小配置数
 	RNG rng(0xffffffff); // Initializes a random number generator state
 
-	typedef std::pair<std::pair<int, double>, std::pair<Matx22d, Matx21d>> pair_n_e_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、以及R|t自身
+	typedef std::pair<std::pair<std::pair<int, double>, vector<uchar>>, std::pair<Matx22d, Matx21d>> pair_n_e_s_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、内点集、以及R|t自身
 
-	vector<pair_n_e_R_t> vSamples;
+	vector<pair_n_e_s_R_t> vSamples;
 
 	int n = imgPts1.size();
 
-	status = vector<uchar>(n);
+	vector<uchar> status_(n);
 
 	Matx22d R_; // tmp
 	Matx21d t_; // tmp
@@ -2822,7 +2822,7 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 			j = rng.uniform(0, n - 1);
 		}
 
-		status[i] = status[j] = 1; // 这俩被抽中了那肯定是内点了
+		status_[i] = status_[j] = 1; // 这俩被抽中了那肯定是内点了
 
 		int nInliers = 2;
 
@@ -2866,11 +2866,11 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 			{
 				nInliers++;
 				sum2 += d2;
-				status[k] = 1;		
+				status_[k] = 1;		
 			} 
 			else
 			{
-				status[k] = 0;
+				status_[k] = 0;
 			}
 		}
 
@@ -2878,14 +2878,50 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 
 		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
 
-		N = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+		int N_new = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+
+		if (N_new < N) // 这里我改进了一下，只有当算得的所需样本数比当前更小时才更新 N
+		{
+			N = N_new;
+		}
 
 		count++;
 
-		vSamples.push_back(std::make_pair(std::make_pair(nInliers, rms_d), std::make_pair(R_, t_)));
+		vSamples.push_back(std::make_pair(std::make_pair(std::make_pair(nInliers, rms_d), status_), std::make_pair(R_, t_)));
 	}
 
-	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_R_t & a, const pair_n_e_R_t & b) {return a.first.first > b.first.first; });
+	// 先按内点数排序
+	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_s_R_t & a, const pair_n_e_s_R_t & b) {return a.first.first.first > b.first.first.first; });
+
+//	int maxInliers = vSamples[0].first.first.first;
+	int maxInliers = vSamples[1].first.first.first;
+
+	vector<pair_n_e_s_R_t> vSamples_2nd;
+
+//	for (int i = 0; i < vSamples.size(); ++i)
+	for (int i = 1; i < vSamples.size(); ++i)
+	{
+		const pair_n_e_s_R_t & smp = vSamples[i];
+
+		if (smp.first.first.first == maxInliers)
+		{
+			vSamples_2nd.push_back(smp);
+		} 
+		else
+		{
+			break;
+		}
+	}
+
+	// 内点数相同的情况下，再按照转移误差的rms值大小排序
+	sort(vSamples_2nd.begin(), vSamples_2nd.end(), [](const pair_n_e_s_R_t & a, const pair_n_e_s_R_t & b) {return a.first.first.second < b.first.first.second; });
+
+	// 取出该拥有最多支持集的[R|t]，以及对应的内点集
+	R_ = vSamples_2nd[0].second.first;
+	t_ = vSamples_2nd[0].second.second;
+	status_ = vSamples_2nd[0].first.second;
+
+	// 利用最大内点集再重新计算一次[R|t]
 }
 
 // 20151016, zhaokunz
