@@ -14623,63 +14623,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 {
 	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
 
-	// trytry
-// 	double radian = 45*D2R;
-// 	double sina = std::sin(radian);
-// 	double cosa = std::cos(radian);
-// 
-// 	Matx22d R, R_est;
-// 	Matx21d t, t_est;
-// 
-// 	R(0, 0) = R(1, 1) = cosa;
-// 	R(0, 1) = -sina;
-// 	R(1, 0) = sina;
-// 	t(0) = 15;
-// 	t(1) = 25;
-// 
-// 	vector<Point2d> imgpts1, imgpts2;
-// 	Point2d imgpt1, imgpt2;
-// 	Matx21d x1, x2;
-// 
-// 	x1(0) = 150;
-// 	x1(1) = 300;
-// 	x2 = R*x1 + t;
-// 
-// 	imgpt1.x = x1(0);
-// 	imgpt1.y = x1(1);
-// 	imgpt2.x = x2(0);
-// 	imgpt2.y = x2(1);
-// 	imgpts1.push_back(imgpt1);
-// 	imgpts2.push_back(imgpt2);
-// 	
-// 	x1(0) = 225;
-// 	x1(1) = 130;
-// 	x2 = R*x1 + t;
-// 
-// 	imgpt1.x = x1(0);
-// 	imgpt1.y = x1(1);
-// 	imgpt2.x = x2(0);
-// 	imgpt2.y = x2(1);
-// 	imgpts1.push_back(imgpt1);
-// 	imgpts2.push_back(imgpt2);
-// 
-// 	x1(0) = 560;
-// 	x1(1) = 266;
-// 	x2 = R*x1 + t;
-// 
-// 	imgpt1.x = x1(0);
-// 	imgpt1.y = x1(1);
-// 	imgpt2.x = x2(0);
-// 	imgpt2.y = x2(1);
-// 	imgpts1.push_back(imgpt1);
-// 	imgpts2.push_back(imgpt2);
-// 
-// 	vector<uchar> status;
-// 
-// 	DeepVoid::get_R_t_2D(imgpts1, imgpts2, R_est, t_est);
-// 	DeepVoid::get_R_t_2D_RANSAC(imgpts1, imgpts2, status, R_est, t_est);
-
-
+	
 	// 把要用的全局变量引用过来 ////////////////////////////////////////////////
 	vector<cam_data> & cams = pApp->m_vCams;
 	const vector<cv::Mat> & imgs = pApp->m_imgsOriginal;
@@ -14781,7 +14725,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		{
 			continue;
 		}
-
+		
 		// 先打开结果文件
 		strFile = dirOut + vImgNames[i] + ".txt";
 		FILE * file = fopen(strFile, "w");
@@ -14791,117 +14735,175 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		int nSifti = sifti.key_points.size();
 		double angReal = (double)vAngsReal[i];
 
-		Matx22d R = DeepVoid::GenR2D_Angle(angReal);
+		Matx22d R;
 		Matx21d t;
-		t(0) = H*sind(angReal);
+		double angRANSAC;
+		std::vector<cv::DMatch> matches;
+
+		// 20230602，旋转后图像sift特征与原图sift特征做匹配
+		bool bSuc = get_R_t_2D_Matches_knn_RANSAC(sift0, sifti, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		//////////////////////////////////////////////////////////////////////////
 		
-		for (int j = 0; j < nSifti; ++j) // 遍历旋转图像中提取到的每个特征点
+		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
 		{
-			const cv::KeyPoint & keypti = sifti.key_points[j];
-			const cv::KeyPoint & mypti = myi.key_points[j];
-			double xi = keypti.pt.x;
-			double yi = keypti.pt.y;
+			const cv::KeyPoint & sift_pt0 = sift0.key_points[iter->queryIdx];
+			const cv::KeyPoint & my_pt0 = my0.key_points[iter->queryIdx];
 
-			Matx21d xyi, xy0;
-			xyi(0) = xi;
-			xyi(1) = yi;
+			const cv::KeyPoint & sift_pti = sifti.key_points[iter->trainIdx];
+			const cv::KeyPoint & my_pti = myi.key_points[iter->trainIdx];
 
-			xy0 = R.t()*(xyi - t);
-			double x00 = xy0(0);
-			double y00 = xy0(1);
-
-			// 针对旋转图像中的每个特征点，遍历原图中的每个特征点，以确定对应关系
-			for (int ii = 0; ii < nSift0; ++ii)
+			double dScaleSift = sift_pti.size - sift_pt0.size;
+			double dAngleSift = sift_pti.angle - sift_pt0.angle; // 先直接相减
+			if (dAngleSift > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
 			{
-				const cv::KeyPoint & keypt0 = sift0.key_points[ii];
-				const cv::KeyPoint & mypt0 = my0.key_points[ii];
-				double x0 = keypt0.pt.x;
-				double y0 = keypt0.pt.y;
-				
-				double dx = x0 - x00;
-				double dy = y0 - y00;
-
-				double d = sqrt(dx*dx + dy*dy);
-
-				if (d < 1.0)
+				dAngleSift -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleSift < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
 				{
-					double dScaleSift = keypti.size - keypt0.size;
-					double dAngleSift = keypti.angle - keypt0.angle; // 先直接相减
-					if (dAngleSift > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
-					{
-						dAngleSift -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
-					}
-					else
-					{
-						if (dAngleSift < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
-						{
-							dAngleSift += 360; // da = da+360; 肯定为正值，且其值定小于180°
-						}
-					}
-
-					double errorAngSift = dAngleSift - angReal;
-
-					double absErrAngSift = fabs(errorAngSift); // 特征方向角误差绝对值
-// 					if (absErrAngSift > 180) // 限制误差不超过180°
-// 					{
-// 						absErrAngSift = 360 - absErrAngSift;
-// 					}
-
-// 					double limitErrAngSift = errorAngSift;
-// 					if (limitErrAngSift > 180)
-// 					{
-// 						limitErrAngSift -= 360;
-// 					}
-// 					else
-// 					{
-// 						if (limitErrAngSift < -180)
-// 						{
-// 							limitErrAngSift += 360;
-// 						}
-// 					}					
-
-					
-					double dScaleMy = mypti.size - mypt0.size;
-					double dAngleMy = mypti.angle - mypt0.angle; // 先直接相减
-					if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
-					{
-						dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
-					}
-					else
-					{
-						if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
-						{
-							dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
-						}
-					}
-
-					double errorAngMy = dAngleMy - angReal;
-
-					double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值
-// 					if (absErrAngMy > 180) // 限制误差不超过180°
-// 					{
-// 						absErrAngMy = 360 - absErrAngMy;
-// 					}
-
-// 					double limitErrAngMy = errorAngMy;
-// 					if (limitErrAngMy > 180)
-// 					{
-// 						limitErrAngMy -= 360;
-// 					} 
-// 					else
-// 					{
-// 						if (limitErrAngMy < -180)
-// 						{
-// 							limitErrAngMy += 360;
-// 						}
-// 					}					
-
-					fprintf(file, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
-						angReal, keypt0.size, dScaleSift, keypt0.angle, dAngleSift, errorAngSift, absErrAngSift,
-								  mypt0.size, dScaleMy,	  mypt0.angle,	dAngleMy,	errorAngMy,	  absErrAngMy);
+					dAngleSift += 360; // da = da+360; 肯定为正值，且其值定小于180°
 				}
 			}
+
+			double errorAngSift = dAngleSift - angReal;
+
+			double absErrAngSift = fabs(errorAngSift); // 特征方向角误差绝对值
+													  			
+			double dScaleMy = my_pti.size - my_pt0.size;
+			double dAngleMy = my_pti.angle - my_pt0.angle; // 先直接相减
+			if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngMy = dAngleMy - angReal;
+
+			double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值				
+
+			fprintf(file, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+				angReal, sift_pt0.size, dScaleSift, sift_pt0.angle, dAngleSift, errorAngSift, absErrAngSift,
+				my_pt0.size, dScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrAngMy);
 		}
+
+// 		R = DeepVoid::GenR2D_Angle(angReal);
+// 		t(0) = H*sind(angReal);
+// 		t(1) = 0;
+// 		
+// 		for (int j = 0; j < nSifti; ++j) // 遍历旋转图像中提取到的每个特征点
+// 		{
+// 			const cv::KeyPoint & keypti = sifti.key_points[j];
+// 			const cv::KeyPoint & mypti = myi.key_points[j];
+// 			double xi = keypti.pt.x;
+// 			double yi = keypti.pt.y;
+// 
+// 			Matx21d xyi, xy0;
+// 			xyi(0) = xi;
+// 			xyi(1) = yi;
+// 
+// 			xy0 = R.t()*(xyi - t);
+// 			double x00 = xy0(0);
+// 			double y00 = xy0(1);
+// 
+// 			// 针对旋转图像中的每个特征点，遍历原图中的每个特征点，以确定对应关系
+// 			for (int ii = 0; ii < nSift0; ++ii)
+// 			{
+// 				const cv::KeyPoint & keypt0 = sift0.key_points[ii];
+// 				const cv::KeyPoint & mypt0 = my0.key_points[ii];
+// 				double x0 = keypt0.pt.x;
+// 				double y0 = keypt0.pt.y;
+// 				
+// 				double dx = x0 - x00;
+// 				double dy = y0 - y00;
+// 
+// 				double d = sqrt(dx*dx + dy*dy);
+// 
+// 				if (d < 1.0)
+// 				{
+// 					double dScaleSift = keypti.size - keypt0.size;
+// 					double dAngleSift = keypti.angle - keypt0.angle; // 先直接相减
+// 					if (dAngleSift > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+// 					{
+// 						dAngleSift -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+// 					}
+// 					else
+// 					{
+// 						if (dAngleSift < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+// 						{
+// 							dAngleSift += 360; // da = da+360; 肯定为正值，且其值定小于180°
+// 						}
+// 					}
+// 
+// 					double errorAngSift = dAngleSift - angReal;
+// 
+// 					double absErrAngSift = fabs(errorAngSift); // 特征方向角误差绝对值
+// // 					if (absErrAngSift > 180) // 限制误差不超过180°
+// // 					{
+// // 						absErrAngSift = 360 - absErrAngSift;
+// // 					}
+// 
+// // 					double limitErrAngSift = errorAngSift;
+// // 					if (limitErrAngSift > 180)
+// // 					{
+// // 						limitErrAngSift -= 360;
+// // 					}
+// // 					else
+// // 					{
+// // 						if (limitErrAngSift < -180)
+// // 						{
+// // 							limitErrAngSift += 360;
+// // 						}
+// // 					}					
+// 
+// 					
+// 					double dScaleMy = mypti.size - mypt0.size;
+// 					double dAngleMy = mypti.angle - mypt0.angle; // 先直接相减
+// 					if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+// 					{
+// 						dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+// 					}
+// 					else
+// 					{
+// 						if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+// 						{
+// 							dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+// 						}
+// 					}
+// 
+// 					double errorAngMy = dAngleMy - angReal;
+// 
+// 					double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值
+// // 					if (absErrAngMy > 180) // 限制误差不超过180°
+// // 					{
+// // 						absErrAngMy = 360 - absErrAngMy;
+// // 					}
+// 
+// // 					double limitErrAngMy = errorAngMy;
+// // 					if (limitErrAngMy > 180)
+// // 					{
+// // 						limitErrAngMy -= 360;
+// // 					} 
+// // 					else
+// // 					{
+// // 						if (limitErrAngMy < -180)
+// // 						{
+// // 							limitErrAngMy += 360;
+// // 						}
+// // 					}					
+// 
+// 					fprintf(file, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+// 						angReal, keypt0.size, dScaleSift, keypt0.angle, dAngleSift, errorAngSift, absErrAngSift,
+// 								  mypt0.size, dScaleMy,	  mypt0.angle,	dAngleMy,	errorAngMy,	  absErrAngMy);
+// 				}
+// 			}
+// 		}
 
 		fclose(file);
 	}

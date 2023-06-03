@@ -277,33 +277,54 @@ bool ManualFeatureMatching(const Features & feats0,				// input:	n1 features ext
 						   );
 
 // 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
-void get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
-				const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
-				Matx22d & R,									// output:估计得到的二维旋转矩阵
-				Matx21d & t										// output:估计得到的平移向量
-				);
+// 返回旋转角
+double get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
+				  const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
+				  Matx22d & R,									// output:估计得到的二维旋转矩阵
+				  Matx21d & t									// output:估计得到的平移向量
+				  );
 
 // 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
 // implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
-void get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
-					   const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
-					   vector<uchar> & status,						// output:指明最终哪些点对是inliers，1：inliers，0：outliers
-					   Matx22d & R,									// output:估计得到的二维旋转矩阵
-					   Matx21d & t,									// output:估计得到的平移向量
-					   double thresh_t = 3.0,						// input: 点-点距离阈值，用于判断点对是否为inlier
-					   double thresh_p = 0.99						// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
-					   );
+// 返回内点数
+int get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,		// input: 点对应在 1st 图中的图像坐标
+						 const vector<Point2d> & imgPts2,		// input: 点对应在 2nd 图中的图像坐标
+						 vector<uchar> & status,				// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+						 Matx22d & R,							// output:估计得到的二维旋转矩阵
+						 Matx21d & t,							// output:估计得到的平移向量
+						 double & ang,							// output:旋转角度
+						 double thresh_t = 3.0,					// input: 点-点距离阈值，用于判断点对是否为inlier
+						 double thresh_p = 0.99					// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+						 );
 
 // 20230531，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
 // implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
-void get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
-					   const vector<Point2f> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
-					   vector<uchar> & status,						// output:指明最终哪些点对是inliers，1：inliers，0：outliers
-					   Matx22d & R,									// output:估计得到的二维旋转矩阵
-					   Matx21d & t,									// output:估计得到的平移向量
-					   double thresh_t = 3.0,						// input: 点-点距离阈值，用于判断点对是否为inlier
-					   double thresh_p = 0.99						// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
-					   );
+// 返回内点数
+int get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,		// input: 点对应在 1st 图中的图像坐标
+						 const vector<Point2f> & imgPts2,		// input: 点对应在 2nd 图中的图像坐标
+						 vector<uchar> & status,				// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+						 Matx22d & R,							// output:估计得到的二维旋转矩阵
+						 Matx21d & t,							// output:估计得到的平移向量
+						 double & ang,							// output:旋转角度
+						 double thresh_t = 3.0,					// input: 点-点距离阈值，用于判断点对是否为inlier
+						 double thresh_p = 0.99					// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+						 );
+
+// 20230602, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get 2D rotation matrix and translation using RANSAC
+bool get_R_t_2D_Matches_knn_RANSAC(const Features & feats0,				// input:	n1 features extracted from the 1st image
+								   const Features & feats1,				// input:	n2 features extracted from the 2nd image
+								   Matx22d & R,							// output:估计得到的二维旋转矩阵
+								   Matx21d & t,							// output:估计得到的平移向量
+								   double & angle,						// output:旋转矩阵对应的旋转角度
+								   vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
+								   int K = 2,							// input:	number of nearest neighbors
+							   	   double thresh_ratioTest = 0.3,		// input:	the ratio threshold for ratio test
+								   double thresh_minInlierRatio = 0.5,	// input:	the allowed minimum ratio of inliers
+								   double thresh_p2l = 3.,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+								   double thresh_conf = 0.99			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+								   );
 
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches

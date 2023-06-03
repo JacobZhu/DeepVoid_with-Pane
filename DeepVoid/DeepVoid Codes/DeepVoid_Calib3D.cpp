@@ -2100,9 +2100,10 @@ bool DeepVoid::Get_F_Matches_pWrdPts_knn(const Features & feats0,				// input:	n
 	mF = findFundamentalMat(points0, points1, status, FM_RANSAC, thresh_p2l, thresh_conf);
 
 	// 20230531, try ransac estimate 2D [R|t]
-	Matx22d R_;
-	Matx21d t_;
-	get_R_t_2D_RANSAC(points0, points1, status, R_, t_);
+// 	Matx22d R_;
+// 	Matx21d t_;
+// 	get_R_t_2D_RANSAC(points0, points1, status, R_, t_);
+	//////////////////////////////////////////////////////////////////////////
 
 	vector<DMatch> matches_RANSAC;
 	vector<Point2d> vImgPts0, vImgPts1;
@@ -2621,11 +2622,12 @@ bool DeepVoid::ManualFeatureMatching(const Features & feats0, const Features & f
 }
 
 // 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
-void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在 1st 图中的图像坐标
-						  const vector<Point2d> & imgPts2,				// input: 点对应在 2nd 图中的图像坐标
-						  Matx22d & R,									// output:估计得到的二维旋转矩阵
-						  Matx21d & t									// output:估计得到的平移向量
-						  )
+// 返回旋转角
+double DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,			// input: 点对应在 1st 图中的图像坐标
+							const vector<Point2d> & imgPts2,			// input: 点对应在 2nd 图中的图像坐标
+							Matx22d & R,								// output:估计得到的二维旋转矩阵
+							Matx21d & t									// output:估计得到的平移向量
+							)
 {
 	int n = imgPts1.size();
 
@@ -2674,31 +2676,36 @@ void DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,				// input: 点对应在
 	R(0, 1) = -sina;
 	R(1, 0) = sina;
 	R(1, 1) = cosa;
+
+	return radian*R2D;
 }
 
 // 20230530，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
 // implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
-void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
-							     const vector<Point2d> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
-							     vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
-							     Matx22d & R,						// output:估计得到的二维旋转矩阵
-							     Matx21d & t,						// output:估计得到的平移向量
-							     double thresh_t /*= 3.0*/,			// input: 点-点距离阈值，用于判断点对是否为inlier
-							     double thresh_p /*= 0.99*/			// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
-							     )
+// 返回内点数
+int DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
+								   const vector<Point2d> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
+							       vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+							       Matx22d & R,						// output:估计得到的二维旋转矩阵
+							       Matx21d & t,						// output:估计得到的平移向量
+								   double & ang,					// output:旋转角度
+							       double thresh_t /*= 3.0*/,		// input: 点-点距离阈值，用于判断点对是否为inlier
+							       double thresh_p /*= 0.99*/		// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+							       )
 {
 	int N = 1000; // 最多抽取样本数
 	int count = 0; // 当前已抽取样本数
 	int nMin = 2; // 求解模型的最小配置数
 	RNG rng(0xffffffff); // Initializes a random number generator state
 
-	typedef std::pair<std::pair<int, double>, std::pair<Matx22d, Matx21d>> pair_n_e_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、以及R|t自身
+	typedef std::pair<std::pair<std::pair<int, double>, vector<uchar>>, std::pair<Matx22d, Matx21d>> pair_n_e_s_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、内点集、以及R|t自身
 
-	vector<pair_n_e_R_t> vSamples;
+	vector<pair_n_e_s_R_t> vSamples;
 
 	int n = imgPts1.size();
 
 	status = vector<uchar>(n);
+	vector<uchar> status_(n);
 
 	Matx22d R_; // tmp
 	Matx21d t_; // tmp
@@ -2716,7 +2723,7 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 			j = rng.uniform(0, n - 1);
 		}
 
-		status[i] = status[j] = 1; // 这俩被抽中了那肯定是内点了
+		status_[i] = status_[j] = 1; // 这俩被抽中了那肯定是内点了
 
 		int nInliers = 2;
 
@@ -2760,112 +2767,6 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: 点对
 			{
 				nInliers++;
 				sum2 += d2;
-				status[k] = 1;		
-			} 
-			else
-			{
-				status[k] = 0;
-			}
-		}
-
-		double rms_d = sqrt(sum2 / nInliers); // 内点均方根误差
-
-		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
-
-		N = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
-
-		count++;
-
-		vSamples.push_back(std::make_pair(std::make_pair(nInliers, rms_d), std::make_pair(R_, t_)));
-	}
-
-	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_R_t & a, const pair_n_e_R_t & b) {return a.first.first > b.first.first; });
-}
-
-// 20230531，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
-// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
-void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
-							     const vector<Point2f> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
-							     vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
-							     Matx22d & R,						// output:估计得到的二维旋转矩阵
-							     Matx21d & t,						// output:估计得到的平移向量
-							     double thresh_t /*= 3.0*/,			// input: 点-点距离阈值，用于判断点对是否为inlier
-							     double thresh_p /*= 0.99*/			// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
-							     )
-{
-	int N = 1000; // 最多抽取样本数
-	int count = 0; // 当前已抽取样本数
-	int nMin = 2; // 求解模型的最小配置数
-	RNG rng(0xffffffff); // Initializes a random number generator state
-
-	typedef std::pair<std::pair<std::pair<int, double>, vector<uchar>>, std::pair<Matx22d, Matx21d>> pair_n_e_s_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、内点集、以及R|t自身
-
-	vector<pair_n_e_s_R_t> vSamples;
-
-	int n = imgPts1.size();
-
-	vector<uchar> status_(n);
-
-	Matx22d R_; // tmp
-	Matx21d t_; // tmp
-
-	Matx21d X1, X1_, X2, X2_;
-
-	while (count < N)
-	{
-		// 均匀抽取 2 个随机数
-		int i = rng.uniform(0, n - 1);
-		int j = rng.uniform(0, n - 1);
-
-		while (j == i)
-		{
-			j = rng.uniform(0, n - 1);
-		}
-
-		status_[i] = status_[j] = 1; // 这俩被抽中了那肯定是内点了
-
-		int nInliers = 2;
-
-		vector<Point2d> imgpts1_samples, imgpts2_samples;
-
-		imgpts1_samples.push_back(imgPts1[i]);
-		imgpts1_samples.push_back(imgPts1[j]);
-		imgpts2_samples.push_back(imgPts2[i]);
-		imgpts2_samples.push_back(imgPts2[j]);
-
-		get_R_t_2D(imgpts1_samples, imgpts2_samples, R_, t_);
-
-		double sum2 = 0;
-
-		// 考察每一组点对是否为 [R|t] 的inlier
-		for (int k = 0; k < n; ++k)
-		{
-			if (k == i || k == j)
-			{
-				continue;
-			}
-
-			const Point2f & pt1 = imgPts1[k];
-			const Point2f & pt2 = imgPts2[k];
-
-			X1(0) = pt1.x; X1(1) = pt1.y;
-			X2(0) = pt2.x; X2(1) = pt2.y;
-
-			X2_ = R_*X1 + t_;
-			X1_ = R_.t()*(X2 - t_);
-
-			double dx1 = X1_(0) - X1(0);
-			double dy1 = X1_(1) - X1(1);
-			double dx2 = X2_(0) - X2(0);
-			double dy2 = X2_(1) - X2(1);
-
-			double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
-			double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
-
-			if (d < thresh_t)
-			{
-				nInliers++;
-				sum2 += d2;
 				status_[k] = 1;		
 			} 
 			else
@@ -2878,7 +2779,7 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 
 		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
 
-		int N_new = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+		int N_new = FTOI(std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin))); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
 
 		if (N_new < N) // 这里我改进了一下，只有当算得的所需样本数比当前更小时才更新 N
 		{
@@ -2893,13 +2794,11 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 	// 先按内点数排序
 	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_s_R_t & a, const pair_n_e_s_R_t & b) {return a.first.first.first > b.first.first.first; });
 
-//	int maxInliers = vSamples[0].first.first.first;
-	int maxInliers = vSamples[1].first.first.first;
+	int maxInliers = vSamples[0].first.first.first;
 
 	vector<pair_n_e_s_R_t> vSamples_2nd;
 
-//	for (int i = 0; i < vSamples.size(); ++i)
-	for (int i = 1; i < vSamples.size(); ++i)
+	for (int i = 0; i < vSamples.size(); ++i)
 	{
 		const pair_n_e_s_R_t & smp = vSamples[i];
 
@@ -2921,7 +2820,544 @@ void DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对
 	t_ = vSamples_2nd[0].second.second;
 	status_ = vSamples_2nd[0].first.second;
 
+	vector<Point2d> imgpts1_samples, imgpts2_samples;
+
 	// 利用最大内点集再重新计算一次[R|t]
+	for (int i = 0; i < n; ++i)
+	{
+		if (!status_[i])
+		{
+			continue;
+		}		
+
+		imgpts1_samples.push_back(imgPts1[i]);
+		imgpts2_samples.push_back(imgPts2[i]);
+	}
+
+	ang = get_R_t_2D(imgpts1_samples, imgpts2_samples, R, t); // 这就是最终的 [R|t] 了
+
+	// 依照最终的 [R|t] 更新一下 status 内点状态
+	int nInliers = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2d & pt1 = imgPts1[i];
+		const Point2d & pt2 = imgPts2[i];
+
+		X1(0) = pt1.x; X1(1) = pt1.y;
+		X2(0) = pt2.x; X2(1) = pt2.y;
+
+		X2_ = R*X1 + t;
+		X1_ = R.t()*(X2 - t);
+
+		double dx1 = X1_(0) - X1(0);
+		double dy1 = X1_(1) - X1(1);
+		double dx2 = X2_(0) - X2(0);
+		double dy2 = X2_(1) - X2(1);
+
+		double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+		double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+
+		if (d < thresh_t)
+		{
+			status[i] = 1;
+			nInliers++;
+		}
+	}
+
+	return nInliers;
+}
+
+// 20230531，由一组图像点对应解算两视图间的纯二维旋转矩阵R以及平移向量t，当然了，适用场景当然是两视图间真的只发生了刚体二维旋转和平移运动，无尺度缩放
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
+// 返回内点数
+int DeepVoid::get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: 点对应在 1st 图中的图像坐标
+							       const vector<Point2f> & imgPts2,	// input: 点对应在 2nd 图中的图像坐标
+							       vector<uchar> & status,			// output:指明最终哪些点对是inliers，1：inliers，0：outliers
+							       Matx22d & R,						// output:估计得到的二维旋转矩阵
+							       Matx21d & t,						// output:估计得到的平移向量
+								   double & ang,					// output:旋转角度
+							       double thresh_t /*= 3.0*/,		// input: 点-点距离阈值，用于判断点对是否为inlier
+							       double thresh_p /*= 0.99*/		// input: 所有抽样组中至少有 1 组抽样完全由内点构成的概率
+							       )
+{
+// 	int N = 1000; // 最多抽取样本数
+// 	int count = 0; // 当前已抽取样本数
+// 	int nMin = 2; // 求解模型的最小配置数
+// 	RNG rng(0xffffffff); // Initializes a random number generator state
+// 
+// 	typedef std::pair<std::pair<std::pair<int, double>, vector<uchar>>, std::pair<Matx22d, Matx21d>> pair_n_e_s_R_t; // 存储每个[R|t]矩阵对应的内点数、均方根误差、内点集、以及R|t自身
+// 
+// 	vector<pair_n_e_s_R_t> vSamples;
+// 
+// 	int n = imgPts1.size();
+// 
+// 	status = vector<uchar>(n);
+// 	vector<uchar> status_(n);
+// 
+// 	Matx22d R_; // tmp
+// 	Matx21d t_; // tmp
+// 
+// 	Matx21d X1, X1_, X2, X2_;
+// 
+// 	while (count < N)
+// 	{
+// 		// 均匀抽取 2 个随机数
+// 		int i = rng.uniform(0, n - 1);
+// 		int j = rng.uniform(0, n - 1);
+// 
+// 		while (j == i)
+// 		{
+// 			j = rng.uniform(0, n - 1);
+// 		}
+// 
+// 		status_[i] = status_[j] = 1; // 这俩被抽中了那肯定是内点了
+// 
+// 		int nInliers = 2;
+// 
+// 		vector<Point2d> imgpts1_samples, imgpts2_samples;
+// 
+// 		imgpts1_samples.push_back(imgPts1[i]);
+// 		imgpts1_samples.push_back(imgPts1[j]);
+// 		imgpts2_samples.push_back(imgPts2[i]);
+// 		imgpts2_samples.push_back(imgPts2[j]);
+// 
+// 		get_R_t_2D(imgpts1_samples, imgpts2_samples, R_, t_);
+// 
+// 		double sum2 = 0;
+// 
+// 		// 考察每一组点对是否为 [R|t] 的inlier
+// 		for (int k = 0; k < n; ++k)
+// 		{
+// 			if (k == i || k == j)
+// 			{
+// 				continue;
+// 			}
+// 
+// 			const Point2d & pt1 = imgPts1[k];
+// 			const Point2d & pt2 = imgPts2[k];
+// 
+// 			X1(0) = pt1.x; X1(1) = pt1.y;
+// 			X2(0) = pt2.x; X2(1) = pt2.y;
+// 
+// 			X2_ = R_*X1 + t_;
+// 			X1_ = R_.t()*(X2 - t_);
+// 
+// 			double dx1 = X1_(0) - X1(0);
+// 			double dy1 = X1_(1) - X1(1);
+// 			double dx2 = X2_(0) - X2(0);
+// 			double dy2 = X2_(1) - X2(1);
+// 
+// 			double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+// 			double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+// 
+// 			if (d < thresh_t)
+// 			{
+// 				nInliers++;
+// 				sum2 += d2;
+// 				status_[k] = 1;		
+// 			} 
+// 			else
+// 			{
+// 				status_[k] = 0;
+// 			}
+// 		}
+// 
+// 		double rms_d = sqrt(sum2 / nInliers); // 内点均方根误差
+// 
+// 		double e = 1 - nInliers / (double)n; // 自适应更新外点比例
+// 
+// 		int N_new = std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin)); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+// 
+// 		if (N_new < N) // 这里我改进了一下，只有当算得的所需样本数比当前更小时才更新 N
+// 		{
+// 			N = N_new;
+// 		}
+// 
+// 		count++;
+// 
+// 		vSamples.push_back(std::make_pair(std::make_pair(std::make_pair(nInliers, rms_d), status_), std::make_pair(R_, t_)));
+// 	}
+// 
+// 	// 先按内点数排序
+// 	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_s_R_t & a, const pair_n_e_s_R_t & b) {return a.first.first.first > b.first.first.first; });
+// 
+// 	int maxInliers = vSamples[0].first.first.first;
+// //	int maxInliers = vSamples[1].first.first.first;
+// 
+// 	vector<pair_n_e_s_R_t> vSamples_2nd;
+// 
+// //	for (int i = 1; i < vSamples.size(); ++i)
+// 	for (int i = 0; i < vSamples.size(); ++i)
+// 	{
+// 		const pair_n_e_s_R_t & smp = vSamples[i];
+// 
+// 		if (smp.first.first.first == maxInliers)
+// 		{
+// 			vSamples_2nd.push_back(smp);
+// 		} 
+// 		else
+// 		{
+// 			break;
+// 		}
+// 	}
+// 
+// 	// 内点数相同的情况下，再按照转移误差的rms值大小排序
+// 	sort(vSamples_2nd.begin(), vSamples_2nd.end(), [](const pair_n_e_s_R_t & a, const pair_n_e_s_R_t & b) {return a.first.first.second < b.first.first.second; });
+// 
+// 	// 取出该拥有最多支持集的[R|t]，以及对应的内点集
+// 	R_ = vSamples_2nd[0].second.first;
+// 	t_ = vSamples_2nd[0].second.second;
+// 	status_ = vSamples_2nd[0].first.second;
+// 
+// 	vector<Point2d> imgpts1_samples, imgpts2_samples;
+// 
+// 	// 利用最大内点集再重新计算一次[R|t]
+// 	for (int i = 0; i < n; ++i)
+// 	{
+// 		if (!status_[i])
+// 		{
+// 			continue;
+// 		}		
+// 
+// 		imgpts1_samples.push_back(imgPts1[i]);
+// 		imgpts2_samples.push_back(imgPts2[i]);
+// 	}
+// 
+// 	get_R_t_2D(imgpts1_samples, imgpts2_samples, R, t); // 这就是最终的 [R|t] 了
+// 
+// 	// 依照最终的 [R|t] 更新一下 status 内点状态
+// 	for (int i = 0; i < n; ++i)
+// 	{
+// 		const Point2d & pt1 = imgPts1[i];
+// 		const Point2d & pt2 = imgPts2[i];
+// 
+// 		X1(0) = pt1.x; X1(1) = pt1.y;
+// 		X2(0) = pt2.x; X2(1) = pt2.y;
+// 
+// 		X2_ = R*X1 + t;
+// 		X1_ = R.t()*(X2 - t);
+// 
+// 		double dx1 = X1_(0) - X1(0);
+// 		double dy1 = X1_(1) - X1(1);
+// 		double dx2 = X2_(0) - X2(0);
+// 		double dy2 = X2_(1) - X2(1);
+// 
+// 		double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+// 		double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+// 
+// 		if (d < thresh_t)
+// 		{
+// 			status[i] = 1;
+// 		}
+// 	}
+
+	vector<Point2d> imgpts1_, imgpts2_;
+
+	// 改用 vector<Point2d>
+	for (int i = 0; i < imgPts1.size(); ++i)
+	{
+		imgpts1_.push_back(imgPts1[i]);
+		imgpts2_.push_back(imgPts2[i]);
+	}
+
+	return get_R_t_2D_RANSAC(imgpts1_, imgpts2_, status, R, t, ang, thresh_t, thresh_p);
+}
+
+// 20230602, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get 2D rotation matrix and translation using RANSAC
+bool DeepVoid::get_R_t_2D_Matches_knn_RANSAC(const Features & feats0,				// input:	n1 features extracted from the 1st image
+										     const Features & feats1,				// input:	n2 features extracted from the 2nd image
+										     Matx22d & R,							// output:估计得到的二维旋转矩阵
+										     Matx21d & t,							// output:估计得到的平移向量
+											 double & angle,						// output:旋转矩阵对应的旋转角度
+										     vector<DMatch> & matches,				// output:	matches obtained after feature matching and RANSAC
+											 int K /*= 2*/,							// input:	number of nearest neighbors
+							   			     double thresh_ratioTest /*= 0.3*/,		// input:	the ratio threshold for ratio test
+										     double thresh_minInlierRatio /*= 0.5*/,// input:	the allowed minimum ratio of inliers
+										     double thresh_p2l /*= 3.*/,			// input:	the distance threshold between point and epiline, used in RANSAC stage
+										     double thresh_conf /*= 0.99*/			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+										     )
+{
+// 	int i, j;
+// 
+// 	matches.clear();
+// 
+// 	int K = 2; // the number of nearest neighbors
+// 
+// 	int nFeat0 = feats0.key_points.size();
+// 	int nFeat1 = feats1.key_points.size();
+// 
+// 	//	FlannBasedMatcher matcher; // do flann matching
+// 	BFMatcher matcher(NORM_L2, false); // do brute force matching
+// 
+// 	vector<vector<DMatch>> matches01_knn, matches10_knn;
+// 	// 1. extract k nearest neigbors for each feature in the each image
+// 	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+// 	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 	// 2. using the unique image point index, useful for SIFT, since for one image point
+// 	// there will be more than one SIFT features with different directions, but it's one-to-one for SURF
+// 	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+// 	{
+// 		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
+// 		{
+// 			int queryIdx_uni = feats0.idx_pt[iter_k->queryIdx];
+// 			int trainIdx_uni = feats1.idx_pt[iter_k->trainIdx];
+// 
+// 			iter_k->queryIdx = queryIdx_uni;
+// 			iter_k->trainIdx = trainIdx_uni;
+// 		}
+// 	}
+// 
+// 	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+// 	{
+// 		for (auto iter_k = iter->begin(); iter_k != iter->end(); ++iter_k)
+// 		{
+// 			int queryIdx_uni = feats1.idx_pt[iter_k->queryIdx];
+// 			int trainIdx_uni = feats0.idx_pt[iter_k->trainIdx];
+// 
+// 			iter_k->queryIdx = queryIdx_uni;
+// 			iter_k->trainIdx = trainIdx_uni;
+// 		}
+// 	}
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 
+// 	// 3. reorganize all matches, again only neccesary for SIFT
+// 	// (0,25) (0,16)
+// 	// (0,25) (0,19)
+// 	// (1,10) (1,11)
+// 	//      to
+// 	// (0,25) (0,16) (0,25) (0,19)
+// 	// (1,10) (1,11)
+// 	vector<vector<DMatch>> matches01_knn_idximgpt, matches10_knn_idximgpt;
+// 	vector<uchar> status01(matches01_knn.size()), status10(matches10_knn.size());
+// 
+// 	auto iter01_begin = matches01_knn.begin();
+// 	auto iter10_begin = matches10_knn.begin();
+// 
+// 	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+// 	{
+// 		i = iter - iter01_begin;
+// 
+// 		if (status01[i])
+// 		{
+// 			continue;
+// 		}
+// 
+// 		matches01_knn_idximgpt.push_back(*iter);
+// 
+// 		status01[i] = 1;
+// 
+// 		auto iter_end = matches01_knn_idximgpt.end() - 1;
+// 
+// 		for (auto iter_k = iter + 1; iter_k != matches01_knn.end(); ++iter_k)
+// 		{
+// 			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
+// 			{
+// 				continue;
+// 			}
+// 
+// 			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+// 
+// 			status01[iter_k - iter01_begin] = 1;
+// 		}
+// 	}
+// 
+// 	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+// 	{
+// 		i = iter - iter10_begin;
+// 
+// 		if (status10[i])
+// 		{
+// 			continue;
+// 		}
+// 
+// 		matches10_knn_idximgpt.push_back(*iter);
+// 
+// 		status10[i] = 1;
+// 
+// 		auto iter_end = matches10_knn_idximgpt.end() - 1;
+// 
+// 		for (auto iter_k = iter + 1; iter_k != matches10_knn.end(); ++iter_k)
+// 		{
+// 			if ((*iter_k)[0].queryIdx != (*iter)[0].queryIdx)
+// 			{
+// 				continue;
+// 			}
+// 
+// 			iter_end->insert(iter_end->end(), iter_k->begin(), iter_k->end());
+// 
+// 			status10[iter_k - iter10_begin] = 1;
+// 		}
+// 	}
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 	// 4. select best 2 different matches for each image point
+// 	// (0,25) (0,16) (0,25) (0,19)
+// 	// (1,10) (1,11)
+// 	//      to
+// 	// (0,25) (0,19)
+// 	// (1,10) (1,11)
+// 	// there may be matches like this     (2,14) (2,14) (2,14) (2,14)
+// 	// after this step, they will be like (2,14) only, since they are all basically the same matches
+// 	for (auto iter = matches01_knn_idximgpt.begin(); iter != matches01_knn_idximgpt.end(); ++iter)
+// 	{
+// 		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+// 
+// 		int idxBest = (*iter)[0].trainIdx;
+// 
+// 		if (idxBest != (*iter)[1].trainIdx)
+// 		{
+// 			iter->erase(iter->begin() + 2, iter->end());
+// 			continue;
+// 		}
+// 
+// 		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
+// 
+// 		if (iter_find != iter->end())
+// 		{
+// 			iter_swap(iter->begin() + 1, iter_find);
+// 			iter->erase(iter->begin() + 2, iter->end());
+// 		}
+// 		else // all matches are the same
+// 		{
+// 			iter->erase(iter->begin() + 1, iter->end());
+// 		}
+// 	}
+// 
+// 	for (auto iter = matches10_knn_idximgpt.begin(); iter != matches10_knn_idximgpt.end(); ++iter)
+// 	{
+// 		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+// 
+// 		int idxBest = (*iter)[0].trainIdx;
+// 
+// 		if (idxBest != (*iter)[1].trainIdx)
+// 		{
+// 			iter->erase(iter->begin() + 2, iter->end());
+// 			continue;
+// 		}
+// 
+// 		auto iter_find = find_if(iter->begin(), iter->end(), [idxBest](const DMatch & a) {return a.trainIdx != idxBest; });
+// 
+// 		if (iter_find != iter->end())
+// 		{
+// 			iter_swap(iter->begin() + 1, iter_find);
+// 			iter->erase(iter->begin() + 2, iter->end());
+// 		}
+// 		else // all matches are the same
+// 		{
+// 			iter->erase(iter->begin() + 1, iter->end());
+// 		}
+// 	}
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+// 	// 5. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+// 	ratioTest(matches01_knn_idximgpt, matches01_passRatioTest, thresh_ratioTest);
+// 	ratioTest(matches10_knn_idximgpt, matches10_passRatioTest, thresh_ratioTest);
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 	vector<DMatch> matches_passSymTest;
+// 	// 6. symmetry test, only those symmetric matches are kept
+// 	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+// 	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+// 	//////////////////////////////////////////////////////////////////////////
+// 
+// 	if (matches_passSymTest.size() < 8)
+// 	{
+// 		return false;
+// 	}
+// 
+// 	// 7. RANSAC, further filter those matches that do not satisfy epipolar geometry
+// 	vector<Point2f> points0(matches_passSymTest.size());
+// 	vector<Point2f> points1(matches_passSymTest.size());
+// 
+// 	// initialize the points here ... */
+// 	for (i = 0; i < matches_passSymTest.size(); i++)
+// 	{
+// 		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+// 		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+// 	}
+
+	matches.clear();
+
+	//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+
+	// 还是对潜在匹配先排个序，方便后续操作
+	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+	}
+
+	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+	}
+	
+	
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 2. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn, matches10_passRatioTest, thresh_ratioTest);
+	//////////////////////////////////////////////////////////////////////////
+
+
+	vector<DMatch> matches_passSymTest;
+	// 3. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size() < 2)
+	{
+		return false;
+	}
+
+	// 4. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	// 20230531, try ransac estimate 2D [R|t]
+	int nInliers = get_R_t_2D_RANSAC(points0, points1, status, R, t, angle, thresh_p2l, thresh_conf);
+	//////////////////////////////////////////////////////////////////////////
+
+
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		if (status[i])
+		{
+			matches.push_back(matches_passSymTest[i]);
+		}
+	}
+
+	double ratioInliers = (double)matches.size() / matches_passSymTest.size();
+
+	if (ratioInliers < thresh_minInlierRatio)
+	{
+		return false; // and the ratio of inliers should be more than certain threshold
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	return true;
 }
 
 // 20151016, zhaokunz
