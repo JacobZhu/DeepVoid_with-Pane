@@ -14651,6 +14651,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 	int idxRef;
 	vector<int> vAngsReal;
 
+	vector<DeepVoid::Features> feat_sift, feat_orb, feat_sift_my, feat_orb_my;
+
 	for (int i = 0; i < nImg; ++i)
 	{
 		cam_data & cam = cams[i];
@@ -14680,13 +14682,36 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 		// 先提取sift特征点
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		// 再提取orb特征点
+		int nfeatORB = 3000;
+// 		double scaleFactorORB = 1.2f;
+// 		int nlevelsORB = 8;
+// 		int edgeThresholdORB = 31/*11*/;
+// 		int firstLevelORB = 0;
+// 		int WTAK_ORB = 2;
+// 		int scoreTypeORB = cv::ORB::HARRIS_SCORE/*cv::ORB::FAST_SCORE*/;
+// 		int patchSizeORB = 31/*11*/;
+// 		int fastThresholdORB = 20;
+// 		int nfeaturesSift = 0;	// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+// 		int nOctaveLayersSift = 3;	// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+// 		double contrastThresholdSift = 0.03/*0.01*//*0.04*/;	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+// 		double edgeThresholdSift = 10.0;	// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+// 		double sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+		cam.ExtractORBFeatures(img, nfeatORB);
+
+		// 存储提到的 sift 和 orb 特征点
+		feat_sift.push_back(cam.m_featsBlob);
+		feat_orb.push_back(cam.m_featsCorner);
 
 		const DeepVoid::Features & sift = cam.m_featsBlob;
 		int nSift = sift.key_points.size();
+		const DeepVoid::Features & orb = cam.m_featsCorner;
+		int nOrb = orb.key_points.size();
 
-		DeepVoid::Features & myFeatSift = cam.m_featsManual;
+//		DeepVoid::Features & myFeatSift = cam.m_featsManual;
+		DeepVoid::Features sift_my, orb_my;
 
-		// 再于每个sift特征点处提取本文方法估计的特征方向和尺度
+		// 于每个 sift 特征点处提取本文方法估计的特征方向和尺度
 		for (int j = 0; j < nSift; ++j)
 		{
 			cv::KeyPoint keypt = sift.key_points[j];
@@ -14707,14 +14732,47 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 				keypt.angle = -1;
 			}
 
-			myFeatSift.key_points.push_back(keypt);
+//			myFeatSift.key_points.push_back(keypt);
+			sift_my.key_points.push_back(keypt);
 		}
+
+		// 于每个 orb 特征点处提取本文方法估计的特征方向和尺度
+		for (int j = 0; j < nOrb; ++j)
+		{
+			cv::KeyPoint keypt = orb.key_points[j];
+			double x = keypt.pt.x;
+			double y = keypt.pt.y;
+
+			int r;
+			double angle;
+
+			if (FeatureRadiusAngle_sigmaAng(im_gray, x, y, r, angle, sigma_I, thresh_sigmaAng, r_max))
+			{
+				keypt.size = (2 * r + 1); // keypoint::size 表征特征的直径 diameter
+				keypt.angle = angle;
+			}
+			else
+			{
+				keypt.size = -1;
+				keypt.angle = -1;
+			}
+
+//			myFeatSift.key_points.push_back(keypt);
+			orb_my.key_points.push_back(keypt);
+		}
+
+		feat_sift_my.push_back(sift_my);
+		feat_orb_my.push_back(orb_my);
 	}
 
-	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
-	const DeepVoid::Features & my0 = cams[idxRef].m_featsManual;
-	int nSift0 = sift0.key_points.size();
-	int H = imgs[idxRef].rows;
+//	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
+//	const DeepVoid::Features & my0 = cams[idxRef].m_featsManual;
+	const DeepVoid::Features & sift0 = feat_sift[idxRef];
+	const DeepVoid::Features & sift_my0 = feat_sift_my[idxRef];
+	const DeepVoid::Features & orb0 = feat_orb[idxRef];
+	const DeepVoid::Features & orb_my0 = feat_orb_my[idxRef];
+//	int nSift0 = sift0.key_points.size();
+//	int H = imgs[idxRef].rows;
 	//////////////////////////////////////////////////////////////////////////
 
 
@@ -14727,12 +14785,18 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		}
 		
 		// 先打开结果文件
-		strFile = dirOut + vImgNames[i] + ".txt";
-		FILE * file = fopen(strFile, "w");
+		strFile = dirOut + vImgNames[i] + ".sift.txt";
+		FILE * file_sift = fopen(strFile, "w");
+		strFile = dirOut + vImgNames[i] + ".orb.txt";
+		FILE * file_orb = fopen(strFile, "w");
 
-		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
-		const DeepVoid::Features & myi = cams[i].m_featsManual;
-		int nSifti = sifti.key_points.size();
+// 		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
+// 		const DeepVoid::Features & myi = cams[i].m_featsManual;
+//		int nSifti = sifti.key_points.size();
+		const DeepVoid::Features & sifti = feat_sift[i];
+		const DeepVoid::Features & sift_myi = feat_sift_my[i];
+		const DeepVoid::Features & orbi = feat_orb[i];
+		const DeepVoid::Features & orb_myi = feat_orb_my[i];
 		double angReal = (double)vAngsReal[i];
 
 		Matx22d R;
@@ -14747,10 +14811,10 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
 		{
 			const cv::KeyPoint & sift_pt0 = sift0.key_points[iter->queryIdx];
-			const cv::KeyPoint & my_pt0 = my0.key_points[iter->queryIdx];
+			const cv::KeyPoint & my_pt0 = sift_my0.key_points[iter->queryIdx];
 
 			const cv::KeyPoint & sift_pti = sifti.key_points[iter->trainIdx];
-			const cv::KeyPoint & my_pti = myi.key_points[iter->trainIdx];
+			const cv::KeyPoint & my_pti = sift_myi.key_points[iter->trainIdx];
 
 			double dScaleSift = sift_pti.size - sift_pt0.size;
 			double dAngleSift = sift_pti.angle - sift_pt0.angle; // 先直接相减
@@ -14788,8 +14852,61 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 			double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值				
 
-			fprintf(file, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+			fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
 				angReal, sift_pt0.size, dScaleSift, sift_pt0.angle, dAngleSift, errorAngSift, absErrAngSift,
+				my_pt0.size, dScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrAngMy);
+		}
+
+		// 20230606，旋转后图像 orb 特征与原图 orb 特征做匹配
+		bSuc = get_R_t_2D_Matches_knn_RANSAC(orb0, orbi, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		//////////////////////////////////////////////////////////////////////////
+
+		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+		{
+			const cv::KeyPoint & orb_pt0 = orb0.key_points[iter->queryIdx];
+			const cv::KeyPoint & my_pt0 = orb_my0.key_points[iter->queryIdx];
+
+			const cv::KeyPoint & orb_pti = orbi.key_points[iter->trainIdx];
+			const cv::KeyPoint & my_pti = orb_myi.key_points[iter->trainIdx];
+
+			double dScaleOrb = orb_pti.size - orb_pt0.size;
+			double dAngleOrb = orb_pti.angle - orb_pt0.angle; // 先直接相减
+			if (dAngleOrb > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleOrb -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleOrb < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleOrb += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngOrb = dAngleOrb - angReal;
+
+			double absErrAngOrb = fabs(errorAngOrb); // 特征方向角误差绝对值
+
+			double dScaleMy = my_pti.size - my_pt0.size;
+			double dAngleMy = my_pti.angle - my_pt0.angle; // 先直接相减
+			if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngMy = dAngleMy - angReal;
+
+			double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值				
+
+			fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+				angReal, orb_pt0.size, dScaleOrb, orb_pt0.angle, dAngleOrb, errorAngOrb, absErrAngOrb,
 				my_pt0.size, dScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrAngMy);
 		}
 
@@ -14905,7 +15022,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 // 			}
 // 		}
 
-		fclose(file);
+		fclose(file_sift);
+		fclose(file_orb);
 	}
 	//////////////////////////////////////////////////////////////////////////
 	
