@@ -14643,7 +14643,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 
 	double sigma_I = 5.0;
-	double thresh_sigmaAng = 1.0;
+	double thresh_sigmaAng = 0.1/*1.0*/;
 	int r_max = 100;
 
 
