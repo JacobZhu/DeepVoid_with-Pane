@@ -14643,8 +14643,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 
 	double sigma_I = 5.0;
-	double thresh_sigmaAng = 0.1/*1.0*/;
-	int r_max = 100;
+	double thresh_sigmaAng = /*0.1*/1.0;
+	int r_max = 500;
 
 
 	// 先从图像名（NNN）确定哪副图像是原图，其它图像就是人为旋转过指定角度的图像了，并把它们的旋转角度真值从文件名中解析出来

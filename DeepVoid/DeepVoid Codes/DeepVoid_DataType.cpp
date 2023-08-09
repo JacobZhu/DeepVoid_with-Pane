@@ -1416,6 +1416,15 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,		// input: the input gray sca
 	}
 
 	double radian = std::atan2(dy, dx); // [-π; +π]
+
+
+	//////////////////////////////////////////////////////////////////////////
+// 	if (fabs(dx) < 0.0000001)
+// 	{
+// 		double shitreallyhappens = 1;
+// 	}
+	//////////////////////////////////////////////////////////////////////////
+
 	
 	angle = radian*R2D; // 特征方向角度
 
@@ -1468,6 +1477,152 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,		// input: the input gray sca
 	}
 	
 	sigma_angle = std::sqrt(sigma2_radian)*R2D; // 特征方向角度不确定度标准差
+
+	return true;
+}
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+// 20230703，采用质心点位置误差椭球相对于区域中心的张角作为方向角不确定度
+bool DeepVoid::CornerAngle_IC_geometry(const cv::Mat & img,		// input: the input gray scale image
+									   int ix, int iy,			// input: the center of the region
+									   int r,					// input: the radius of the circular region
+									   double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+									   double & sigma_angle,	// output:the standard deviation of the corner angle propagated by the random noise of intensity
+									   double sigma_I /*= 5.0*/	// input: the standard deviation of the Gaussian random noise of image intensity					
+									   )
+{
+	double dx, dy;
+
+	double sigma_xIC, sigma_yIC;
+
+	double m00_1;
+
+	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy, &m00_1)) // 说明图像区域内灰度值全为 0，即全黑
+	{
+		return false;
+	}
+
+	double radian = std::atan2(dy, dx); // [-π; +π]
+
+
+	//////////////////////////////////////////////////////////////////////////
+// 	if (fabs(dx) < 0.0000001)
+// 	{
+// 		double shitreallyhappens = 1;
+// 	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	angle = radian*R2D; // 特征方向角度
+
+	// 20201205，开始计算误差传递
+	int w = img.cols;
+	int h = img.rows;
+	double dx_1 = 1.0 / dx;
+	double z = dy*dx_1; // z=dy/dx
+	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
+	double sigma2_I = sigma_I*sigma_I;
+	double sigma2_radian = 0;
+
+	// 20230703 //////////////////////////////////////////////////////////////
+	double sigma2_yc = 0;
+	double sigma2_xc = 0;
+	double sigma_xcyc = 0;
+	//////////////////////////////////////////////////////////////////////////
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		double ayc_aIk = (di - dy)*m00_1;
+
+		// 20230703 //////////////////////////////////////////////////////////////
+		double ayc_aIk_sigmaIk = ayc_aIk*sigma_I;
+		double ayc_aIk_sigmaIk2 = ayc_aIk_sigmaIk*ayc_aIk_sigmaIk;
+		//////////////////////////////////////////////////////////////////////////
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			double axc_aIk = (dj - dx)*m00_1;
+
+			double dang_dIk = dang_dz*dx_1*(ayc_aIk - axc_aIk*z);
+
+			sigma2_radian += dang_dIk*dang_dIk*sigma2_I;
+
+			// 20230703 //////////////////////////////////////////////////////////////
+			double axc_aIk_sigmaIk = axc_aIk*sigma_I;
+
+			sigma2_xc += axc_aIk_sigmaIk*axc_aIk_sigmaIk;
+			sigma_xcyc += axc_aIk_sigmaIk*ayc_aIk_sigmaIk;
+			sigma2_yc += ayc_aIk_sigmaIk2;
+			//////////////////////////////////////////////////////////////////////////
+		}
+	}
+
+	sigma_angle = std::sqrt(sigma2_radian)*R2D; // 特征方向角度不确定度标准差
+
+	Matx22d cov;
+	cov(0, 0) = sigma2_xc;
+	cov(1, 1) = sigma2_yc;
+	cov(0, 1) = cov(1, 0) = sigma_xcyc;
+
+	Matx21d eigenVals;
+	Matx22d eigenVecs;
+
+	//	@param eigenvalues output vector of eigenvalues of the same type as src; the eigenvalues are stored in the descending order.
+	//	@param eigenvectors output matrix of eigenvectors; it has the same size and type as src;
+	//	the eigenvectors are stored as subsequent matrix rows, in the same order as the corresponding eigenvalues.
+	cv::eigen(cov, eigenVals, eigenVecs);
+
+	double axisLength_long = std::sqrt(eigenVals(0))/**0.5*/;													// 误差椭球的长轴长度
+	double axisLength_short = std::sqrt(eigenVals(1))/**0.5*/;													// 误差椭球的短轴长度
+	double axisLength_rms = std::sqrt(axisLength_long*axisLength_long + axisLength_short*axisLength_short);	// 由上两个长度平方和开根号得到的合成长度
+	double axisLength_mean = (axisLength_long + axisLength_short)*0.5;										// 由上两个长度取均值得到的合成长度
+
+	double ratioNoncircle = axisLength_short / axisLength_long;
+
+// 	if (ratioNoncircle < 0.50)
+// 	{
+// 		double shithappens = 1.0;
+// 	}
+
+	double dist = std::sqrt(dx*dx + dy*dy); // 质心至图像区域中心的距离
+
+// 	double sigma_angle_new1 = 2 * asind(axisLength_rms / dist);
+// 	double sigma_angle_new2 = 2 * asind(axisLength_mean / dist);
+
+	if (axisLength_mean > dist)
+	{
+		sigma_angle = 180;
+	} 
+	else
+	{
+		sigma_angle = 2 * asind(axisLength_mean / dist);
+	}
 
 	return true;
 }
@@ -1637,7 +1792,8 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 
 	double sigma_angle;
 
-	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I))
+//	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I))
+	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I))
 	{
 		return false;
 	}
@@ -1651,7 +1807,8 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 			return false;
 		}
 
-		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+//		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+		CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
 	}
 
 	if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)

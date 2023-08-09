@@ -383,6 +383,17 @@ bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
 					);
 
 // 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+// 20230703，采用质心点位置误差椭球相对于区域中心的张角作为方向角不确定度
+bool CornerAngle_IC_geometry(const cv::Mat & img,	// input: the input gray scale image
+							 int ix, int iy,		// input: the center of the region
+							 int r,					// input: the radius of the circular region
+							 double & angle,		// output:the location of the calculated intensity centroid (in terms of offsets)
+							 double & sigma_angle,	// output:the standard deviation of the corner angle propagated by the random noise of intensity
+							 double sigma_I = 5.0	// input: the standard deviation of the Gaussian random noise of image intensity					
+							 );
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
 bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
 					double x, double y,		// input: the center of the region
 					int r,					// input: the radius of the circular region
