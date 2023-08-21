@@ -1790,7 +1790,10 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 {
 	r = 1; // 20201207，改为从 1 开始
 
-	double sigma_angle;
+	double sigma_angle, dSigma;
+	double sigma_angle_pre = 10000000; // 20230817，记录前一次迭代的方向角不确定度
+
+	std::vector<double> vSigmas; // 20230817，用于记录每一次迭代的方向角不确定度
 
 //	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I))
 	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I))
@@ -1798,9 +1801,13 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 		return false;
 	}
 
+	vSigmas.push_back(sigma_angle);
+
 	while (sigma_angle >= thresh_sigmaAng)
 	{
 		++r;
+
+		sigma_angle_pre = sigma_angle; // 20230817
 
 		if (r > r_max)
 		{
@@ -1809,6 +1816,10 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 
 //		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
 		CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+
+		vSigmas.push_back(sigma_angle);
+
+		dSigma = sigma_angle - sigma_angle_pre; // 20230817，看看方向角不确定度的变化量
 	}
 
 	if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
