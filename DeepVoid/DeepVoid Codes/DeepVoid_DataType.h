@@ -356,6 +356,15 @@ bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input
 									  );
 
 // 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+// 20231018，输出图像矩moments: m00, m10, m01
+bool IntensityCentroid_CircularRegion_moments(const cv::Mat & img,						// input: the input gray scale image
+											  int ix, int iy,							// input: the center of the region
+											  int r,									// input: the radius of the circular region
+											  double & dxIC, double & dyIC,				// output:the location of the calculated intensity centroid (in terms of offsets)
+											  double & m00, double & m10, double & m01	// output:1/m00
+											  );
+
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
 // 20201205，给定图像灰度高斯随机噪声的标准差，输出计算得到的灰度质心坐标不确定度标准差
 bool IntensityCentroid_CircularRegion(const cv::Mat & img,			// input: the input gray scale image
 									  int ix, int iy,				// input: the center of the region
@@ -381,6 +390,17 @@ bool CornerAngle_IC(const cv::Mat & img,	// input: the input gray scale image
 					double & sigma_angle,	// output:the standard deviation of the corner angle propagated by the random noise of intensity
 					double sigma_I = 5.0	// input: the standard deviation of the Gaussian random noise of image intensity					
 					);
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+// 20231018，z=yc/xc=m01/m10，这样就不涉及到90°和270°时xc=0没法除的问题了，不用显式的求解xc和yc，只求m01和m10即可
+bool CornerAngle_IC_moments(const cv::Mat & img,	// input: the input gray scale image
+							int ix, int iy,			// input: the center of the region
+							int r,					// input: the radius of the circular region
+							double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+							double & sigma_angle,	// output:the standard deviation of the corner angle propagated by the random noise of intensity
+							double sigma_I = 5.0	// input: the standard deviation of the Gaussian random noise of image intensity					
+							);
 
 // 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
 // 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差

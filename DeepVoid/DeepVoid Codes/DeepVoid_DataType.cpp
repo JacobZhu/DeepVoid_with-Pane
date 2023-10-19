@@ -1237,6 +1237,72 @@ bool DeepVoid::IntensityCentroid_CircularRegion(const cv::Mat & img,			// input:
 	return true;
 }
 
+// 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
+// 20231018，输出图像矩moments: m00, m10, m01
+bool DeepVoid::IntensityCentroid_CircularRegion_moments(const cv::Mat & img,						// input: the input gray scale image
+														int ix, int iy,								// input: the center of the region
+														int r,										// input: the radius of the circular region
+														double & dxIC, double & dyIC,				// output:the location of the calculated intensity centroid (in terms of offsets)
+														double & m00, double & m10, double & m01	// output:1/m00
+														)
+{
+	int w = img.cols;
+	int h = img.rows;
+
+	m00 = 0;
+	m10 = 0;
+	m01 = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+			int I = img.at<uchar>(i, j);
+
+			m00 += I;		// m00 = sum(I)
+			m10 += dj*I;	// m10 = sum(xI)
+			m01 += di*I;	// m01 = sum(yI)
+		}
+	}
+
+	// 区域内的图像灰度全黑，即全为 0，则有可能出现 m00 仍为 0 的情况
+	if (m00 == 0)
+	{
+		return false;
+	}
+
+	double m00_1 = 1.0 / m00;
+
+	dxIC = m00_1*m10;
+	dyIC = m00_1*m01;
+
+	return true;
+}
 
 // 20200824，计算一圆形支持区域内的图像灰度质心，通过相对于中心像素坐标偏移的方式表示
 // 20201205，给定图像灰度高斯随机噪声的标准差，输出计算得到的灰度质心坐标不确定度标准差
@@ -1471,6 +1537,99 @@ bool DeepVoid::CornerAngle_IC(const cv::Mat & img,		// input: the input gray sca
 			double axc_aIk = (dj - dx)*m00_1;
 
 			double dang_dIk = dang_dz*dx_1*(ayc_aIk - axc_aIk*z);
+
+			sigma2_radian += dang_dIk*dang_dIk*sigma2_I;
+		}
+	}
+	
+	sigma_angle = std::sqrt(sigma2_radian)*R2D; // 特征方向角度不确定度标准差
+
+	return true;
+}
+
+// 20200825，通过计算一圆形支持区域内图像灰度质心偏移量的方式计算该角点特征的方向
+// 20201206，给定图像灰度高斯随机噪声的标准差，输出计算得到的特征方向的不确定度标准差
+// 20231018，z=yc/xc=m01/m10，这样就不涉及到90°和270°时xc=0没法除的问题了，不用显式的求解xc和yc，只求m01和m10即可
+bool DeepVoid::CornerAngle_IC_moments(const cv::Mat & img,		// input: the input gray scale image
+									  int ix, int iy,			// input: the center of the region
+									  int r,					// input: the radius of the circular region
+									  double & angle,			// output:the location of the calculated intensity centroid (in terms of offsets)
+									  double & sigma_angle,		// output:the standard deviation of the corner angle propagated by the random noise of intensity
+									  double sigma_I /*= 5.0*/	// input: the standard deviation of the Gaussian random noise of image intensity					
+									  )
+{
+	double dx, dy;
+
+//	double sigma_xIC, sigma_yIC;
+
+//	double m00_1;
+	double m00, m10, m01;
+
+//	if (!IntensityCentroid_CircularRegion(img, ix, iy, r, dx, dy, &m00_1)) // 说明图像区域内灰度值全为 0，即全黑
+	if (!IntensityCentroid_CircularRegion_moments(img, ix, iy, r, dx, dy, m00, m10, m01)) // 说明图像区域内灰度值全为 0，即全黑
+	{
+		return false;
+	}
+
+	double radian = std::atan2(dy, dx); // [-π; +π]
+
+
+	//////////////////////////////////////////////////////////////////////////
+	if (fabs(dx) < 0.0000001)
+	{
+		double shitreallyhappens = 1;
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+	
+	angle = radian*R2D; // 特征方向角度
+
+	// 20201205，开始计算误差传递
+	int w = img.cols;
+	int h = img.rows;
+	double m10_1 = 1.0 / m10;
+	double z = m01*m10_1; // z = m01/m10
+	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
+	double sigma2_I = sigma_I*sigma_I;
+	double sigma2_radian = 0;
+
+	for (int di = -r; di <= r; ++di)
+	{
+		int i = iy + di;
+
+		if (i < 0 || i >= h)
+		{
+			continue;
+		}
+
+		int di2 = di*di;
+
+//		double ayc_aIk = (di - dy)*m00_1;
+		double am01_aIk = di; // am01/aIi = yi
+
+		for (int dj = -r; dj <= r; ++dj)
+		{
+			int j = ix + dj;
+
+			if (j < 0 || j >= w)
+			{
+				continue;
+			}
+
+			int dj2 = dj*dj;
+
+			double rr = std::sqrt(di2 + dj2);
+
+			if (rr > r) // 确保圆形区域
+			{
+				continue;
+			}
+
+//			double axc_aIk = (dj - dx)*m00_1;
+			double am10_aIk = dj; // am10/aIi = xi
+
+//			double dang_dIk = dang_dz*dx_1*(ayc_aIk - axc_aIk*z);
+			double dang_dIk = dang_dz*m10_1*(am01_aIk - am10_aIk*z);
 
 			sigma2_radian += dang_dIk*dang_dIk*sigma2_I;
 		}
@@ -1795,8 +1954,9 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 
 	std::vector<double> vSigmas; // 20230817，用于记录每一次迭代的方向角不确定度
 
-//	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I))
-	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I))
+//	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 老代数方式，z=yc/xc
+//	if (!CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 新代数方式，z=m01/m10
+	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 几何方式，直接求质心圆相对特征的张角
 	{
 		return false;
 	}
@@ -1815,6 +1975,7 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 		}
 
 //		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+//		CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
 		CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
 
 		vSigmas.push_back(sigma_angle);
