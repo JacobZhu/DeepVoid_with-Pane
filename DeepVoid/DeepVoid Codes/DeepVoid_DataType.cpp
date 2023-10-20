@@ -1572,24 +1572,32 @@ bool DeepVoid::CornerAngle_IC_moments(const cv::Mat & img,		// input: the input 
 	}
 
 	double radian = std::atan2(dy, dx); // [-π; +π]
+	angle = radian*R2D; // 特征方向角度
 
+	double m10m01_1 = 1.0 / (m10*m10 + m01*m01); // 1 / (m10^2 + m01^2)
 
 	//////////////////////////////////////////////////////////////////////////
-	if (fabs(dx) < 0.0000001)
+// 	if (fabs(dx) < 0.0000001)
+// 	{
+// 		double shitreallyhappens = 1;
+// 	}
+	//////////////////////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////////////////////
+	if (isinf(m10m01_1)) // 20231019，能到这一步，说明区域内灰度并非全黑，但是区域内灰度关于中心完全对称，得到的灰度质心就严格位于中心位置，这样得到的方向0是不可靠的，为其赋一个极大的不确定度后退出
 	{
-		double shitreallyhappens = 1;
+//		double shitreallyhappens = 1;
+		sigma_angle = 10000; // 这里附上一极大的不确定度值，以表示centroid就位于区域中心，没有所谓方向可言
+		return true; // 但这里依然是返回了 true，相当于返回 false 单纯就表示 m00 为0，即区域内全黑，返回 true的话，具体什么情况就得看角度不确定度的情况了
 	}
 	//////////////////////////////////////////////////////////////////////////
-
-	
-	angle = radian*R2D; // 特征方向角度
 
 	// 20201205，开始计算误差传递
 	int w = img.cols;
 	int h = img.rows;
-	double m10_1 = 1.0 / m10;
-	double z = m01*m10_1; // z = m01/m10
-	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
+//	double m10_1 = 1.0 / m10;
+//	double z = m01*m10_1; // z = m01/m10
+//	double dang_dz = 1.0 / (1 + z*z); // da/dz=1/(1+z^2)
 	double sigma2_I = sigma_I*sigma_I;
 	double sigma2_radian = 0;
 
@@ -1605,7 +1613,7 @@ bool DeepVoid::CornerAngle_IC_moments(const cv::Mat & img,		// input: the input 
 		int di2 = di*di;
 
 //		double ayc_aIk = (di - dy)*m00_1;
-		double am01_aIk = di; // am01/aIi = yi
+//		double am01_aIk = di; // am01/aIi = yi
 
 		for (int dj = -r; dj <= r; ++dj)
 		{
@@ -1626,10 +1634,11 @@ bool DeepVoid::CornerAngle_IC_moments(const cv::Mat & img,		// input: the input 
 			}
 
 //			double axc_aIk = (dj - dx)*m00_1;
-			double am10_aIk = dj; // am10/aIi = xi
+//			double am10_aIk = dj; // am10/aIi = xi
 
 //			double dang_dIk = dang_dz*dx_1*(ayc_aIk - axc_aIk*z);
-			double dang_dIk = dang_dz*m10_1*(am01_aIk - am10_aIk*z);
+//			double dang_dIk = dang_dz*m10_1*(am01_aIk - am10_aIk*z);
+			double dang_dIk = (m10*di - m01*dj)*m10m01_1;
 
 			sigma2_radian += dang_dIk*dang_dIk*sigma2_I;
 		}
@@ -1955,15 +1964,16 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 	std::vector<double> vSigmas; // 20230817，用于记录每一次迭代的方向角不确定度
 
 //	if (!CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 老代数方式，z=yc/xc
-//	if (!CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 新代数方式，z=m01/m10
-	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 几何方式，直接求质心圆相对特征的张角
+	if (!CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 新代数方式，z=m01/m10
+//	if (!CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I)) // 几何方式，直接求质心圆相对特征的张角
 	{
 		return false;
 	}
 
 	vSigmas.push_back(sigma_angle);
 
-	while (sigma_angle >= thresh_sigmaAng)
+//	while (sigma_angle >= thresh_sigmaAng)
+	while (fabs(sigma_angle) >= thresh_sigmaAng) // 20231019，加个绝对值，这样即便为 -inf 负无穷，那肯定也不会直接退出
 	{
 		++r;
 
@@ -1974,9 +1984,11 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 			return false;
 		}
 
-//		CornerAngle_IC(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
-//		CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
-		CornerAngle_IC_geometry(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+//		double ang_old, ang_geo, sigmaAng_old, sigmaAng_geo;
+
+//		CornerAngle_IC(img, ix, iy, r, /*angle*/ang_old, /*sigma_angle*/sigmaAng_old, sigma_I); // [-360; +360]
+		CornerAngle_IC_moments(img, ix, iy, r, angle, sigma_angle, sigma_I); // [-360; +360]
+//		CornerAngle_IC_geometry(img, ix, iy, r, /*angle*/ang_geo, /*sigma_angle*/sigmaAng_geo, sigma_I); // [-360; +360]
 
 		vSigmas.push_back(sigma_angle);
 
