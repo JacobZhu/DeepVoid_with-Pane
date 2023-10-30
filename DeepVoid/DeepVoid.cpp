@@ -14815,6 +14815,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		preSiftPt0.pt.y = -1000;
 		//////////////////////////////////////////////////////////////////////////
 
+		// 20231030，记录每个特征的方向角估计误差
+		vector<double> vAbsErrAngSift, vAbsErrAngSiftMy, vAbsErrAngOrb, vAbsErrAngOrbMy;
 
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
 		{
@@ -14878,7 +14880,28 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
 				angReal, sift_pt0.size, dScaleSift, sift_pt0.angle, dAngleSift, errorAngSift, absErrAngSift,
 				my_pt0.size, dScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrAngMy);
+
+			vAbsErrAngSift.push_back(absErrAngSift);
+			vAbsErrAngSiftMy.push_back(absErrAngMy);
 		}
+
+		// 20231030，对角度误差来个排序 ////////////////////////////////////////////
+		sort(vAbsErrAngSift.begin(), vAbsErrAngSift.end(), [](const double & a, const double & b) {return a < b; });
+		sort(vAbsErrAngSiftMy.begin(), vAbsErrAngSiftMy.end(), [](const double & a, const double & b) {return a < b; });
+
+		int nnnn = vAbsErrAngSift.size();
+		int i_95 = std::floor(0.95*nnnn);
+		int i_90 = std::floor(0.90*nnnn);
+		int i_85 = std::floor(0.85*nnnn);
+		int i_80 = std::floor(0.80*nnnn);
+		int i_75 = std::floor(0.75*nnnn);
+
+		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrAngSift[i_95], vAbsErrAngSift[i_90], vAbsErrAngSift[i_85], vAbsErrAngSift[i_80], vAbsErrAngSift[i_75],
+			vAbsErrAngSiftMy[i_95], vAbsErrAngSiftMy[i_90], vAbsErrAngSiftMy[i_85], vAbsErrAngSiftMy[i_80], vAbsErrAngSiftMy[i_75]);
+		//////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
+
 
 		// 20230606，旋转后图像 orb 特征与原图 orb 特征做匹配
 		bSuc = get_R_t_2D_Matches_knn_RANSAC(orb0, orbi, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
@@ -14931,7 +14954,27 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 			fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
 				angReal, orb_pt0.size, dScaleOrb, orb_pt0.angle, dAngleOrb, errorAngOrb, absErrAngOrb,
 				my_pt0.size, dScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrAngMy);
+
+			vAbsErrAngOrb.push_back(absErrAngOrb);
+			vAbsErrAngOrbMy.push_back(absErrAngMy);
 		}
+
+		// 20231030，对角度误差来个排序 ////////////////////////////////////////////
+		sort(vAbsErrAngOrb.begin(), vAbsErrAngOrb.end(), [](const double & a, const double & b) {return a < b; });
+		sort(vAbsErrAngOrbMy.begin(), vAbsErrAngOrbMy.end(), [](const double & a, const double & b) {return a < b; });
+
+		nnnn = vAbsErrAngOrb.size();
+		i_95 = std::floor(0.95*nnnn);
+		i_90 = std::floor(0.90*nnnn);
+		i_85 = std::floor(0.85*nnnn);
+		i_80 = std::floor(0.80*nnnn);
+		i_75 = std::floor(0.75*nnnn);
+
+		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrAngOrb[i_95], vAbsErrAngOrb[i_90], vAbsErrAngOrb[i_85], vAbsErrAngOrb[i_80], vAbsErrAngOrb[i_75],
+			vAbsErrAngOrbMy[i_95], vAbsErrAngOrbMy[i_90], vAbsErrAngOrbMy[i_85], vAbsErrAngOrbMy[i_80], vAbsErrAngOrbMy[i_75]);
+		//////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
 
 // 		R = DeepVoid::GenR2D_Angle(angReal);
 // 		t(0) = H*sind(angReal);
