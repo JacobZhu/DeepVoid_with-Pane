@@ -1972,8 +1972,11 @@ bool DeepVoid::FeatureRadiusAngle_sigmaAng(const cv::Mat & img,				// input: the
 
 	vSigmas.push_back(sigma_angle);
 
+//	dSigma = sigma_angle - sigma_angle_pre; // 20231029，看看变化量
+
 //	while (sigma_angle >= thresh_sigmaAng)
-	while (fabs(sigma_angle) >= thresh_sigmaAng) // 20231019，加个绝对值，这样即便为 -inf 负无穷，那肯定也不会直接退出
+	while (fabs(sigma_angle) >= /*0.3*/thresh_sigmaAng) // 20231019，加个绝对值，这样即便为 -inf 负无穷，那肯定也不会直接退出
+//	while (fabs(dSigma) >= 0.01/*thresh_sigmaAng*/) // 20231029，退出的控制量变成角度不确定度的变化量的绝对值得小于指定阈值
 	{
 		++r;
 

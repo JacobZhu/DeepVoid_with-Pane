@@ -14643,7 +14643,7 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 
 	double sigma_I = 5.0;
-	double thresh_sigmaAng = /*0.1*/1.0;
+	double thresh_sigmaAng = 0.5/*1.0*/;
 	int r_max = 500;
 
 
@@ -14808,6 +14808,14 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		bool bSuc = get_R_t_2D_Matches_knn_RANSAC(sift0, sifti, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
 		//////////////////////////////////////////////////////////////////////////
 		
+
+		// 20231028，记录前一个特征点的位置，用来判断一个 sift 点处出现多个不同特征方向，进而重复统计误差的情况
+		KeyPoint preSiftPt0; 
+		preSiftPt0.pt.x = -1000;
+		preSiftPt0.pt.y = -1000;
+		//////////////////////////////////////////////////////////////////////////
+
+
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
 		{
 			const cv::KeyPoint & sift_pt0 = sift0.key_points[iter->queryIdx];
@@ -14815,6 +14823,21 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 			const cv::KeyPoint & sift_pti = sifti.key_points[iter->trainIdx];
 			const cv::KeyPoint & my_pti = sift_myi.key_points[iter->trainIdx];
+
+
+			// 20231028，如果当前 sift0 点与上一个匹配对中的 sift 点位置完全相同，那说明该特征点只是用了上一个特征点处另一个特征方向生成的特征点
+			// 那该特征方向对应的估计误差就不纳入后续统计了
+			double dx = sift_pt0.pt.x - preSiftPt0.pt.x;
+			double dy = sift_pt0.pt.y - preSiftPt0.pt.y;
+			double dddd = sqrt(dx*dx + dy*dy);
+			if (dddd < 1.0E-10)
+			{
+				continue;
+			}
+			preSiftPt0.pt.x = sift_pt0.pt.x;
+			preSiftPt0.pt.y = sift_pt0.pt.y;
+			//////////////////////////////////////////////////////////////////////////
+
 
 			double dScaleSift = sift_pti.size - sift_pt0.size;
 			double dAngleSift = sift_pti.angle - sift_pt0.angle; // 先直接相减
