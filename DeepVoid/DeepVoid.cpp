@@ -101,6 +101,8 @@ BEGIN_MESSAGE_MAP(CDeepVoidApp, CWinAppEx)
 	ON_COMMAND(ID_TEST_SIMU_K, &CDeepVoidApp::OnTestSimuK)
 	ON_COMMAND(ID_TEST_FEATUREORIENTATIONANGLECOMPARE, &CDeepVoidApp::OnTestFeatureorientationanglecompare)
 	ON_UPDATE_COMMAND_UI(ID_TEST_FEATUREORIENTATIONANGLECOMPARE, &CDeepVoidApp::OnUpdateTestFeatureorientationanglecompare)
+	ON_COMMAND(ID_TEST_SCALEACCURACY, &CDeepVoidApp::OnTestScaleaccuracy)
+	ON_UPDATE_COMMAND_UI(ID_TEST_SCALEACCURACY, &CDeepVoidApp::OnUpdateTestScaleaccuracy)
 END_MESSAGE_MAP()
 
 
@@ -14817,6 +14819,10 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 		// 20231030，记录每个特征的方向角估计误差
 		vector<double> vAbsErrAngSift, vAbsErrAngSiftMy, vAbsErrAngOrb, vAbsErrAngOrbMy;
+		double sum2_absErrAngSift = 0;
+		double sum2_absErrAngSiftMy = 0;
+		double sum2_absErrAngOrb = 0;
+		double sum2_absErrAngOrbMy = 0;
 
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
 		{
@@ -14883,6 +14889,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 			vAbsErrAngSift.push_back(absErrAngSift);
 			vAbsErrAngSiftMy.push_back(absErrAngMy);
+			sum2_absErrAngSift += absErrAngSift*absErrAngSift;
+			sum2_absErrAngSiftMy += absErrAngMy*absErrAngMy;
 		}
 
 		// 20231030，对角度误差来个排序 ////////////////////////////////////////////
@@ -14896,9 +14904,12 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		int i_80 = std::floor(0.80*nnnn);
 		int i_75 = std::floor(0.75*nnnn);
 
-		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf",
-			vAbsErrAngSift[i_95], vAbsErrAngSift[i_90], vAbsErrAngSift[i_85], vAbsErrAngSift[i_80], vAbsErrAngSift[i_75],
-			vAbsErrAngSiftMy[i_95], vAbsErrAngSiftMy[i_90], vAbsErrAngSiftMy[i_85], vAbsErrAngSiftMy[i_80], vAbsErrAngSiftMy[i_75]);
+		double rms_angErrSift = std::sqrt(sum2_absErrAngSift / nnnn);
+		double rms_angErrSiftMy = std::sqrt(sum2_absErrAngSiftMy / nnnn);
+
+		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrAngSift[i_95], vAbsErrAngSift[i_90], vAbsErrAngSift[i_85], vAbsErrAngSift[i_80], vAbsErrAngSift[i_75], rms_angErrSift,
+			vAbsErrAngSiftMy[i_95], vAbsErrAngSiftMy[i_90], vAbsErrAngSiftMy[i_85], vAbsErrAngSiftMy[i_80], vAbsErrAngSiftMy[i_75], rms_angErrSiftMy);
 		//////////////////////////////////////////////////////////////////////////
 		//////////////////////////////////////////////////////////////////////////
 
@@ -14957,6 +14968,8 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 
 			vAbsErrAngOrb.push_back(absErrAngOrb);
 			vAbsErrAngOrbMy.push_back(absErrAngMy);
+			sum2_absErrAngOrb += absErrAngOrb*absErrAngOrb;
+			sum2_absErrAngOrbMy += absErrAngMy*absErrAngMy;
 		}
 
 		// 20231030，对角度误差来个排序 ////////////////////////////////////////////
@@ -14970,9 +14983,12 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 		i_80 = std::floor(0.80*nnnn);
 		i_75 = std::floor(0.75*nnnn);
 
-		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf",
-			vAbsErrAngOrb[i_95], vAbsErrAngOrb[i_90], vAbsErrAngOrb[i_85], vAbsErrAngOrb[i_80], vAbsErrAngOrb[i_75],
-			vAbsErrAngOrbMy[i_95], vAbsErrAngOrbMy[i_90], vAbsErrAngOrbMy[i_85], vAbsErrAngOrbMy[i_80], vAbsErrAngOrbMy[i_75]);
+		double rms_angErrOrb = std::sqrt(sum2_absErrAngOrb / nnnn);
+		double rms_angErrOrbMy = std::sqrt(sum2_absErrAngOrbMy / nnnn);
+
+		fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrAngOrb[i_95], vAbsErrAngOrb[i_90], vAbsErrAngOrb[i_85], vAbsErrAngOrb[i_80], vAbsErrAngOrb[i_75], rms_angErrOrb,
+			vAbsErrAngOrbMy[i_95], vAbsErrAngOrbMy[i_90], vAbsErrAngOrbMy[i_85], vAbsErrAngOrbMy[i_80], vAbsErrAngOrbMy[i_75], rms_angErrOrbMy);
 		//////////////////////////////////////////////////////////////////////////
 		//////////////////////////////////////////////////////////////////////////
 
@@ -15097,6 +15113,397 @@ UINT Scale_Orientation_changeOrientationAngle(LPVOID param)
 	return TRUE;
 }
 
+UINT Scale_Orientation_changeScale(LPVOID param)
+{
+	CDeepVoidApp * pApp = (CDeepVoidApp *)param;
+
+	
+	// 把要用的全局变量引用过来 ////////////////////////////////////////////////
+	vector<cam_data> & cams = pApp->m_vCams;
+	const vector<cv::Mat> & imgs = pApp->m_imgsOriginal;
+	const SfM_ZZK::PointCloud & pointCloud = pApp->m_mapPointCloud;
+	const SfM_ZZK::MultiTracksWithFlags & tracks = pApp->m_mapTracks; // 20220202，新数据结构
+	const SfM_ZZK::PairWise_F_matches_pWrdPts & pairMatchInfos = pApp->m_mapPairwiseFMatchesWrdPts; // 20220128，<<i,j>, <<F,matches>, pWrdPts>>，两视图i和j间的所有匹配信息，包括基础矩阵F、所有匹配matches、射影重建物点坐标pWrdPts
+	const CString & dirOut = pApp->m_pathDirOut; // 结果输出文件夹路径
+	const std::vector<CString> & vImgNames = pApp->m_vNameImgs; // 所有图像的纯名称（不含路径和尾缀）
+	const int & idxRefImg = pApp->m_idxRefImg;	// 该变量指明 SfM 和 SBA 中哪个图像坐标系代表了参考坐标系
+
+	int nImg = cams.size();
+	CString strInfo, strFile;
+
+	// 在输入图像所在目录下新建结果输出文件夹（如果事先不存在的话）
+	int code = mkdir(dirOut); // code=0 说明成功新建；code=-1 说明文件夹已存在
+	//////////////////////////////////////////////////////////////////////////
+
+
+	double sigma_I = 5.0;
+	double thresh_sigmaAng = 0.5/*1.0*/;
+	int r_max = 500;
+
+
+	// 先从图像名（NNN）确定哪副图像是原图，其它图像就是人为旋转过指定角度的图像了，并把它们的旋转角度真值从文件名中解析出来
+	int idxRef;
+	vector<int> vScalesReal;
+
+	vector<DeepVoid::Features> feat_sift, feat_orb, feat_sift_my, feat_orb_my;
+
+	for (int i = 0; i < nImg; ++i)
+	{
+		cam_data & cam = cams[i];
+		const cv::Mat & img = imgs[i];
+		const CString & imgName = vImgNames[i];
+		int scaleReal = atoi(imgName);
+
+		cv::Mat im_gray;
+
+		int nChannel = img.channels();
+
+		if (nChannel == 1) // 本身就是灰度图
+		{
+			im_gray = img;
+		}
+		else // 彩图
+		{
+			cv::cvtColor(img, im_gray, CV_RGB2GRAY);
+		}
+
+		vScalesReal.push_back(scaleReal);
+
+		if (!scaleReal)
+		{
+			idxRef = i;
+		}		
+
+		// 先提取sift特征点
+		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
+		// 再提取orb特征点
+		int nfeatORB = 3000;
+// 		double scaleFactorORB = 1.2f;
+// 		int nlevelsORB = 8;
+// 		int edgeThresholdORB = 31/*11*/;
+// 		int firstLevelORB = 0;
+// 		int WTAK_ORB = 2;
+// 		int scoreTypeORB = cv::ORB::HARRIS_SCORE/*cv::ORB::FAST_SCORE*/;
+// 		int patchSizeORB = 31/*11*/;
+// 		int fastThresholdORB = 20;
+// 		int nfeaturesSift = 0;	// The number of best features to retain. The features are ranked by their scores (measured in SIFT algorithm as the local contrast)
+// 		int nOctaveLayersSift = 3;	// The number of layers in each octave. 3 is the value used in D.Lowe paper.The number of octaves is computed automatically from the image resolution.
+// 		double contrastThresholdSift = 0.03/*0.01*//*0.04*/;	// The contrast threshold used to filter out weak features in semi-uniform (low - contrast) regions.The larger the threshold, the less features are produced by the detector.
+// 		double edgeThresholdSift = 10.0;	// The threshold used to filter out edge-like features. Note that the its meaning is different from the contrastThreshold, i.e.the larger the edgeThreshold, the less features are filtered out(more features are retained).
+// 		double sigmaSift = 1.6;	// The sigma of the Gaussian applied to the input image at the octave \#0. If your image is captured with a weak camera with soft lenses, you might want to reduce the number.
+		cam.ExtractORBFeatures(img, nfeatORB);
+
+		// 存储提到的 sift 和 orb 特征点
+		feat_sift.push_back(cam.m_featsBlob);
+		feat_orb.push_back(cam.m_featsCorner);
+
+		const DeepVoid::Features & sift = cam.m_featsBlob;
+		int nSift = sift.key_points.size();
+		const DeepVoid::Features & orb = cam.m_featsCorner;
+		int nOrb = orb.key_points.size();
+
+//		DeepVoid::Features & myFeatSift = cam.m_featsManual;
+		DeepVoid::Features sift_my, orb_my;
+
+		// 于每个 sift 特征点处提取本文方法估计的特征方向和尺度
+		for (int j = 0; j < nSift; ++j)
+		{
+			cv::KeyPoint keypt = sift.key_points[j];
+			double x = keypt.pt.x;
+			double y = keypt.pt.y;
+
+			int r;
+			double angle;
+
+			if (FeatureRadiusAngle_sigmaAng(im_gray, x, y, r, angle, sigma_I, thresh_sigmaAng, r_max))
+			{
+				keypt.size = (2 * r + 1); // keypoint::size 表征特征的直径 diameter
+				keypt.angle = angle;
+			}
+			else
+			{
+				keypt.size = -1;
+				keypt.angle = -1;
+			}
+
+//			myFeatSift.key_points.push_back(keypt);
+			sift_my.key_points.push_back(keypt);
+		}
+
+		// 于每个 orb 特征点处提取本文方法估计的特征方向和尺度
+		for (int j = 0; j < nOrb; ++j)
+		{
+			cv::KeyPoint keypt = orb.key_points[j];
+			double x = keypt.pt.x;
+			double y = keypt.pt.y;
+
+			int r;
+			double angle;
+
+			if (FeatureRadiusAngle_sigmaAng(im_gray, x, y, r, angle, sigma_I, thresh_sigmaAng, r_max))
+			{
+				keypt.size = (2 * r + 1); // keypoint::size 表征特征的直径 diameter
+				keypt.angle = angle;
+			}
+			else
+			{
+				keypt.size = -1;
+				keypt.angle = -1;
+			}
+
+//			myFeatSift.key_points.push_back(keypt);
+			orb_my.key_points.push_back(keypt);
+		}
+
+		feat_sift_my.push_back(sift_my);
+		feat_orb_my.push_back(orb_my);
+	}
+
+//	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
+//	const DeepVoid::Features & my0 = cams[idxRef].m_featsManual;
+	const DeepVoid::Features & sift0 = feat_sift[idxRef];
+	const DeepVoid::Features & sift_my0 = feat_sift_my[idxRef];
+	const DeepVoid::Features & orb0 = feat_orb[idxRef];
+	const DeepVoid::Features & orb_my0 = feat_orb_my[idxRef];
+//	int nSift0 = sift0.key_points.size();
+//	int H = imgs[idxRef].rows;
+	//////////////////////////////////////////////////////////////////////////
+
+
+	// 再遍历一遍所有图像，跟参考图像做对比
+	for (int i = 0; i < nImg; ++i)
+	{
+		if (i == idxRef)
+		{
+			continue;
+		}
+		
+		// 先打开结果文件
+		strFile = dirOut + vImgNames[i] + ".sift.scale.txt";
+		FILE * file_sift = fopen(strFile, "w");
+		strFile = dirOut + vImgNames[i] + ".orb.scale.txt";
+		FILE * file_orb = fopen(strFile, "w");
+
+// 		const DeepVoid::Features & sifti = cams[i].m_featsBlob;
+// 		const DeepVoid::Features & myi = cams[i].m_featsManual;
+//		int nSifti = sifti.key_points.size();
+		const DeepVoid::Features & sifti = feat_sift[i];
+		const DeepVoid::Features & sift_myi = feat_sift_my[i];
+		const DeepVoid::Features & orbi = feat_orb[i];
+		const DeepVoid::Features & orb_myi = feat_orb_my[i];
+		double scaleFactor = 1.0 / (double)vScalesReal[i];
+
+// 		Matx22d R;
+// 		Matx21d t;
+		double scaleRANSAC;
+		std::vector<cv::DMatch> matches;
+
+		// 20230602，旋转后图像sift特征与原图sift特征做匹配
+//		bool bSuc = get_R_t_2D_Matches_knn_RANSAC(sift0, sifti, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		bool bSuc = get_s_2D_Matches_knn_RANSAC(sift0, sifti, scaleRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		//////////////////////////////////////////////////////////////////////////
+		
+
+		// 20231028，记录前一个特征点的位置，用来判断一个 sift 点处出现多个不同特征方向，进而重复统计误差的情况
+		KeyPoint preSiftPt0;
+		preSiftPt0.pt.x = -1000;
+		preSiftPt0.pt.y = -1000;
+		//////////////////////////////////////////////////////////////////////////
+
+		// 20231030，记录每个特征的方向角估计误差
+		vector<double> vAbsErrScaleSift, vAbsErrScaleSiftMy, vAbsErrScaleOrb, vAbsErrScaleOrbMy;
+		double sum2_absErrScaleSift = 0;
+		double sum2_absErrScaleSiftMy = 0;
+		double sum2_absErrScaleOrb = 0;
+		double sum2_absErrScaleOrbMy = 0;
+
+		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+		{
+			const cv::KeyPoint & sift_pt0 = sift0.key_points[iter->queryIdx];
+			const cv::KeyPoint & my_pt0 = sift_my0.key_points[iter->queryIdx];
+
+			const cv::KeyPoint & sift_pti = sifti.key_points[iter->trainIdx];
+			const cv::KeyPoint & my_pti = sift_myi.key_points[iter->trainIdx];
+
+
+			// 20231028，如果当前 sift0 点与上一个匹配对中的 sift 点位置完全相同，那说明该特征点只是用了上一个特征点处另一个特征方向生成的特征点
+			// 那该特征方向对应的估计误差就不纳入后续统计了
+			double dx = sift_pt0.pt.x - preSiftPt0.pt.x;
+			double dy = sift_pt0.pt.y - preSiftPt0.pt.y;
+			double dddd = sqrt(dx*dx + dy*dy);
+			if (dddd < 1.0E-10)
+			{
+				continue;
+			}
+			preSiftPt0.pt.x = sift_pt0.pt.x;
+			preSiftPt0.pt.y = sift_pt0.pt.y;
+			//////////////////////////////////////////////////////////////////////////
+
+
+			double errorScaleSift = sift_pti.size - scaleFactor*sift_pt0.size;
+			double absErrScaleSift = fabs(errorScaleSift);
+
+			double dAngleSift = sift_pti.angle - sift_pt0.angle; // 先直接相减
+			if (dAngleSift > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleSift -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleSift < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleSift += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngSift = dAngleSift;
+
+//			double absErrAngSift = fabs(errorAngSift); // 特征方向角误差绝对值
+													  			
+			double errorScaleMy = my_pti.size - scaleFactor*my_pt0.size;
+			double absErrScaleMy = fabs(errorScaleMy);
+
+			double dAngleMy = my_pti.angle - my_pt0.angle; // 先直接相减
+			if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngMy = dAngleMy;
+
+//			double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值				
+
+			fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+				scaleFactor, sift_pt0.size, errorScaleSift, sift_pt0.angle, dAngleSift, errorAngSift, absErrScaleSift,
+				my_pt0.size, errorScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrScaleMy);
+
+			vAbsErrScaleSift.push_back(absErrScaleSift);
+			vAbsErrScaleSiftMy.push_back(absErrScaleMy);
+			sum2_absErrScaleSift += absErrScaleSift*absErrScaleSift;
+			sum2_absErrScaleSiftMy += absErrScaleMy*absErrScaleMy;
+		}
+
+		// 20231030，对尺度误差来个排序 ////////////////////////////////////////////
+		sort(vAbsErrScaleSift.begin(), vAbsErrScaleSift.end(), [](const double & a, const double & b) {return a < b; });
+		sort(vAbsErrScaleSiftMy.begin(), vAbsErrScaleSiftMy.end(), [](const double & a, const double & b) {return a < b; });
+
+		int nnnn = vAbsErrScaleSift.size();
+		int i_95 = std::floor(0.95*nnnn);
+		int i_90 = std::floor(0.90*nnnn);
+		int i_85 = std::floor(0.85*nnnn);
+		int i_80 = std::floor(0.80*nnnn);
+		int i_75 = std::floor(0.75*nnnn);
+
+		double rms_angErrSift = std::sqrt(sum2_absErrScaleSift / nnnn);
+		double rms_angErrSiftMy = std::sqrt(sum2_absErrScaleSiftMy / nnnn);
+
+		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrScaleSift[i_95], vAbsErrScaleSift[i_90], vAbsErrScaleSift[i_85], vAbsErrScaleSift[i_80], vAbsErrScaleSift[i_75], rms_angErrSift,
+			vAbsErrScaleSiftMy[i_95], vAbsErrScaleSiftMy[i_90], vAbsErrScaleSiftMy[i_85], vAbsErrScaleSiftMy[i_80], vAbsErrScaleSiftMy[i_75], rms_angErrSiftMy);
+		//////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
+
+
+		// 20230606，旋转后图像 orb 特征与原图 orb 特征做匹配
+//		bSuc = get_R_t_2D_Matches_knn_RANSAC(orb0, orbi, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		bSuc = get_s_2D_Matches_knn_RANSAC(orb0, orbi, scaleRANSAC, matches, 2, 0.3, 0.5, 1.0);
+		//////////////////////////////////////////////////////////////////////////
+
+		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
+		{
+			const cv::KeyPoint & orb_pt0 = orb0.key_points[iter->queryIdx];
+			const cv::KeyPoint & my_pt0 = orb_my0.key_points[iter->queryIdx];
+
+			const cv::KeyPoint & orb_pti = orbi.key_points[iter->trainIdx];
+			const cv::KeyPoint & my_pti = orb_myi.key_points[iter->trainIdx];
+
+			double errorScaleOrb = orb_pti.size - scaleFactor*orb_pt0.size;
+			double absErrScaleOrb = fabs(errorScaleOrb);
+
+			double dAngleOrb = orb_pti.angle - orb_pt0.angle; // 先直接相减
+			if (dAngleOrb > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleOrb -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleOrb < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleOrb += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngOrb = dAngleOrb;
+
+//			double absErrAngOrb = fabs(errorAngOrb); // 特征方向角误差绝对值
+
+			double errorScaleMy = my_pti.size - scaleFactor*my_pt0.size;
+			double absErrScaleMy = fabs(errorScaleMy);
+
+			double dAngleMy = my_pti.angle - my_pt0.angle; // 先直接相减
+			if (dAngleMy > 180) // 如果直接相减的差超过+180°的话，就意味着从参考图中特征方向处反向旋转（说明值应为负）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+			{
+				dAngleMy -= 360; // da = da-360; 肯定为负值，但其绝对值肯定小于180°
+			}
+			else
+			{
+				if (dAngleMy < -180) // 如果直接相减的差小于-180°的话，就意味着从参考图中特征方向处沿方向正向旋转（值应为正）以下角度值（绝对值肯定小于180°），也可以到当前图特征方向处
+				{
+					dAngleMy += 360; // da = da+360; 肯定为正值，且其值定小于180°
+				}
+			}
+
+			double errorAngMy = dAngleMy;
+
+//			double absErrAngMy = fabs(errorAngMy); // 特征方向角误差绝对值				
+
+			fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf	%lf\n",
+				scaleFactor, orb_pt0.size, errorScaleOrb, orb_pt0.angle, dAngleOrb, errorAngOrb, absErrScaleOrb,
+				my_pt0.size, errorScaleMy, my_pt0.angle, dAngleMy, errorAngMy, absErrScaleMy);
+
+			vAbsErrScaleOrb.push_back(absErrScaleOrb);
+			vAbsErrScaleOrbMy.push_back(absErrScaleMy);
+			sum2_absErrScaleOrb += absErrScaleOrb*absErrScaleOrb;
+			sum2_absErrScaleOrbMy += absErrScaleMy*absErrScaleMy;
+		}
+
+		// 20231030，对角度误差来个排序 ////////////////////////////////////////////
+		sort(vAbsErrScaleOrb.begin(), vAbsErrScaleOrb.end(), [](const double & a, const double & b) {return a < b; });
+		sort(vAbsErrScaleOrbMy.begin(), vAbsErrScaleOrbMy.end(), [](const double & a, const double & b) {return a < b; });
+
+		nnnn = vAbsErrScaleOrb.size();
+		i_95 = std::floor(0.95*nnnn);
+		i_90 = std::floor(0.90*nnnn);
+		i_85 = std::floor(0.85*nnnn);
+		i_80 = std::floor(0.80*nnnn);
+		i_75 = std::floor(0.75*nnnn);
+
+		double rms_angErrOrb = std::sqrt(sum2_absErrScaleOrb / nnnn);
+		double rms_angErrOrbMy = std::sqrt(sum2_absErrScaleOrbMy / nnnn);
+
+		fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
+			vAbsErrScaleOrb[i_95], vAbsErrScaleOrb[i_90], vAbsErrScaleOrb[i_85], vAbsErrScaleOrb[i_80], vAbsErrScaleOrb[i_75], rms_angErrOrb,
+			vAbsErrScaleOrbMy[i_95], vAbsErrScaleOrbMy[i_90], vAbsErrScaleOrbMy[i_85], vAbsErrScaleOrbMy[i_80], vAbsErrScaleOrbMy[i_75], rms_angErrOrbMy);
+		//////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
+
+		fclose(file_sift);
+		fclose(file_orb);
+	}
+	//////////////////////////////////////////////////////////////////////////
+	
+
+	return TRUE;
+}
+
+
 void CDeepVoidApp::OnTestSimuFNoise()
 {
 	// TODO: Add your command handler code here
@@ -15147,6 +15554,20 @@ void CDeepVoidApp::OnTestFeatureorientationanglecompare()
 
 
 void CDeepVoidApp::OnUpdateTestFeatureorientationanglecompare(CCmdUI *pCmdUI)
+{
+	// TODO: Add your command update UI handler code here
+	pCmdUI->Enable(!m_bNoneImages);
+}
+
+
+void CDeepVoidApp::OnTestScaleaccuracy()
+{
+	// TODO: Add your command handler code here
+	AfxBeginThread(Scale_Orientation_changeScale, this, THREAD_PRIORITY_NORMAL);
+}
+
+
+void CDeepVoidApp::OnUpdateTestScaleaccuracy(CCmdUI *pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
 	pCmdUI->Enable(!m_bNoneImages);

@@ -2680,6 +2680,43 @@ double DeepVoid::get_R_t_2D(const vector<Point2d> & imgPts1,			// input: µã¶ÔÓ¦Ô
 	return radian*R2D;
 }
 
+// 20231106£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿³ß¶ÈËõ·ÅÒò×Ó s£ºx2 = s*x1
+void DeepVoid::get_s_2D(const vector<Point2f> & imgPts1,// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					    const vector<Point2f> & imgPts2,// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					    double & scale					// output:¹À¼ÆµÃµ½µÄÆ½ÒÆÏòÁ¿
+					    )
+{
+	int n = imgPts1.size();
+
+	cv::Mat A(2 * n, 1, CV_64FC1, Scalar(0)); // Ax=b
+	cv::Mat b(2 * n, 1, CV_64FC1, Scalar(0)); // Ax=b
+
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2f & imgpt1 = imgPts1[i];
+		const Point2f & imgpt2 = imgPts2[i];
+		double x1 = imgpt1.x;
+		double y1 = imgpt1.y;
+		double x2 = imgpt2.x;
+		double y2 = imgpt2.y;
+
+		int i2 = 2 * i;
+
+		A.at<double>(i2) = x1;
+		A.at<double>(i2 + 1) = y1;
+		b.at<double>(i2) = x2;
+		b.at<double>(i2 + 1) = y2;
+	}
+
+	cv::Mat mA = A.t() * A;
+	cv::Mat mb = A.t() * b;
+	cv::Mat mx;
+
+	solve(mA, mb, mx, DECOMP_CHOLESKY);
+
+	scale = mx.at<double>(0);
+}
+
 // 20230530£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿¶şÎ¬Ğı×ª¾ØÕóRÒÔ¼°Æ½ÒÆÏòÁ¿t£¬µ±È»ÁË£¬ÊÊÓÃ³¡¾°µ±È»ÊÇÁ½ÊÓÍ¼¼äÕæµÄÖ»·¢ÉúÁË¸ÕÌå¶şÎ¬Ğı×ªºÍÆ½ÒÆÔË¶¯£¬ÎŞ³ß¶ÈËõ·Å
 // implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
 // ·µ»ØÄÚµãÊı
@@ -2848,6 +2885,181 @@ int DeepVoid::get_R_t_2D_RANSAC(const vector<Point2d> & imgPts1,	// input: µã¶ÔÓ
 
 		X2_ = R*X1 + t;
 		X1_ = R.t()*(X2 - t);
+
+		double dx1 = X1_(0) - X1(0);
+		double dy1 = X1_(1) - X1(1);
+		double dx2 = X2_(0) - X2(0);
+		double dy2 = X2_(1) - X2(1);
+
+		double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+		double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+
+		if (d < thresh_t)
+		{
+			status[i] = 1;
+			nInliers++;
+		}
+	}
+
+	return nInliers;
+}
+
+// 20231106£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿³ß¶ÈËõ·ÅÒò×Ó s£ºx2 = s*x1
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
+// ·µ»ØÄÚµãÊı
+int DeepVoid::get_s_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+							  const vector<Point2f> & imgPts2,	// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+							  vector<uchar> & status,			// output:Ö¸Ã÷×îÖÕÄÄĞ©µã¶ÔÊÇinliers£¬1£ºinliers£¬0£ºoutliers
+							  double & scale,					// output:³ß¶ÈËõ·ÅÒò×Ó
+							  double thresh_t /*= 3.0*/,		// input: µã-µã¾àÀëãĞÖµ£¬ÓÃÓÚÅĞ¶Ïµã¶ÔÊÇ·ñÎªinlier
+							  double thresh_p /*= 0.99*/		// input: ËùÓĞ³éÑù×éÖĞÖÁÉÙÓĞ 1 ×é³éÑùÍêÈ«ÓÉÄÚµã¹¹³ÉµÄ¸ÅÂÊ
+							  )
+{
+	int N = 1000; // ×î¶à³éÈ¡Ñù±¾Êı
+	int count = 0; // µ±Ç°ÒÑ³éÈ¡Ñù±¾Êı
+	int nMin = 1; // Çó½âÄ£ĞÍµÄ×îĞ¡ÅäÖÃÊı
+	RNG rng(0xffffffff); // Initializes a random number generator state
+
+	typedef std::pair<std::pair<std::pair<int, double>, vector<uchar>>, double> pair_n_e_s_scale; // ´æ´¢Ã¿¸ö[R|t]¾ØÕó¶ÔÓ¦µÄÄÚµãÊı¡¢¾ù·½¸ùÎó²î¡¢ÄÚµã¼¯¡¢ÒÔ¼°³ß¶ÈËõ·ÅÒò×Ó×ÔÉí
+
+	vector<pair_n_e_s_scale> vSamples;
+
+	int n = imgPts1.size();
+
+	status = vector<uchar>(n);
+	vector<uchar> status_(n);
+
+	double scale_tmp; // tmp
+
+	Matx21d X1, X1_, X2, X2_;
+
+	while (count < N)
+	{
+		// ¾ùÔÈ³éÈ¡ 1 ¸öËæ»úÊı
+		int i = rng.uniform(0, n - 1);
+
+		status_[i] = 1; // ±»³éÖĞÁËÄÇ¿Ï¶¨ÊÇÄÚµãÁË
+
+		int nInliers = 1;
+
+		vector<Point2f> imgpts1_samples, imgpts2_samples;
+
+		imgpts1_samples.push_back(imgPts1[i]);
+		imgpts2_samples.push_back(imgPts2[i]);
+
+		get_s_2D(imgpts1_samples, imgpts2_samples, scale_tmp);
+
+		double sum2 = 0;
+
+		// ¿¼²ìÃ¿Ò»×éµã¶ÔÊÇ·ñÎªµ±Ç°³ß¶ÈËõ·ÅÒò×Ó s µÄinlier
+		for (int k = 0; k < n; ++k)
+		{
+			if (k == i)
+			{
+				continue;
+			}
+
+			const Point2f & pt1 = imgPts1[k];
+			const Point2f & pt2 = imgPts2[k];
+
+			X1(0) = pt1.x; X1(1) = pt1.y;
+			X2(0) = pt2.x; X2(1) = pt2.y;
+
+			X2_ = scale_tmp*X1;
+			X1_ = (1.0 / scale_tmp)*X2;
+
+			double dx1 = X1_(0) - X1(0);
+			double dy1 = X1_(1) - X1(1);
+			double dx2 = X2_(0) - X2(0);
+			double dy2 = X2_(1) - X2(1);
+
+			double d2 = dx1*dx1 + dy1*dy1 + dx2*dx2 + dy2*dy2;
+			double d = sqrt(d2); // symmetric transfer error, not the optimal reprojection error, see p. 124 in Multiple View Geometry
+
+			if (d < thresh_t)
+			{
+				nInliers++;
+				sum2 += d2;
+				status_[k] = 1;
+			}
+			else
+			{
+				status_[k] = 0;
+			}
+		}
+
+		double rms_d = sqrt(sum2 / nInliers); // ÄÚµã¾ù·½¸ùÎó²î
+
+		double e = 1 - nInliers / (double)n; // ×ÔÊÊÓ¦¸üĞÂÍâµã±ÈÀı
+
+		int N_new = FTOI(std::log(1 - thresh_p) / std::log(1 - std::pow(1 - e, nMin))); // update N based on the ratio of outliers, according to equ. (4.18) in p. 121 of Multiple View Geometry
+
+		if (N_new < N) // ÕâÀïÎÒ¸Ä½øÁËÒ»ÏÂ£¬Ö»ÓĞµ±ËãµÃµÄËùĞèÑù±¾Êı±Èµ±Ç°¸üĞ¡Ê±²Å¸üĞÂ N
+		{
+			N = N_new;
+		}
+
+		count++;
+
+		vSamples.push_back(std::make_pair(std::make_pair(std::make_pair(nInliers, rms_d), status_), scale_tmp));
+	}
+
+	// ÏÈ°´ÄÚµãÊıÅÅĞò
+	sort(vSamples.begin(), vSamples.end(), [](const pair_n_e_s_scale & a, const pair_n_e_s_scale & b) {return a.first.first.first > b.first.first.first; });
+
+	int maxInliers = vSamples[0].first.first.first;
+
+	vector<pair_n_e_s_scale> vSamples_2nd;
+
+	for (int i = 0; i < vSamples.size(); ++i)
+	{
+		const pair_n_e_s_scale & smp = vSamples[i];
+
+		if (smp.first.first.first == maxInliers)
+		{
+			vSamples_2nd.push_back(smp);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	// ÄÚµãÊıÏàÍ¬µÄÇé¿öÏÂ£¬ÔÙ°´ÕÕ×ªÒÆÎó²îµÄrmsÖµ´óĞ¡ÅÅĞò
+	sort(vSamples_2nd.begin(), vSamples_2nd.end(), [](const pair_n_e_s_scale & a, const pair_n_e_s_scale & b) {return a.first.first.second < b.first.first.second; });
+
+	// È¡³ö¸ÃÓµÓĞ×î¶àÖ§³Ö¼¯µÄËõ·Å³ß¶ÈÒò×Ó£¬ÒÔ¼°¶ÔÓ¦µÄÄÚµã¼¯
+	scale_tmp = vSamples_2nd[0].second;
+	status_ = vSamples_2nd[0].first.second;
+
+	vector<Point2f> imgpts1_samples, imgpts2_samples;
+
+	// ÀûÓÃ×î´óÄÚµã¼¯ÔÙÖØĞÂ¼ÆËãÒ»´Î[R|t]
+	for (int i = 0; i < n; ++i)
+	{
+		if (!status_[i])
+		{
+			continue;
+		}
+
+		imgpts1_samples.push_back(imgPts1[i]);
+		imgpts2_samples.push_back(imgPts2[i]);
+	}
+
+	get_s_2D(imgpts1_samples, imgpts2_samples, scale); // Õâ¾ÍÊÇ×îÖÕµÄ scale ÁË
+
+	// ÒÀÕÕ×îÖÕµÄ scale ¸üĞÂÒ»ÏÂ status ÄÚµã×´Ì¬
+	int nInliers = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		const Point2f & pt1 = imgPts1[i];
+		const Point2f & pt2 = imgPts2[i];
+
+		X1(0) = pt1.x; X1(1) = pt1.y;
+		X2(0) = pt2.x; X2(1) = pt2.y;
+
+		X2_ = scale*X1;
+		X1_ = (1.0 / scale)*X2;
 
 		double dx1 = X1_(0) - X1(0);
 		double dy1 = X1_(1) - X1(1);
@@ -3337,6 +3549,99 @@ bool DeepVoid::get_R_t_2D_Matches_knn_RANSAC(const Features & feats0,				// inpu
 
 	// 20230531, try ransac estimate 2D [R|t]
 	int nInliers = get_R_t_2D_RANSAC(points0, points1, status, R, t, angle, thresh_p2l, thresh_conf);
+	//////////////////////////////////////////////////////////////////////////
+
+
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		if (status[i])
+		{
+			matches.push_back(matches_passSymTest[i]);
+		}
+	}
+
+	double ratioInliers = (double)matches.size() / matches_passSymTest.size();
+
+	if (ratioInliers < thresh_minInlierRatio)
+	{
+		return false; // and the ratio of inliers should be more than certain threshold
+	}
+	//////////////////////////////////////////////////////////////////////////
+
+
+	return true;
+}
+
+// 20231108, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get 2D scale change using RANSAC
+bool DeepVoid::get_s_2D_Matches_knn_RANSAC(const Features & feats0,					// input:	n1 features extracted from the 1st image
+										   const Features & feats1,					// input:	n2 features extracted from the 2nd image
+										   double & scale,							// output:	³ß¶ÈËõ·ÅÒò×Ó
+										   vector<DMatch> & matches,				// output:	matches obtained after feature matching and RANSAC
+										   int K /*= 2*/,							// input:	number of nearest neighbors
+							   			   double thresh_ratioTest /*= 0.3*/,		// input:	the ratio threshold for ratio test
+										   double thresh_minInlierRatio /*= 0.5*/,	// input:	the allowed minimum ratio of inliers
+										   double thresh_p2l /*= 3.*/,				// input:	the distance threshold between point and epiline, used in RANSAC stage
+										   double thresh_conf /*= 0.99*/			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+										   )
+{
+	matches.clear();
+
+	//	FlannBasedMatcher matcher; // do flann matching
+	BFMatcher matcher(NORM_L2, false); // do brute force matching
+
+	vector<vector<DMatch>> matches01_knn, matches10_knn;
+	// 1. extract k nearest neigbors for each feature in the each image
+	matcher.knnMatch(feats0.descriptors, feats1.descriptors, matches01_knn, K); // 0->1 matching
+	matcher.knnMatch(feats1.descriptors, feats0.descriptors, matches10_knn, K); // 1->0 matching
+
+	// »¹ÊÇ¶ÔÇ±ÔÚÆ¥ÅäÏÈÅÅ¸öĞò£¬·½±ãºóĞø²Ù×÷
+	for (auto iter = matches01_knn.begin(); iter != matches01_knn.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+	}
+
+	for (auto iter = matches10_knn.begin(); iter != matches10_knn.end(); ++iter)
+	{
+		sort(iter->begin(), iter->end(), [](const DMatch & a, const DMatch & b) {return a.distance < b.distance; });
+	}
+
+
+	vector<DMatch> matches01_passRatioTest, matches10_passRatioTest;
+	// 2. ratio test, only those matches that the best candidate are far better than the 2nd best are kept
+	ratioTest(matches01_knn, matches01_passRatioTest, thresh_ratioTest);
+	ratioTest(matches10_knn, matches10_passRatioTest, thresh_ratioTest);
+	//////////////////////////////////////////////////////////////////////////
+
+
+	vector<DMatch> matches_passSymTest;
+	// 3. symmetry test, only those symmetric matches are kept
+	// i.e. (0,14) for left image, there is (14,0) for the right image, then (0,14) is kept
+	symmetryTest(matches01_passRatioTest, matches10_passRatioTest, matches_passSymTest);
+	//////////////////////////////////////////////////////////////////////////
+
+	if (matches_passSymTest.size() < 2)
+	{
+		return false;
+	}
+
+	// 4. RANSAC, further filter those matches that do not satisfy epipolar geometry
+	vector<Point2f> points0(matches_passSymTest.size());
+	vector<Point2f> points1(matches_passSymTest.size());
+
+	// initialize the points here ... */
+	for (int i = 0; i < matches_passSymTest.size(); ++i)
+	{
+		points0[i] = feats0.key_points[matches_passSymTest[i].queryIdx].pt;
+		points1[i] = feats1.key_points[matches_passSymTest[i].trainIdx].pt;
+	}
+
+	vector<uchar> status;
+
+	// 20230531, try ransac estimate 2D scale
+//	int nInliers = get_R_t_2D_RANSAC(points0, points1, status, R, t, angle, thresh_p2l, thresh_conf);
+	int nInliers = get_s_2D_RANSAC(points0, points1, status, scale, thresh_p2l, thresh_conf);
 	//////////////////////////////////////////////////////////////////////////
 
 

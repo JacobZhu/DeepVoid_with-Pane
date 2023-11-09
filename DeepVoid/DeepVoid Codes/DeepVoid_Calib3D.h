@@ -284,6 +284,12 @@ double get_R_t_2D(const vector<Point2d> & imgPts1,				// input: µã¶ÔÓ¦ÔÚ 1st Í¼Ö
 				  Matx21d & t									// output:¹À¼ÆµÃµ½µÄÆ½ÒÆÏòÁ¿
 				  );
 
+// 20231106£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿³ß¶ÈËõ·ÅÒò×Ó s£ºx2 = s*x1
+void get_s_2D(const vector<Point2f> & imgPts1,	// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+			  const vector<Point2f> & imgPts2,	// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+		      double & scale					// output:¹À¼ÆµÃµ½µÄÆ½ÒÆÏòÁ¿
+			  );
+
 // 20230530£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿¶şÎ¬Ğı×ª¾ØÕóRÒÔ¼°Æ½ÒÆÏòÁ¿t£¬µ±È»ÁË£¬ÊÊÓÃ³¡¾°µ±È»ÊÇÁ½ÊÓÍ¼¼äÕæµÄÖ»·¢ÉúÁË¸ÕÌå¶şÎ¬Ğı×ªºÍÆ½ÒÆÔË¶¯£¬ÎŞ³ß¶ÈËõ·Å
 // implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
 // ·µ»ØÄÚµãÊı
@@ -310,6 +316,17 @@ int get_R_t_2D_RANSAC(const vector<Point2f> & imgPts1,		// input: µã¶ÔÓ¦ÔÚ 1st Í
 						 double thresh_p = 0.99					// input: ËùÓĞ³éÑù×éÖĞÖÁÉÙÓĞ 1 ×é³éÑùÍêÈ«ÓÉÄÚµã¹¹³ÉµÄ¸ÅÂÊ
 						 );
 
+// 20231106£¬ÓÉÒ»×éÍ¼Ïñµã¶ÔÓ¦½âËãÁ½ÊÓÍ¼¼äµÄ´¿³ß¶ÈËõ·ÅÒò×Ó s£ºx2 = s*x1
+// implementation of Algorithm 4.5 in p. 121 of Multiple View Geometry
+// ·µ»ØÄÚµãÊı
+int get_s_2D_RANSAC(const vector<Point2f> & imgPts1,	// input: µã¶ÔÓ¦ÔÚ 1st Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					const vector<Point2f> & imgPts2,	// input: µã¶ÔÓ¦ÔÚ 2nd Í¼ÖĞµÄÍ¼Ïñ×ø±ê
+					vector<uchar> & status,				// output:Ö¸Ã÷×îÖÕÄÄĞ©µã¶ÔÊÇinliers£¬1£ºinliers£¬0£ºoutliers
+					double & scale,						// output:³ß¶ÈËõ·ÅÒò×Ó
+					double thresh_t = 3.0,				// input: µã-µã¾àÀëãĞÖµ£¬ÓÃÓÚÅĞ¶Ïµã¶ÔÊÇ·ñÎªinlier
+					double thresh_p = 0.99				// input: ËùÓĞ³éÑù×éÖĞÖÁÉÙÓĞ 1 ×é³éÑùÍêÈ«ÓÉÄÚµã¹¹³ÉµÄ¸ÅÂÊ
+					);
+
 // 20230602, zhaokunz
 // 1. get initial matches based on descriptors
 // 2. refine matches and get 2D rotation matrix and translation using RANSAC
@@ -325,6 +342,20 @@ bool get_R_t_2D_Matches_knn_RANSAC(const Features & feats0,				// input:	n1 feat
 								   double thresh_p2l = 3.,				// input:	the distance threshold between point and epiline, used in RANSAC stage
 								   double thresh_conf = 0.99			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
 								   );
+
+// 20231108, zhaokunz
+// 1. get initial matches based on descriptors
+// 2. refine matches and get 2D scale change using RANSAC
+bool get_s_2D_Matches_knn_RANSAC(const Features & feats0,			// input:	n1 features extracted from the 1st image
+								 const Features & feats1,			// input:	n2 features extracted from the 2nd image
+								 double & scale,					// output:	³ß¶ÈËõ·ÅÒò×Ó
+								 vector<DMatch> & matches,			// output:	matches obtained after feature matching and RANSAC
+								 int K = 2,							// input:	number of nearest neighbors
+							   	 double thresh_ratioTest = 0.3,		// input:	the ratio threshold for ratio test
+								 double thresh_minInlierRatio = 0.5,// input:	the allowed minimum ratio of inliers
+								 double thresh_p2l = 3.,			// input:	the distance threshold between point and epiline, used in RANSAC stage
+								 double thresh_conf = 0.99			// input:	specifying a desirable level of confidence (probability) that the estimated matrix is correct
+								 );
 
 // 20150128, zhaokunz, output those matches that pass the ratio test
 void ratioTest(const vector<vector<DMatch>> & matches_knn,	// input:	knn matches
