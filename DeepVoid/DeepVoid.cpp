@@ -15147,6 +15147,8 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 
 	vector<DeepVoid::Features> feat_sift, feat_orb, feat_sift_my, feat_orb_my;
 
+	std::vector<std::pair<int, double>> vec_idx_scaleRatio; // 20240613，记录每幅图像的索引及其真实的尺度百分比，以便选择参考图像
+
 	for (int i = 0; i < nImg; ++i)
 	{
 		cam_data & cam = cams[i];
@@ -15169,11 +15171,13 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 
 		vScalesReal.push_back(scaleReal);
 
+		vec_idx_scaleRatio.push_back(std::make_pair(i, scaleReal)); // 20240613，记录每幅图像的索引及其真实的尺度百分比，以便选择参考图像
+
 //		if (!scaleReal)
-		if (scaleReal == 100) // 20240108，图像文件名中的数值 n 表示 n%，显然 100% 就表示未缩放的原图
-		{
-			idxRef = i;
-		}		
+// 		if (scaleReal == 100) // 20240108，图像文件名中的数值 n 表示 n%，显然 100% 就表示未缩放的原图
+// 		{
+// 			idxRef = i;
+// 		}
 
 		// 先提取sift特征点
 		cam.ExtractSiftFeatures(img, pApp->m_nfeaturesSift, pApp->m_nOctaveLayersSift, pApp->m_contrastThresholdSift, pApp->m_edgeThresholdSift, pApp->m_sigmaSift);
@@ -15260,12 +15264,20 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 		feat_orb_my.push_back(orb_my);
 	}
 
+	// 20240613，图像文件名中的数值 n 表示 n%，显然 100% 就表示未缩放的原图
+	std::sort(vec_idx_scaleRatio.begin(), vec_idx_scaleRatio.end(), 
+		[](const std::pair<int, double> & a, const std::pair<int, double> & b) {return a.second > b.second; });
+
+	idxRef = vec_idx_scaleRatio[0].first;
+	double scaleRef = vec_idx_scaleRatio[0].second;
+
 //	const DeepVoid::Features & sift0 = cams[idxRef].m_featsBlob;
 //	const DeepVoid::Features & my0 = cams[idxRef].m_featsManual;
 	const DeepVoid::Features & sift0 = feat_sift[idxRef];
 	const DeepVoid::Features & sift_my0 = feat_sift_my[idxRef];
 	const DeepVoid::Features & orb0 = feat_orb[idxRef];
 	const DeepVoid::Features & orb_my0 = feat_orb_my[idxRef];
+//	double scaleRef = vScalesReal[idxRef]; // 20240612
 //	int nSift0 = sift0.key_points.size();
 //	int H = imgs[idxRef].rows;
 	//////////////////////////////////////////////////////////////////////////
@@ -15292,7 +15304,8 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 		const DeepVoid::Features & sift_myi = feat_sift_my[i];
 		const DeepVoid::Features & orbi = feat_orb[i];
 		const DeepVoid::Features & orb_myi = feat_orb_my[i];
-		double scaleFactor = 1.0 / (double)vScalesReal[i];
+//		double scaleFactor = 1.0 / (double)vScalesReal[i];
+		double scaleFactor = (double)vScalesReal[i] / scaleRef; // 20240612，适配新的尺度表达方式
 
 // 		Matx22d R;
 // 		Matx21d t;
@@ -15402,19 +15415,19 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 		int i_80 = std::floor(0.80*nnnn);
 		int i_75 = std::floor(0.75*nnnn);
 
-		double rms_angErrSift = std::sqrt(sum2_absErrScaleSift / nnnn);
-		double rms_angErrSiftMy = std::sqrt(sum2_absErrScaleSiftMy / nnnn);
+		double rms_scaleErrSift = std::sqrt(sum2_absErrScaleSift / nnnn);
+		double rms_scaleErrSiftMy = std::sqrt(sum2_absErrScaleSiftMy / nnnn);
 
 		fprintf(file_sift, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
-			vAbsErrScaleSift[i_95], vAbsErrScaleSift[i_90], vAbsErrScaleSift[i_85], vAbsErrScaleSift[i_80], vAbsErrScaleSift[i_75], rms_angErrSift,
-			vAbsErrScaleSiftMy[i_95], vAbsErrScaleSiftMy[i_90], vAbsErrScaleSiftMy[i_85], vAbsErrScaleSiftMy[i_80], vAbsErrScaleSiftMy[i_75], rms_angErrSiftMy);
+			vAbsErrScaleSift[i_95], vAbsErrScaleSift[i_90], vAbsErrScaleSift[i_85], vAbsErrScaleSift[i_80], vAbsErrScaleSift[i_75], rms_scaleErrSift,
+			vAbsErrScaleSiftMy[i_95], vAbsErrScaleSiftMy[i_90], vAbsErrScaleSiftMy[i_85], vAbsErrScaleSiftMy[i_80], vAbsErrScaleSiftMy[i_75], rms_scaleErrSiftMy);
 		//////////////////////////////////////////////////////////////////////////
 		//////////////////////////////////////////////////////////////////////////
 
 
 		// 20230606，旋转后图像 orb 特征与原图 orb 特征做匹配
 //		bSuc = get_R_t_2D_Matches_knn_RANSAC(orb0, orbi, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
-		bSuc = get_s_2D_Matches_knn_RANSAC(orb0, orbi, scaleRANSAC, matches, 2, /*0.3*/0.9, 0.5, 1.0);
+		bSuc = get_s_2D_Matches_knn_RANSAC(orb0, orbi, scaleRANSAC, matches, 2, 0.3/*0.9*/, 0.5, 1.0);
 		//////////////////////////////////////////////////////////////////////////
 
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
@@ -15486,12 +15499,12 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 		i_80 = std::floor(0.80*nnnn);
 		i_75 = std::floor(0.75*nnnn);
 
-		double rms_angErrOrb = std::sqrt(sum2_absErrScaleOrb / nnnn);
-		double rms_angErrOrbMy = std::sqrt(sum2_absErrScaleOrbMy / nnnn);
+		double rms_scaleErrOrb = std::sqrt(sum2_absErrScaleOrb / nnnn);
+		double rms_scaleErrOrbMy = std::sqrt(sum2_absErrScaleOrbMy / nnnn);
 
 		fprintf(file_orb, "%lf	%lf	%lf	%lf	%lf	%lf\n%lf	%lf	%lf	%lf	%lf	%lf",
-			vAbsErrScaleOrb[i_95], vAbsErrScaleOrb[i_90], vAbsErrScaleOrb[i_85], vAbsErrScaleOrb[i_80], vAbsErrScaleOrb[i_75], rms_angErrOrb,
-			vAbsErrScaleOrbMy[i_95], vAbsErrScaleOrbMy[i_90], vAbsErrScaleOrbMy[i_85], vAbsErrScaleOrbMy[i_80], vAbsErrScaleOrbMy[i_75], rms_angErrOrbMy);
+			vAbsErrScaleOrb[i_95], vAbsErrScaleOrb[i_90], vAbsErrScaleOrb[i_85], vAbsErrScaleOrb[i_80], vAbsErrScaleOrb[i_75], rms_scaleErrOrb,
+			vAbsErrScaleOrbMy[i_95], vAbsErrScaleOrbMy[i_90], vAbsErrScaleOrbMy[i_85], vAbsErrScaleOrbMy[i_80], vAbsErrScaleOrbMy[i_75], rms_scaleErrOrbMy);
 		//////////////////////////////////////////////////////////////////////////
 		//////////////////////////////////////////////////////////////////////////
 
