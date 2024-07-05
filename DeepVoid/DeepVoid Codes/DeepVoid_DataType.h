@@ -523,6 +523,7 @@ enum FeatureType
 	Feature_MANUAL_SIFT	   = 3,
 	Feature_SIFTFAST_SIFT  = 4,
 	Feature_ORB_SIFT       = 5,
+	Feature_ORB_ORB		   = 6,
 };
 
 struct Features
@@ -1009,10 +1010,14 @@ struct cam_data
 		sort(m_featsCorner.key_points.begin(), m_featsCorner.key_points.end(), [](const KeyPoint & a, const KeyPoint & b) {return a.response > b.response; });
 
 		// 生成特征描述向量
-		auto f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
-		f2d->compute(img, m_featsCorner.key_points, m_featsCorner.descriptors);
-
+ 		auto f2d = cv::xfeatures2d::SIFT::create(nfeaturesSift, nOctaveLayersSift, contrastThresholdSift, edgeThresholdSift, sigmaSift);
+ 		f2d->compute(img, m_featsCorner.key_points, m_featsCorner.descriptors);
 		m_featsCorner.type = Feature_ORB_SIFT; // ORB keypoints + sift descriptors
+
+		// 20240703，利用 orb 自身的特征描述子生成特征描述向量，看看是不是匹配的成功率会更高
+//		orb->compute(img, m_featsCorner.key_points, m_featsCorner.descriptors);
+//		m_featsCorner.type = Feature_ORB_ORB; // ORB keypoints + ORB descriptors
+		//////////////////////////////////////////////////////////////////////////
 
 		// 下面主要是为了将 sift 特征中重复位置但主方向不同的特征点编为统一的全局编号，并把每个特征点处的色彩值插值出来
 		int n = m_featsCorner.key_points.size();

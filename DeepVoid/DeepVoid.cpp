@@ -15428,6 +15428,7 @@ UINT Scale_Orientation_changeScale(LPVOID param)
 		// 20230606，旋转后图像 orb 特征与原图 orb 特征做匹配
 //		bSuc = get_R_t_2D_Matches_knn_RANSAC(orb0, orbi, R, t, angRANSAC, matches, 2, 0.3, 0.5, 1.0);
 		bSuc = get_s_2D_Matches_knn_RANSAC(orb0, orbi, scaleRANSAC, matches, 2, 0.3/*0.9*/, 0.5, 1.0);
+		bSuc = get_s_2D_Matches_knn_RANSAC(orb0, orbi, scaleRANSAC, matches, 2, 0.75, 0.5, 1.0);
 		//////////////////////////////////////////////////////////////////////////
 
 		for (auto iter = matches.begin(); iter != matches.end(); ++iter)
