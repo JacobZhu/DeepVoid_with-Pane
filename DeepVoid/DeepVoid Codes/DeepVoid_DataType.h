@@ -895,35 +895,21 @@ struct cam_data
 		{
 			cv::KeyPoint & keypt = m_featsCorner.key_points[i];
 
-//			keypt.size = size;
-
-			int r/* = (size - 1)*0.5*/;
+			int r;
 			double angle;
 
-// 			if (CornerAngle_IC(im_gray, keypt.pt.x, keypt.pt.y, r, angle))
-// 			{
-// 				if (angle < 0) // 确保最终的角度范围符合 opencv keypoint::angle 的取值范围，即 [0,360)
-// 				{
-// 					angle += 360;
-// 				}
-// 
-// 				keypt.angle = angle;
-// 			}
-
 			// 20200901，同时估计特征尺度和方向 ////////////////////////////////////////
-// 			if (FeatureRadiusAngle(im_gray, keypt.pt.x, keypt.pt.y, r, angle, thresholdOffset, r_max))
-// 			{
-// 				keypt.size = (2 * r + 1)*0.33333333333; // keypoint::size 表征特征的直径 diameter
-// 				keypt.angle = angle;
-// 			}
-
-//			if (FeatureRadiusAngle_dAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 3.0))
+			// 本文方法
 			if (FeatureRadiusAngle_sigmaAng(im_gray, keypt.pt.x, keypt.pt.y, r, angle, 5.0, 1.0, 100))
 			{
-				keypt.size = (2 * r + 1)/**0.3*/; // keypoint::size 表征特征的直径 diameter
+				keypt.size = (2 * r + 1); // keypoint::size 表征特征的直径 diameter
 				keypt.angle = angle;
 			}
-			//////////////////////////////////////////////////////////////////////////
+			else
+			{
+				keypt.size = -1;
+				keypt.angle = -1;
+			}			
 		}
 		//////////////////////////////////////////////////////////////////////////
 
